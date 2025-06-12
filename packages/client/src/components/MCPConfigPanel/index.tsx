@@ -8,7 +8,7 @@ import { ConfigEditor } from './ConfigEditor';
 import { ToolDescriptionEditor } from './ToolDescriptionEditor';
 import { BackupManager } from './BackupManager';
 import { ServerManager } from './ServerManager';
-import { Save, Download, Upload, History } from 'lucide-react';
+import { Save, Download, Upload } from 'lucide-react';
 
 export function MCPConfigPanel() {
   const [config, setConfig] = useState<any>({});
