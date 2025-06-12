@@ -73,47 +73,47 @@ setup:
 env-dev:
 	@echo "🔧 Configuring .env for development..."
 	@if [ ! -f .env ]; then cp .env.example .env; fi
-	@sed -i.bak 's/^DEPLOYMENT_MODE=.*/DEPLOYMENT_MODE=development/' .env
-	@sed -i.bak 's/^# MONGODB_URI=mongodb:\/\/localhost/MONGODB_URI=mongodb:\/\/localhost/' .env
-	@sed -i.bak 's/^# OLLAMA_HOST=http:\/\/localhost/OLLAMA_HOST=http:\/\/localhost/' .env
-	@sed -i.bak 's/^# CLIENT_URL=http:\/\/localhost:3000/CLIENT_URL=http:\/\/localhost:3000/' .env
+	@sed -i.bak 's|^DEPLOYMENT_MODE=.*|DEPLOYMENT_MODE=development|' .env
+	@sed -i.bak 's|^# MONGODB_URI=mongodb://localhost|MONGODB_URI=mongodb://localhost|' .env
+	@sed -i.bak 's|^# OLLAMA_HOST=http://localhost|OLLAMA_HOST=http://localhost|' .env
+	@sed -i.bak 's|^# CLIENT_URL=http://localhost:3000|CLIENT_URL=http://localhost:3000|' .env
 	@echo "🔐 Generating secure secrets..."
 	@JWT_SECRET=$$(openssl rand -base64 32); \
 	SESSION_SECRET=$$(openssl rand -base64 32); \
-	sed -i.bak "s/^JWT_SECRET=.*/JWT_SECRET=$$JWT_SECRET/" .env; \
-	sed -i.bak "s/^SESSION_SECRET=.*/SESSION_SECRET=$$SESSION_SECRET/" .env
+	sed -i.bak "s|^JWT_SECRET=.*|JWT_SECRET=$$JWT_SECRET|" .env; \
+	sed -i.bak "s|^SESSION_SECRET=.*|SESSION_SECRET=$$SESSION_SECRET|" .env
 	@rm -f .env.bak
 	@echo "✅ Development configuration applied with secure secrets"
 
 env-docker-same:
 	@echo "🔧 Configuring .env for Docker same-host deployment..."
 	@if [ ! -f .env ]; then cp .env.example .env; fi
-	@sed -i.bak 's/^DEPLOYMENT_MODE=.*/DEPLOYMENT_MODE=docker-same-host/' .env
-	@sed -i.bak 's/^MONGODB_URI=.*/# MONGODB_URI=mongodb:\/\/localhost:27017\/olympian_ai_lite/' .env
-	@sed -i.bak 's/^# MONGODB_URI=mongodb:\/\/olympian-mongodb/MONGODB_URI=mongodb:\/\/olympian-mongodb/' .env
-	@sed -i.bak 's/^OLLAMA_HOST=.*/# OLLAMA_HOST=http:\/\/localhost:11434/' .env
-	@sed -i.bak 's/^# OLLAMA_HOST=http:\/\/olympian-ollama/OLLAMA_HOST=http:\/\/olympian-ollama/' .env
+	@sed -i.bak 's|^DEPLOYMENT_MODE=.*|DEPLOYMENT_MODE=docker-same-host|' .env
+	@sed -i.bak 's|^MONGODB_URI=.*|# MONGODB_URI=mongodb://localhost:27017/olympian_ai_lite|' .env
+	@sed -i.bak 's|^# MONGODB_URI=mongodb://olympian-mongodb|MONGODB_URI=mongodb://olympian-mongodb|' .env
+	@sed -i.bak 's|^OLLAMA_HOST=.*|# OLLAMA_HOST=http://localhost:11434|' .env
+	@sed -i.bak 's|^# OLLAMA_HOST=http://olympian-ollama|OLLAMA_HOST=http://olympian-ollama|' .env
 	@echo "🔐 Generating secure secrets..."
 	@JWT_SECRET=$$(openssl rand -base64 32); \
 	SESSION_SECRET=$$(openssl rand -base64 32); \
-	sed -i.bak "s/^JWT_SECRET=.*/JWT_SECRET=$$JWT_SECRET/" .env; \
-	sed -i.bak "s/^SESSION_SECRET=.*/SESSION_SECRET=$$SESSION_SECRET/" .env
+	sed -i.bak "s|^JWT_SECRET=.*|JWT_SECRET=$$JWT_SECRET|" .env; \
+	sed -i.bak "s|^SESSION_SECRET=.*|SESSION_SECRET=$$SESSION_SECRET|" .env
 	@rm -f .env.bak
 	@echo "✅ Docker same-host configuration applied with secure secrets"
 
 env-docker-multi:
 	@echo "🔧 Configuring .env for Docker multi-host deployment..."
 	@if [ ! -f .env ]; then cp .env.example .env; fi
-	@sed -i.bak 's/^DEPLOYMENT_MODE=.*/DEPLOYMENT_MODE=docker-multi-host/' .env
-	@sed -i.bak 's/^MONGODB_URI=.*/# MONGODB_URI=mongodb:\/\/localhost:27017\/olympian_ai_lite/' .env
-	@sed -i.bak 's/^# MONGODB_URI=mongodb:\/\/username:password@192.168.1.10/MONGODB_URI=mongodb:\/\/username:password@192.168.1.10/' .env
-	@sed -i.bak 's/^OLLAMA_HOST=.*/# OLLAMA_HOST=http:\/\/localhost:11434/' .env
-	@sed -i.bak 's/^# OLLAMA_HOST=http:\/\/192.168.1.11/OLLAMA_HOST=http:\/\/192.168.1.11/' .env
+	@sed -i.bak 's|^DEPLOYMENT_MODE=.*|DEPLOYMENT_MODE=docker-multi-host|' .env
+	@sed -i.bak 's|^MONGODB_URI=.*|# MONGODB_URI=mongodb://localhost:27017/olympian_ai_lite|' .env
+	@sed -i.bak 's|^# MONGODB_URI=mongodb://username:password@192.168.1.10|MONGODB_URI=mongodb://username:password@192.168.1.10|' .env
+	@sed -i.bak 's|^OLLAMA_HOST=.*|# OLLAMA_HOST=http://localhost:11434|' .env
+	@sed -i.bak 's|^# OLLAMA_HOST=http://192.168.1.11|OLLAMA_HOST=http://192.168.1.11|' .env
 	@echo "🔐 Generating secure secrets..."
 	@JWT_SECRET=$$(openssl rand -base64 32); \
 	SESSION_SECRET=$$(openssl rand -base64 32); \
-	sed -i.bak "s/^JWT_SECRET=.*/JWT_SECRET=$$JWT_SECRET/" .env; \
-	sed -i.bak "s/^SESSION_SECRET=.*/SESSION_SECRET=$$SESSION_SECRET/" .env
+	sed -i.bak "s|^JWT_SECRET=.*|JWT_SECRET=$$JWT_SECRET|" .env; \
+	sed -i.bak "s|^SESSION_SECRET=.*|SESSION_SECRET=$$SESSION_SECRET|" .env
 	@rm -f .env.bak
 	@echo "✅ Docker multi-host configuration applied with secure secrets"
 	@echo "⚠️  Please update the IP addresses and credentials in .env for your environment"
@@ -131,8 +131,8 @@ apply-secrets:
 	@echo "🔐 Applying new secure secrets to .env..."
 	@JWT_SECRET=$$(openssl rand -base64 32); \
 	SESSION_SECRET=$$(openssl rand -base64 32); \
-	sed -i.bak "s/^JWT_SECRET=.*/JWT_SECRET=$$JWT_SECRET/" .env; \
-	sed -i.bak "s/^SESSION_SECRET=.*/SESSION_SECRET=$$SESSION_SECRET/" .env
+	sed -i.bak "s|^JWT_SECRET=.*|JWT_SECRET=$$JWT_SECRET|" .env; \
+	sed -i.bak "s|^SESSION_SECRET=.*|SESSION_SECRET=$$SESSION_SECRET|" .env
 	@rm -f .env.bak
 	@echo "✅ Secure secrets applied to .env"
 
