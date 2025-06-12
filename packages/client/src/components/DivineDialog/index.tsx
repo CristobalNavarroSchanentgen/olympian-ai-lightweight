@@ -53,7 +53,7 @@ export function DivineDialog() {
       if (messageId === currentMessageId) {
         // Add the assistant message to the store
         const assistantMessage: Message = {
-          conversationId: currentConversation?._id!,
+          conversationId: currentConversation?._id || '',
           role: 'assistant',
           content: streamedContent,
           metadata,
@@ -115,7 +115,7 @@ export function DivineDialog() {
 
     // Add user message to store
     const userMessage: Message = {
-      conversationId: currentConversation?._id,
+      conversationId: currentConversation?._id || '',
       role: 'user',
       content,
       images,
@@ -128,7 +128,7 @@ export function DivineDialog() {
       content,
       images,
       model: selectedModel,
-      conversationId: currentConversation?._id?.toString(),
+      conversationId: currentConversation?._id?.toString() || '',
     });
   };
 
