@@ -7,6 +7,18 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
 
+interface ToolListResponse {
+  tools?: Array<{
+    name: string;
+    description?: string;
+    inputSchema?: Record<string, unknown>;
+  }>;
+}
+
+interface ToolCallResponse {
+  content?: unknown;
+}
+
 export class MCPClientService {
   private clients: Map<string, Client> = new Map();
   private processes: Map<string, ChildProcess> = new Map();
@@ -187,7 +199,11 @@ export class MCPClientService {
       throw new Error(`Server ${serverId} not running`);
     }
     
-    const response = await client.request({ method: 'tools/list' }, {});
+    const response = await client.request(
+      { method: 'tools/list' },
+      undefined
+    ) as ToolListResponse;
+    
     const tools = response.tools || [];
     
     return tools.map(tool => ({
@@ -209,8 +225,8 @@ export class MCPClientService {
     try {
       const response = await client.request(
         { method: 'tools/call', params: { name: request.toolName, arguments: request.arguments } },
-        {}
-      );
+        undefined
+      ) as ToolCallResponse;
       
       return {
         success: true,
