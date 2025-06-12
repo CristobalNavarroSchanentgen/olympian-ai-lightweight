@@ -1,4 +1,4 @@
-import { MongoClient, Db, Collection } from 'mongodb';
+import { MongoClient, Db, Collection, IndexSpecification } from 'mongodb';
 import { logger } from '../utils/logger';
 import { getDeploymentConfig } from '../config/deployment';
 import { Conversation, Message, Connection } from '@olympian/shared';
@@ -50,11 +50,34 @@ export class DatabaseService {
   private async ensureSchema(): Promise<void> {
     if (!this.db) throw new Error('Database not connected');
 
-    const collections = [
-      { name: 'conversations', indexes: [{ createdAt: -1 }, { updatedAt: -1 }] },
-      { name: 'messages', indexes: [{ conversationId: 1, createdAt: 1 }, { content: 'text' }] },
-      { name: 'connections', indexes: [{ type: 1 }, { status: 1 }] },
-      { name: 'config', indexes: [{ key: 1 }] },
+    const collections: Array<{ name: string; indexes: IndexSpecification[] }> = [
+      { 
+        name: 'conversations', 
+        indexes: [
+          { createdAt: -1 } as IndexSpecification,
+          { updatedAt: -1 } as IndexSpecification
+        ] 
+      },
+      { 
+        name: 'messages', 
+        indexes: [
+          { conversationId: 1, createdAt: 1 } as IndexSpecification,
+          { content: 'text' } as IndexSpecification
+        ] 
+      },
+      { 
+        name: 'connections', 
+        indexes: [
+          { type: 1 } as IndexSpecification,
+          { status: 1 } as IndexSpecification
+        ] 
+      },
+      { 
+        name: 'config', 
+        indexes: [
+          { key: 1 } as IndexSpecification
+        ] 
+      },
     ];
 
     for (const { name, indexes } of collections) {
