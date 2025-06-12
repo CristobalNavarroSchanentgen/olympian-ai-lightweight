@@ -17,6 +17,7 @@ A minimalist MCP client application focused on seamless Ollama integration with 
 - **Database**: MongoDB (local or remote)
 - **Communication**: WebSockets for real-time streaming
 - **MCP SDK**: Official MCP TypeScript SDK
+- **Proxy**: Integrated nginx in frontend container for optimal performance
 
 ## Prerequisites
 
@@ -180,6 +181,39 @@ make db-restore                   # Restore MongoDB from latest backup
 
 4. **Start chatting**: Select a model in Divine Dialog and start conversing
 
+## Architecture Improvements
+
+### 🚀 Integrated Nginx Frontend Architecture
+
+The application now uses an optimized nginx architecture:
+
+- **Unified Frontend Container**: Single container handles both static file serving and backend proxying
+- **Optimized Performance**: Direct nginx serving with intelligent caching for static assets
+- **Simplified Deployment**: No separate nginx proxy container needed
+- **Health Monitoring**: Built-in health checks and monitoring endpoints
+
+**Before (Issue)**:
+```
+Host:8080 → Nginx Proxy (empty, shows default page) ❌
+              ↓
+             Frontend Container (has files but not exposed) ⚠️
+              ↓
+             Backend Container
+```
+
+**After (Fixed)**:
+```
+Host:8080 → Frontend Container (nginx + React app + backend proxy) ✅
+              ↓
+             Backend Container
+```
+
+Benefits:
+- ✅ **Eliminates Default Page Issue**: Frontend files are properly served
+- ✅ **Better Performance**: Direct nginx serving with asset caching
+- ✅ **Simplified Architecture**: Fewer containers and network hops
+- ✅ **Easier Maintenance**: Single point for frontend and proxy configuration
+
 ## Deployment Configurations
 
 Choose the deployment option that best fits your setup:
@@ -276,6 +310,30 @@ docker compose -f docker-compose.same-host-existing-ollama.yml restart    # Same
 make docker-build
 ```
 
+### Frontend/Nginx Issues
+```bash
+# Check if you're seeing the default nginx page instead of the app
+curl -I http://localhost:8080
+
+# If you see "nginx/1.x.x" in Server header but app doesn't load:
+# 1. Check if frontend container is healthy
+docker ps --filter "name=olympian-frontend" --format "table {{.Names}}\t{{.Status}}"
+
+# 2. Check frontend container logs
+docker logs olympian-frontend
+
+# 3. Verify nginx configuration is correct
+docker exec olympian-frontend cat /etc/nginx/conf.d/default.conf
+
+# 4. Test backend connectivity from frontend container
+docker exec olympian-frontend curl -f http://backend:4000/api/health
+
+# 5. Rebuild frontend with latest architecture fixes
+make docker-build
+docker compose down
+docker compose up -d
+```
+
 ### Ollama Connection Issues (Existing Host Ollama)
 ```bash
 # Verify Ollama is running on host
@@ -313,9 +371,13 @@ olympian-ai-lightweight/
 │   ├── server/                                    # Express backend
 │   └── shared/                                    # Shared types and utilities
 ├── docker/                                        # Docker configurations
-│   ├── frontend/                                  # Frontend Dockerfile
+│   ├── frontend/                                  # Frontend Dockerfile with integrated nginx
 │   ├── backend/                                   # Backend Dockerfile
-│   └── nginx/                                     # Nginx configuration
+│   └── nginx/                                     # Nginx configurations
+│       ├── conf.d/
+│       │   ├── default.conf                       # Original nginx config (kept for reference)
+│       │   └── frontend.conf                      # New integrated frontend config ⭐ NEW
+│       └── nginx.conf                            # Main nginx configuration
 ├── scripts/                                       # Setup and deployment scripts
 ├── docs/                                          # Documentation
 └── Makefile                                       # Automation commands
