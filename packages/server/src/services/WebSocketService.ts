@@ -4,7 +4,6 @@ import { ClientEvents, ServerEvents, Message, ScanProgress } from '@olympian/sha
 import { DatabaseService } from './DatabaseService';
 import { ConnectionScanner } from './ConnectionScanner';
 import { OllamaStreamliner } from './OllamaStreamliner';
-import { ObjectId } from 'mongodb';
 
 export class WebSocketService {
   private io: Server;
@@ -61,7 +60,7 @@ export class WebSocketService {
     socket: Socket,
     data: ClientEvents['chat:message']
   ): Promise<void> {
-    const messageId = new ObjectId().toString();
+    const messageId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
     const abortController = new AbortController();
     this.activeChats.set(messageId, abortController);
 
@@ -73,9 +72,9 @@ export class WebSocketService {
       const processedRequest = await this.streamliner.processRequest(data);
 
       // Get or create conversation
-      let conversationId: ObjectId;
+      let conversationId: string;
       if (data.conversationId) {
-        conversationId = new ObjectId(data.conversationId);
+        conversationId = data.conversationId;
       } else {
         const conversation = await this.db.conversations.insertOne({
           title: data.content.substring(0, 50) + '...',
@@ -84,7 +83,7 @@ export class WebSocketService {
           updatedAt: new Date(),
           messageCount: 0,
         });
-        conversationId = conversation.insertedId;
+        conversationId = conversation.insertedId.toString();
       }
 
       // Save user message
@@ -212,7 +211,7 @@ export class WebSocketService {
   ): Promise<void> {
     try {
       const connection = await this.db.connections.findOne({
-        _id: new ObjectId(data.connectionId),
+        _id: data.connectionId,
       });
 
       if (!connection) {
@@ -227,7 +226,7 @@ export class WebSocketService {
       
       // Update connection status
       await this.db.connections.updateOne(
-        { _id: new ObjectId(data.connectionId) },
+        { _id: data.connectionId },
         {
           $set: {
             status: isOnline ? 'online' : 'offline',
