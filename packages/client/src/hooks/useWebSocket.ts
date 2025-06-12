@@ -1,4 +1,3 @@
-import { useEffect, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { create } from 'zustand';
 import { ClientEvents, ServerEvents } from '@olympian/shared';
