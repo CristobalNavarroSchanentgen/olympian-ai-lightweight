@@ -2,7 +2,6 @@ import { Router } from 'express';
 import { DatabaseService } from '../services/DatabaseService';
 import { ConnectionScanner } from '../services/ConnectionScanner';
 import { Connection, ConnectionTestResult } from '@olympian/shared';
-import { ObjectId } from 'mongodb';
 import { AppError } from '../middleware/errorHandler';
 import { z } from 'zod';
 
@@ -39,7 +38,7 @@ router.get('/', async (_req, res, next) => {
 router.get('/:id', async (req, res, next) => {
   try {
     const connection = await db.connections.findOne({
-      _id: new ObjectId(req.params.id),
+      _id: req.params.id,
     });
 
     if (!connection) {
@@ -74,7 +73,7 @@ router.post('/', async (req, res, next) => {
     
     res.status(201).json({
       success: true,
-      data: { ...connection, _id: result.insertedId },
+      data: { ...connection, _id: result.insertedId.toString() },
       timestamp: new Date(),
     });
   } catch (error) {
@@ -92,7 +91,7 @@ router.put('/:id', async (req, res, next) => {
     const validated = createConnectionSchema.partial().parse(req.body);
     
     const result = await db.connections.findOneAndUpdate(
-      { _id: new ObjectId(req.params.id) },
+      { _id: req.params.id },
       {
         $set: {
           ...validated,
@@ -124,7 +123,7 @@ router.put('/:id', async (req, res, next) => {
 router.delete('/:id', async (req, res, next) => {
   try {
     const result = await db.connections.deleteOne({
-      _id: new ObjectId(req.params.id),
+      _id: req.params.id,
     });
 
     if (result.deletedCount === 0) {
@@ -144,7 +143,7 @@ router.delete('/:id', async (req, res, next) => {
 router.post('/:id/test', async (req, res, next) => {
   try {
     const connection = await db.connections.findOne({
-      _id: new ObjectId(req.params.id),
+      _id: req.params.id,
     });
 
     if (!connection) {
@@ -157,7 +156,7 @@ router.post('/:id/test', async (req, res, next) => {
 
     // Update connection status
     await db.connections.updateOne(
-      { _id: new ObjectId(req.params.id) },
+      { _id: req.params.id },
       {
         $set: {
           status: isOnline ? 'online' : 'offline',
