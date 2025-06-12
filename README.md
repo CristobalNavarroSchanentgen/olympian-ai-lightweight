@@ -28,107 +28,191 @@ A minimalist MCP client application focused on seamless Ollama integration with 
 
 ## Quick Start
 
-### Local Development
+### 1. Initial Setup
 
 ```bash
 # Clone the repository
 git clone https://github.com/CristobalNavarroSchanentgen/olympian-ai-lightweight.git
 cd olympian-ai-lightweight
 
-# Run setup script
+# Run setup (installs dependencies and creates .env from template)
 make setup
-# Or manually:
-# npm install
-# cp packages/server/.env.example packages/server/.env
+```
+
+### 2. Choose Your Deployment Method
+
+#### Option A: Local Development
+
+```bash
+# Configure for development (uses localhost services)
+make env-dev
+
+# Generate secure secrets
+make generate-secrets
+# Copy the generated JWT_SECRET and SESSION_SECRET to your .env file
 
 # Start development servers
 make dev
-# Or: npm run dev
 ```
 
-### Docker Deployment
-
-The application supports two deployment modes:
-
-#### 1. Same-Host Deployment
-All services (Ollama, MongoDB, MCP) run on the same host in different containers:
+#### Option B: Docker Same-Host (All services in containers)
 
 ```bash
+# Configure for Docker same-host deployment
+make env-docker-same
+
+# Generate and set secure secrets in .env
+make generate-secrets
+
 # Deploy everything on the same host
 make docker-same
-# Or: ./scripts/docker-deploy.sh --same-host
 ```
 
-#### 2. Multi-Host Deployment
-Services run on different hosts in your local network:
+#### Option C: Docker Multi-Host (External services)
 
 ```bash
-# Configure your service endpoints
-cp .env.docker .env
-# Edit .env with your MongoDB, Ollama, and MCP host IPs
+# Configure for Docker multi-host deployment
+make env-docker-multi
+
+# Edit .env to set your actual service IPs and credentials
+# Set your MongoDB URI, Ollama host, etc.
+nano .env
+
+# Generate and set secure secrets
+make generate-secrets
 
 # Deploy the application
 make docker-multi
-# Or: ./scripts/docker-deploy.sh --multi-host
 ```
 
-## Configuration
+## Environment Configuration
 
-### Environment Variables
+The application uses a single `.env` file for all configurations:
 
-Key configuration in `.env.docker`:
-
+### Development Setup
 ```bash
-# Deployment mode: 'same-host' or 'multi-host'
-DEPLOYMENT_MODE=multi-host
-
-# Multi-host configuration
-MONGODB_URI=mongodb://192.168.1.10:27017/olympian_ai_lite
-OLLAMA_HOST=http://192.168.1.11:11434
-
-# Multiple Ollama instances (optional)
-OLLAMA_HOSTS=192.168.1.11:11434,192.168.1.12:11434
-OLLAMA_LOAD_BALANCER=round-robin
+DEPLOYMENT_MODE=development
+MONGODB_URI=mongodb://localhost:27017/olympian_ai_lite
+OLLAMA_HOST=http://localhost:11434
+JWT_SECRET=your-secure-jwt-secret
+SESSION_SECRET=your-secure-session-secret
 ```
 
-### Application Configuration
+### Docker Same-Host Setup
+```bash
+DEPLOYMENT_MODE=docker-same-host
+MONGODB_URI=mongodb://olympian-mongodb:27017/olympian_ai_lite
+OLLAMA_HOST=http://olympian-ollama:11434
+JWT_SECRET=your-secure-jwt-secret
+SESSION_SECRET=your-secure-session-secret
+```
 
-The application stores configuration in `~/.olympian-ai-lite/`:
-- `mcp_config.json` - MCP server configurations
-- `tool_overrides.json` - Custom tool descriptions
-- `backups/` - Configuration backups
-
-## Usage
-
-1. **Access the application**: http://localhost:8080 (or your configured port)
-2. **Auto-discover connections**: The app will automatically scan for Ollama, MCP servers, and MongoDB
-3. **Configure MCP**: Use the MCP Config panel to set up your MCP servers and tools
-4. **Start chatting**: Select a model in Divine Dialog and start conversing
+### Docker Multi-Host Setup
+```bash
+DEPLOYMENT_MODE=docker-multi-host
+MONGODB_URI=mongodb://username:password@192.168.1.10:27017/olympian_ai_lite
+OLLAMA_HOST=http://192.168.1.11:11434
+# Optional: Multiple Ollama instances
+OLLAMA_HOSTS=192.168.1.11:11434,192.168.1.12:11434
+JWT_SECRET=your-secure-jwt-secret
+SESSION_SECRET=your-secure-session-secret
+```
 
 ## Available Commands
 
+### Setup & Environment
 ```bash
-# Development
-make dev              # Start development servers
-make build            # Build all packages
-make test             # Run tests
-make lint             # Run linter
+make setup              # Initial project setup
+make env-dev            # Configure for development
+make env-docker-same    # Configure for Docker same-host
+make env-docker-multi   # Configure for Docker multi-host
+make generate-secrets   # Generate secure JWT secrets
+make show-env           # Show current configuration
+```
 
-# Docker
-make docker-dev       # Run development in Docker
-make docker-same      # Production deployment (same-host)
-make docker-multi     # Production deployment (multi-host)
+### Development
+```bash
+make dev                # Start development servers
+make build              # Build all packages
+make test               # Run tests
+make lint               # Run linter
+make format             # Format code
+make clean              # Clean build artifacts
+```
 
-# Utilities
-make health-check     # Check service health
-make db-backup        # Backup MongoDB
-make db-restore       # Restore MongoDB
+### Docker Deployment
+```bash
+make docker-dev         # Run development in Docker
+make docker-same        # Production deployment (same-host)
+make docker-multi       # Production deployment (multi-host)
+make docker-build       # Build Docker images only
+```
+
+### Monitoring & Maintenance
+```bash
+make health-check       # Check service health
+make logs-dev           # View development logs
+make logs-prod          # View production logs
+make stop-dev           # Stop development containers
+make stop-prod          # Stop production containers
+make db-backup          # Backup MongoDB
+make db-restore         # Restore MongoDB from latest backup
+```
+
+## Usage
+
+1. **Access the application**:
+   - Development: http://localhost:3000 (frontend) + http://localhost:4000 (backend)
+   - Docker: http://localhost:8080 (or your configured APP_PORT)
+
+2. **Auto-discover connections**: The app automatically scans for Ollama, MCP servers, and MongoDB
+
+3. **Configure MCP**: Use the MCP Config panel to set up your MCP servers and tools
+
+4. **Start chatting**: Select a model in Divine Dialog and start conversing
+
+## Troubleshooting
+
+### Environment Issues
+```bash
+# Check current configuration
+make show-env
+
+# Reconfigure for your deployment mode
+make env-dev          # or env-docker-same, env-docker-multi
+
+# Generate new secrets if needed
+make generate-secrets
+```
+
+### Docker Issues
+```bash
+# Check service logs
+make logs-prod
+
+# Restart services
+docker compose -f docker-compose.same-host.yml restart
+
+# Rebuild images
+make docker-build
+```
+
+### Development Issues
+```bash
+# Check if services are running
+make health-check
+
+# Restart development environment
+make stop-dev
+make dev
 ```
 
 ## Project Structure
 
 ```
 olympian-ai-lightweight/
+├── .env.example         # Environment template (committed)
+├── .env                # Your configuration (gitignored)
 ├── packages/
 │   ├── client/          # React frontend
 │   ├── server/          # Express backend
@@ -137,9 +221,17 @@ olympian-ai-lightweight/
 │   ├── frontend/        # Frontend Dockerfile
 │   ├── backend/         # Backend Dockerfile
 │   └── nginx/           # Nginx configuration
+├── scripts/             # Setup and deployment scripts
 ├── docs/                # Documentation
-└── scripts/             # Deployment scripts
+└── Makefile            # Automation commands
 ```
+
+## Security Notes
+
+- **Never commit `.env`** - it contains secrets and is automatically gitignored
+- **Always set secure secrets** - use `make generate-secrets` to create strong JWT secrets
+- **Update default credentials** - change default MongoDB credentials in multi-host deployments
+- **Use HTTPS in production** - configure proper SSL certificates for production deployments
 
 ## Documentation
 
