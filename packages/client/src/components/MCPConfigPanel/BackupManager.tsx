@@ -6,7 +6,7 @@ import { api } from '@/services/api';
 import { formatDistanceToNow } from 'date-fns';
 import { formatBytes } from '@/lib/utils';
 import { toast } from '@/hooks/useToast';
-import { RotateCcw, FileJson, Trash } from 'lucide-react';
+import { RotateCcw, FileJson } from 'lucide-react';
 
 interface BackupManagerProps {
   onRestore: () => void;
