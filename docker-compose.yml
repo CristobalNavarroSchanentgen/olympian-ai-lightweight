@@ -1,0 +1,69 @@
+# Development docker-compose configuration
+# For production, use docker-compose.prod.yml
+
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend/Dockerfile
+    container_name: olympian-frontend-dev
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    networks:
+      - olympian-dev
+
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile
+    container_name: olympian-backend-dev
+    environment:
+      NODE_ENV: development
+      PORT: 4000
+      DEPLOYMENT_MODE: same-host
+      MONGODB_URI: mongodb://mongodb:27017/olympian_ai_lite
+      OLLAMA_HOST: http://ollama:11434
+      LOG_LEVEL: debug
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./packages/server/src:/app/packages/server/src
+      - config-data:/config/.olympian-ai-lite
+    depends_on:
+      - mongodb
+      - ollama
+    networks:
+      - olympian-dev
+
+  mongodb:
+    image: mongo:7
+    container_name: olympian-mongodb-dev
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb-data:/data/db
+    environment:
+      MONGO_INITDB_DATABASE: olympian_ai_lite
+    networks:
+      - olympian-dev
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: olympian-ollama-dev
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    networks:
+      - olympian-dev
+
+volumes:
+  mongodb-data:
+  ollama-data:
+  config-data:
+
+networks:
+  olympian-dev:
+    driver: bridge

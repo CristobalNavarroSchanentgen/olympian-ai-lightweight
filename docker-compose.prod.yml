@@ -1,0 +1,81 @@
+# Production docker-compose configuration
+# Supports both same-host and multi-host deployments
+
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend/Dockerfile
+    container_name: olympian-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    networks:
+      - olympian-network
+
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile
+    container_name: olympian-backend
+    restart: unless-stopped
+    environment:
+      # Deployment mode: 'same-host' or 'multi-host'
+      DEPLOYMENT_MODE: ${DEPLOYMENT_MODE:-multi-host}
+      
+      # Multi-host configuration (default)
+      MONGODB_URI: ${MONGODB_URI:-mongodb://mongo-host:27017/olympian_ai_lite}
+      OLLAMA_HOST: ${OLLAMA_HOST:-http://ollama-host:11434}
+      
+      # Service discovery for multiple hosts
+      OLLAMA_HOSTS: ${OLLAMA_HOSTS:-}
+      MCP_HOSTS: ${MCP_HOSTS:-}
+      
+      # Network settings
+      SERVICE_DISCOVERY_ENABLED: ${SERVICE_DISCOVERY_ENABLED:-true}
+      SERVICE_DISCOVERY_SUBNET: ${SERVICE_DISCOVERY_SUBNET:-192.168.1.0/24}
+      
+      # Application settings
+      NODE_ENV: production
+      PORT: 4000
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      
+      # Security
+      JWT_SECRET: ${JWT_SECRET}
+      SESSION_SECRET: ${SESSION_SECRET}
+    volumes:
+      - config-data:/config/.olympian-ai-lite
+      - logs:/app/logs
+    networks:
+      - olympian-network
+    # Optional: Add extra_hosts for multi-host deployment
+    # extra_hosts:
+    #   - "mongo-host:192.168.1.10"
+    #   - "ollama-host:192.168.1.11"
+
+  nginx:
+    build:
+      context: .
+      dockerfile: docker/nginx/Dockerfile
+    container_name: olympian-nginx
+    restart: unless-stopped
+    environment:
+      DEPLOYMENT_MODE: ${DEPLOYMENT_MODE:-multi-host}
+    ports:
+      - "${APP_PORT:-8080}:80"
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - olympian-network
+
+volumes:
+  config-data:
+  logs:
+
+networks:
+  olympian-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
