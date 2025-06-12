@@ -1,7 +1,5 @@
-import { ObjectId } from 'mongodb';
-
 export interface Conversation {
-  _id?: ObjectId;
+  _id?: string;
   title: string;
   model: string;
   createdAt: Date;
@@ -10,8 +8,8 @@ export interface Conversation {
 }
 
 export interface Message {
-  _id?: ObjectId;
-  conversationId: ObjectId;
+  _id?: string;
+  conversationId: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
   images?: string[]; // Array of base64 images
