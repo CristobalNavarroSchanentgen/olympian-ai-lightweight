@@ -9,9 +9,9 @@ help:
 	@echo ""
 	@echo "Setup & Environment:"
 	@echo "  make setup            Run initial setup"
-	@echo "  make env-dev          Configure .env for development"
-	@echo "  make env-docker-same  Configure .env for Docker same-host"
-	@echo "  make env-docker-multi Configure .env for Docker multi-host"
+	@echo "  make env-dev          Configure .env for development (auto-generates secrets)"
+	@echo "  make env-docker-same  Configure .env for Docker same-host (auto-generates secrets)"
+	@echo "  make env-docker-multi Configure .env for Docker multi-host (auto-generates secrets)"
 	@echo ""
 	@echo "Development:"
 	@echo "  make install          Install dependencies"
@@ -69,7 +69,7 @@ setup:
 	@chmod +x scripts/*.sh
 	@./scripts/setup.sh
 
-# Environment configuration helpers
+# Environment configuration helpers with automatic secret generation
 env-dev:
 	@echo "🔧 Configuring .env for development..."
 	@if [ ! -f .env ]; then cp .env.example .env; fi
@@ -77,9 +77,13 @@ env-dev:
 	@sed -i.bak 's/^# MONGODB_URI=mongodb:\/\/localhost/MONGODB_URI=mongodb:\/\/localhost/' .env
 	@sed -i.bak 's/^# OLLAMA_HOST=http:\/\/localhost/OLLAMA_HOST=http:\/\/localhost/' .env
 	@sed -i.bak 's/^# CLIENT_URL=http:\/\/localhost:3000/CLIENT_URL=http:\/\/localhost:3000/' .env
+	@echo "🔐 Generating secure secrets..."
+	@JWT_SECRET=$$(openssl rand -base64 32); \
+	SESSION_SECRET=$$(openssl rand -base64 32); \
+	sed -i.bak "s/^JWT_SECRET=.*/JWT_SECRET=$$JWT_SECRET/" .env; \
+	sed -i.bak "s/^SESSION_SECRET=.*/SESSION_SECRET=$$SESSION_SECRET/" .env
 	@rm -f .env.bak
-	@echo "✅ Development configuration applied"
-	@echo "⚠️  Remember to set secure JWT_SECRET and SESSION_SECRET values"
+	@echo "✅ Development configuration applied with secure secrets"
 
 env-docker-same:
 	@echo "🔧 Configuring .env for Docker same-host deployment..."
@@ -89,9 +93,13 @@ env-docker-same:
 	@sed -i.bak 's/^# MONGODB_URI=mongodb:\/\/olympian-mongodb/MONGODB_URI=mongodb:\/\/olympian-mongodb/' .env
 	@sed -i.bak 's/^OLLAMA_HOST=.*/# OLLAMA_HOST=http:\/\/localhost:11434/' .env
 	@sed -i.bak 's/^# OLLAMA_HOST=http:\/\/olympian-ollama/OLLAMA_HOST=http:\/\/olympian-ollama/' .env
+	@echo "🔐 Generating secure secrets..."
+	@JWT_SECRET=$$(openssl rand -base64 32); \
+	SESSION_SECRET=$$(openssl rand -base64 32); \
+	sed -i.bak "s/^JWT_SECRET=.*/JWT_SECRET=$$JWT_SECRET/" .env; \
+	sed -i.bak "s/^SESSION_SECRET=.*/SESSION_SECRET=$$SESSION_SECRET/" .env
 	@rm -f .env.bak
-	@echo "✅ Docker same-host configuration applied"
-	@echo "⚠️  Remember to set secure JWT_SECRET and SESSION_SECRET values"
+	@echo "✅ Docker same-host configuration applied with secure secrets"
 
 env-docker-multi:
 	@echo "🔧 Configuring .env for Docker multi-host deployment..."
@@ -101,17 +109,32 @@ env-docker-multi:
 	@sed -i.bak 's/^# MONGODB_URI=mongodb:\/\/username:password@192.168.1.10/MONGODB_URI=mongodb:\/\/username:password@192.168.1.10/' .env
 	@sed -i.bak 's/^OLLAMA_HOST=.*/# OLLAMA_HOST=http:\/\/localhost:11434/' .env
 	@sed -i.bak 's/^# OLLAMA_HOST=http:\/\/192.168.1.11/OLLAMA_HOST=http:\/\/192.168.1.11/' .env
+	@echo "🔐 Generating secure secrets..."
+	@JWT_SECRET=$$(openssl rand -base64 32); \
+	SESSION_SECRET=$$(openssl rand -base64 32); \
+	sed -i.bak "s/^JWT_SECRET=.*/JWT_SECRET=$$JWT_SECRET/" .env; \
+	sed -i.bak "s/^SESSION_SECRET=.*/SESSION_SECRET=$$SESSION_SECRET/" .env
 	@rm -f .env.bak
-	@echo "✅ Docker multi-host configuration applied"
-	@echo "⚠️  Please update the IP addresses and credentials in .env"
-	@echo "⚠️  Remember to set secure JWT_SECRET and SESSION_SECRET values"
+	@echo "✅ Docker multi-host configuration applied with secure secrets"
+	@echo "⚠️  Please update the IP addresses and credentials in .env for your environment"
 
-# Generate secure secrets
+# Generate secure secrets (manual command if needed)
 generate-secrets:
 	@echo "🔐 Generating secure secrets..."
 	@echo "Add these to your .env file:"
 	@echo "JWT_SECRET=$$(openssl rand -base64 32)"
 	@echo "SESSION_SECRET=$$(openssl rand -base64 32)"
+
+# Apply generated secrets to existing .env file
+apply-secrets:
+	@if [ ! -f .env ]; then echo "❌ No .env file found. Run 'make setup' first."; exit 1; fi
+	@echo "🔐 Applying new secure secrets to .env..."
+	@JWT_SECRET=$$(openssl rand -base64 32); \
+	SESSION_SECRET=$$(openssl rand -base64 32); \
+	sed -i.bak "s/^JWT_SECRET=.*/JWT_SECRET=$$JWT_SECRET/" .env; \
+	sed -i.bak "s/^SESSION_SECRET=.*/SESSION_SECRET=$$SESSION_SECRET/" .env
+	@rm -f .env.bak
+	@echo "✅ Secure secrets applied to .env"
 
 # Additional helpful targets
 logs-dev:
@@ -159,6 +182,25 @@ show-env:
 		echo "MongoDB: $$(grep '^MONGODB_URI=' .env | cut -d'=' -f2- | head -c 50)..."; \
 		echo "Ollama: $$(grep '^OLLAMA_HOST=' .env | cut -d'=' -f2)"; \
 		echo "Port: $$(grep '^APP_PORT=' .env | cut -d'=' -f2 || echo '8080 (default)')"; \
+		echo "JWT Secret: $$(if grep -q 'your-jwt-secret-key-here' .env; then echo '⚠️  Default (INSECURE)'; else echo '✅ Custom'; fi)"; \
+		echo "Session Secret: $$(if grep -q 'your-session-secret-here' .env; then echo '⚠️  Default (INSECURE)'; else echo '✅ Custom'; fi)"; \
 	else \
 		echo "No .env file found. Run 'make setup' first."; \
 	fi
+
+# One-step deployment commands that include environment setup
+quick-dev:
+	@echo "🚀 Quick development setup..."
+	@make env-dev
+	@make dev
+
+quick-docker-same:
+	@echo "🚀 Quick Docker same-host deployment..."
+	@make env-docker-same
+	@make docker-same
+
+quick-docker-multi:
+	@echo "🚀 Quick Docker multi-host deployment..."
+	@make env-docker-multi
+	@echo "⚠️  Please edit .env to set your actual service IPs before continuing..."
+	@echo "Then run: make docker-multi"
