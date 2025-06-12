@@ -62,7 +62,7 @@ export function ConnectionList({
     );
   }
 
-  const getConnectionIcon = (type: string, status: string) => {
+  const getConnectionIcon = (status: string) => {
     if (status === 'online') {
       return <Wifi className="h-5 w-5 text-green-500" />;
     }
@@ -99,7 +99,7 @@ export function ConnectionList({
             >
               <div className="flex items-center space-x-4">
                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
-                  {getConnectionIcon(connection.type, connection.status)}
+                  {getConnectionIcon(connection.status)}
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
