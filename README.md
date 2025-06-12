@@ -48,11 +48,18 @@ make setup
 make quick-dev
 ```
 
-#### Option B: Docker Same-Host (One Command)
+#### Option B: Docker Same-Host with Ollama Container (One Command)
 
 ```bash
-# Configure and deploy same-host Docker (auto-generates secure secrets)
+# Configure and deploy same-host Docker with containerized Ollama (auto-generates secure secrets)
 make quick-docker-same
+```
+
+#### Option B2: Docker Same-Host with Existing Ollama (One Command) ⭐ NEW
+
+```bash
+# Configure and deploy same-host Docker using existing host Ollama (auto-generates secure secrets)
+make quick-docker-same-existing
 ```
 
 #### Option C: Docker Multi-Host
@@ -74,13 +81,17 @@ If you prefer more control:
 
 ```bash
 # Step 1: Configure environment (automatically generates secure secrets)
-make env-docker-same     # or env-dev, env-docker-multi
+make env-docker-same              # Docker with Ollama container
+make env-docker-same-existing     # Docker with existing host Ollama
+# or env-dev, env-docker-multi
 
 # Step 2: Check configuration
 make show-env
 
 # Step 3: Deploy
-make docker-same         # or dev, docker-multi
+make docker-same                  # Docker with Ollama container
+make docker-same-existing         # Docker with existing host Ollama
+# or dev, docker-multi
 ```
 
 ## Environment Configuration
@@ -90,7 +101,8 @@ The application uses a single `.env` file that's automatically configured:
 ### 🔧 Automatic Configuration Commands
 
 - `make env-dev` - Configure for development + generate secrets
-- `make env-docker-same` - Configure for Docker same-host + generate secrets  
+- `make env-docker-same` - Configure for Docker same-host with Ollama container + generate secrets
+- `make env-docker-same-existing` - Configure for Docker same-host with existing host Ollama + generate secrets ⭐ NEW
 - `make env-docker-multi` - Configure for Docker multi-host + generate secrets
 
 All environment commands automatically:
@@ -101,53 +113,59 @@ All environment commands automatically:
 ### 🚀 One-Step Deployment Commands
 
 - `make quick-dev` - Configure + start development
-- `make quick-docker-same` - Configure + deploy Docker same-host
+- `make quick-docker-same` - Configure + deploy Docker same-host with Ollama container
+- `make quick-docker-same-existing` - Configure + deploy Docker same-host with existing host Ollama ⭐ NEW
 
 ## Available Commands
 
 ### Setup & Environment
 ```bash
-make setup              # Initial project setup
-make env-dev            # Configure for development (auto-generates secrets)
-make env-docker-same    # Configure for Docker same-host (auto-generates secrets)
-make env-docker-multi   # Configure for Docker multi-host (auto-generates secrets)
-make show-env           # Show current configuration and security status
-make apply-secrets      # Generate and apply new secrets to existing .env
+make setup                        # Initial project setup
+make env-dev                      # Configure for development (auto-generates secrets)
+make env-docker-same              # Configure for Docker same-host with Ollama container (auto-generates secrets)
+make env-docker-same-existing     # Configure for Docker same-host with existing host Ollama (auto-generates secrets)
+make env-docker-multi             # Configure for Docker multi-host (auto-generates secrets)
+make show-env                     # Show current configuration and security status
+make apply-secrets                # Generate and apply new secrets to existing .env
 ```
 
 ### Quick Deployment
 ```bash
-make quick-dev          # One-step development setup
-make quick-docker-same  # One-step Docker same-host deployment
+make quick-dev                    # One-step development setup
+make quick-docker-same            # One-step Docker same-host deployment (with Ollama container)
+make quick-docker-same-existing   # One-step Docker same-host deployment (with existing host Ollama)
 ```
 
 ### Development
 ```bash
-make dev                # Start development servers
-make build              # Build all packages
-make test               # Run tests
-make lint               # Run linter
-make format             # Format code
-make clean              # Clean build artifacts
+make dev                          # Start development servers
+make build                        # Build all packages
+make test                         # Run tests
+make lint                         # Run linter
+make format                       # Format code
+make clean                        # Clean build artifacts
 ```
 
 ### Docker Deployment
 ```bash
-make docker-dev         # Run development in Docker
-make docker-same        # Production deployment (same-host)
-make docker-multi       # Production deployment (multi-host)
-make docker-build       # Build Docker images only
+make docker-dev                   # Run development in Docker
+make docker-same                  # Production deployment (same-host with Ollama container)
+make docker-same-existing         # Production deployment (same-host with existing host Ollama)
+make docker-multi                 # Production deployment (multi-host)
+make docker-build                 # Build Docker images only
 ```
 
 ### Monitoring & Maintenance
 ```bash
-make health-check       # Check service health
-make logs-dev           # View development logs
-make logs-prod          # View production logs
-make stop-dev           # Stop development containers
-make stop-prod          # Stop production containers
-make db-backup          # Backup MongoDB
-make db-restore         # Restore MongoDB from latest backup
+make health-check                 # Check service health
+make logs-dev                     # View development logs
+make logs-prod                    # View production logs
+make logs-same-existing           # View logs for same-host with existing Ollama deployment
+make stop-dev                     # Stop development containers
+make stop-prod                    # Stop production containers
+make stop-same-existing           # Stop same-host with existing Ollama containers
+make db-backup                    # Backup MongoDB
+make db-restore                   # Restore MongoDB from latest backup
 ```
 
 ## Usage
@@ -162,7 +180,35 @@ make db-restore         # Restore MongoDB from latest backup
 
 4. **Start chatting**: Select a model in Divine Dialog and start conversing
 
-## Example Deployment Configurations
+## Deployment Configurations
+
+Choose the deployment option that best fits your setup:
+
+### 🏠 Development (make env-dev)
+Best for: Local development and testing
+- Ollama: Uses existing host installation at `localhost:11434`
+- MongoDB: Uses local MongoDB installation
+- All services run natively on host
+
+### 🐳 Docker Same-Host with Ollama Container (make env-docker-same)
+Best for: Production deployment where you want everything containerized
+- Ollama: Downloads and runs in Docker container
+- MongoDB: Runs in Docker container
+- All services isolated in containers
+
+### 🐳⚡ Docker Same-Host with Existing Ollama (make env-docker-same-existing) ⭐ NEW
+Best for: Production deployment where Ollama is already running on host
+- Ollama: Uses existing host installation via `host.docker.internal:11434`
+- MongoDB: Runs in Docker container
+- Hybrid approach - existing Ollama + containerized app services
+
+### 🌐 Docker Multi-Host (make env-docker-multi)
+Best for: Distributed deployment across multiple servers
+- Ollama: Uses remote Ollama server
+- MongoDB: Uses remote MongoDB server
+- App services in containers, external dependencies on separate hosts
+
+## Example Environment Configurations
 
 After running the environment commands, your `.env` will be automatically configured:
 
@@ -175,11 +221,20 @@ JWT_SECRET=<auto-generated-secure-secret>
 SESSION_SECRET=<auto-generated-secure-secret>
 ```
 
-### Docker Same-Host Setup (make env-docker-same)
+### Docker Same-Host with Ollama Container (make env-docker-same)
 ```bash
 DEPLOYMENT_MODE=docker-same-host
 MONGODB_URI=mongodb://olympian-mongodb:27017/olympian_ai_lite
 OLLAMA_HOST=http://olympian-ollama:11434
+JWT_SECRET=<auto-generated-secure-secret>
+SESSION_SECRET=<auto-generated-secure-secret>
+```
+
+### Docker Same-Host with Existing Ollama (make env-docker-same-existing) ⭐ NEW
+```bash
+DEPLOYMENT_MODE=same-host-existing-ollama
+MONGODB_URI=mongodb://olympian-mongodb:27017/olympian_ai_lite
+OLLAMA_HOST=http://host.docker.internal:11434
 JWT_SECRET=<auto-generated-secure-secret>
 SESSION_SECRET=<auto-generated-secure-secret>
 ```
@@ -201,7 +256,7 @@ SESSION_SECRET=<auto-generated-secure-secret>
 make show-env
 
 # Reconfigure for your deployment mode (auto-generates new secrets)
-make env-dev          # or env-docker-same, env-docker-multi
+make env-dev                      # or env-docker-same, env-docker-same-existing, env-docker-multi
 
 # Apply new secrets to existing configuration
 make apply-secrets
@@ -210,13 +265,27 @@ make apply-secrets
 ### Docker Issues
 ```bash
 # Check service logs
-make logs-prod
+make logs-prod                    # For standard same-host deployment
+make logs-same-existing           # For same-host with existing Ollama
 
 # Restart services
-docker compose -f docker-compose.same-host.yml restart
+docker compose -f docker-compose.same-host.yml restart                    # Standard same-host
+docker compose -f docker-compose.same-host-existing-ollama.yml restart    # Same-host with existing Ollama
 
 # Rebuild images
 make docker-build
+```
+
+### Ollama Connection Issues (Existing Host Ollama)
+```bash
+# Verify Ollama is running on host
+curl http://localhost:11434/api/tags
+
+# Check if Docker can reach host Ollama
+docker run --rm --add-host host.docker.internal:host-gateway curlimages/curl curl -s http://host.docker.internal:11434/api/tags
+
+# View container logs to debug connection
+make logs-same-existing
 ```
 
 ### Development Issues
@@ -233,19 +302,23 @@ make dev
 
 ```
 olympian-ai-lightweight/
-├── .env.example         # Environment template (committed)
-├── .env                # Your configuration (gitignored, auto-generated)
+├── .env.example                                    # Environment template (committed)
+├── .env                                           # Your configuration (gitignored, auto-generated)
+├── docker-compose.yml                             # Development Docker setup
+├── docker-compose.same-host.yml                   # Same-host with Ollama container
+├── docker-compose.same-host-existing-ollama.yml   # Same-host with existing Ollama ⭐ NEW
+├── docker-compose.prod.yml                        # Production setup
 ├── packages/
-│   ├── client/          # React frontend
-│   ├── server/          # Express backend
-│   └── shared/          # Shared types and utilities
-├── docker/              # Docker configurations
-│   ├── frontend/        # Frontend Dockerfile
-│   ├── backend/         # Backend Dockerfile
-│   └── nginx/           # Nginx configuration
-├── scripts/             # Setup and deployment scripts
-├── docs/                # Documentation
-└── Makefile            # Automation commands
+│   ├── client/                                    # React frontend
+│   ├── server/                                    # Express backend
+│   └── shared/                                    # Shared types and utilities
+├── docker/                                        # Docker configurations
+│   ├── frontend/                                  # Frontend Dockerfile
+│   ├── backend/                                   # Backend Dockerfile
+│   └── nginx/                                     # Nginx configuration
+├── scripts/                                       # Setup and deployment scripts
+├── docs/                                          # Documentation
+└── Makefile                                       # Automation commands
 ```
 
 ## Security Features
