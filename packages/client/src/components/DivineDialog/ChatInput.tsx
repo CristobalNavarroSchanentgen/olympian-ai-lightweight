@@ -1,8 +1,7 @@
 import { useState, useRef, KeyboardEvent } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Card } from '@/components/ui/card';
-import { Send, X, Image as ImageIcon, Paperclip } from 'lucide-react';
+import { Send, X, Image as ImageIcon } from 'lucide-react';
 import { useDropzone } from 'react-dropzone';
 import { toast } from '@/hooks/useToast';
 
