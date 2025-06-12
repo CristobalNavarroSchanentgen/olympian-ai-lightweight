@@ -3,6 +3,21 @@ import { logger } from '../utils/logger';
 import { AppError } from '../middleware/errorHandler';
 import { getDeploymentConfig, OllamaLoadBalancer } from '../config/deployment';
 
+interface OllamaModelInfo {
+  modelfile?: string;
+  description?: string;
+}
+
+interface OllamaModelListResponse {
+  models?: Array<{ name: string }>;
+}
+
+interface OllamaStreamResponse {
+  message?: {
+    content?: string;
+  };
+}
+
 export class OllamaStreamliner {
   private modelCapabilities: Map<string, ModelCapability> = new Map();
   private deploymentConfig = getDeploymentConfig();
@@ -46,7 +61,7 @@ export class OllamaStreamliner {
         throw new Error(`Failed to get model info: ${response.statusText}`);
       }
 
-      const modelInfo = await response.json();
+      const modelInfo = await response.json() as OllamaModelInfo;
       const modelfile = modelInfo.modelfile || '';
       
       // Parse capabilities from modelfile
@@ -187,7 +202,7 @@ export class OllamaStreamliner {
           for (const line of lines) {
             if (line.trim()) {
               try {
-                const json = JSON.parse(line);
+                const json = JSON.parse(line) as OllamaStreamResponse;
                 if (json.message?.content) {
                   onToken(json.message.content);
                 }
@@ -223,8 +238,8 @@ export class OllamaStreamliner {
         throw new Error(`Failed to list models: ${response.statusText}`);
       }
 
-      const data = await response.json();
-      return data.models?.map((m: any) => m.name) || [];
+      const data = await response.json() as OllamaModelListResponse;
+      return data.models?.map((m) => m.name) || [];
     } catch (error) {
       logger.error('Failed to list Ollama models:', error);
       
