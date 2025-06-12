@@ -25,7 +25,7 @@ export function ConnectionsPanel() {
   
   const { on, off } = useWebSocket();
   const [showForm, setShowForm] = useState(false);
-  const [scanTypes, setScanTypes] = useState<ConnectionType[]>(['ollama', 'mcp', 'database']);
+  const scanTypes: ConnectionType[] = ['ollama', 'mcp', 'database'];
 
   useEffect(() => {
     fetchConnections();
