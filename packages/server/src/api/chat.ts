@@ -3,7 +3,6 @@ import { DatabaseService } from '../services/DatabaseService';
 import { OllamaStreamliner } from '../services/OllamaStreamliner';
 import { AppError } from '../middleware/errorHandler';
 import { chatRateLimiter } from '../middleware/rateLimiter';
-import { ObjectId } from 'mongodb';
 import { z } from 'zod';
 
 const router = Router();
@@ -47,7 +46,7 @@ router.get('/conversations', async (req, res, next) => {
 router.get('/conversations/:id', async (req, res, next) => {
   try {
     const conversation = await db.conversations.findOne({
-      _id: new ObjectId(req.params.id),
+      _id: req.params.id,
     });
 
     if (!conversation) {
@@ -69,7 +68,7 @@ router.get('/conversations/:id/messages', async (req, res, next) => {
   try {
     const { page = 1, limit = 50 } = req.query;
     const skip = (Number(page) - 1) * Number(limit);
-    const conversationId = new ObjectId(req.params.id);
+    const conversationId = req.params.id;
 
     const [messages, total] = await Promise.all([
       db.messages
@@ -98,7 +97,7 @@ router.get('/conversations/:id/messages', async (req, res, next) => {
 // Delete conversation
 router.delete('/conversations/:id', async (req, res, next) => {
   try {
-    const conversationId = new ObjectId(req.params.id);
+    const conversationId = req.params.id;
 
     // Delete all messages first
     await db.messages.deleteMany({ conversationId });
