@@ -6,6 +6,7 @@ import { spawn, ChildProcess } from 'child_process';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
+import { z } from 'zod';
 
 interface ToolListResponse {
   tools?: Array<{
@@ -18,6 +19,19 @@ interface ToolListResponse {
 interface ToolCallResponse {
   content?: unknown;
 }
+
+// Zod schemas for MCP responses
+const toolListResponseSchema = z.object({
+  tools: z.array(z.object({
+    name: z.string(),
+    description: z.string().optional(),
+    inputSchema: z.record(z.unknown()).optional()
+  })).optional()
+});
+
+const toolCallResponseSchema = z.object({
+  content: z.unknown().optional()
+});
 
 export class MCPClientService {
   private clients: Map<string, Client> = new Map();
@@ -201,8 +215,8 @@ export class MCPClientService {
     
     const response = await client.request(
       { method: 'tools/list' },
-      undefined
-    ) as ToolListResponse;
+      toolListResponseSchema
+    );
     
     const tools = response.tools || [];
     
@@ -225,8 +239,8 @@ export class MCPClientService {
     try {
       const response = await client.request(
         { method: 'tools/call', params: { name: request.toolName, arguments: request.arguments } },
-        undefined
-      ) as ToolCallResponse;
+        toolCallResponseSchema
+      );
       
       return {
         success: true,
