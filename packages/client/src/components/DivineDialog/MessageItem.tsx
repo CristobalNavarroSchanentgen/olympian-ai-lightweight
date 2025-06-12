@@ -73,12 +73,20 @@ export function MessageItem({ message }: MessageItemProps) {
                 pre: ({ node, ...props }) => (
                   <pre className="overflow-x-auto rounded-lg bg-background p-3" {...props} />
                 ),
-                code: ({ node, inline, ...props }) =>
-                  inline ? (
-                    <code className="rounded bg-background px-1 py-0.5" {...props} />
+                code: ({ node, children, className, ...props }) => {
+                  const match = /language-(\w+)/.exec(className || '');
+                  const isInline = !match;
+                  
+                  return isInline ? (
+                    <code className="rounded bg-background px-1 py-0.5" {...props}>
+                      {children}
+                    </code>
                   ) : (
-                    <code {...props} />
-                  ),
+                    <code className={className} {...props}>
+                      {children}
+                    </code>
+                  );
+                },
               }}
             >
               {message.content}
