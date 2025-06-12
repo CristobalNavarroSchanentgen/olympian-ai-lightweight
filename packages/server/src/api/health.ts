@@ -3,6 +3,10 @@ import { DatabaseService } from '../services/DatabaseService';
 import { getDeploymentConfig } from '../config/deployment';
 import { MongoClient } from 'mongodb';
 
+interface OllamaVersionResponse {
+  version?: string;
+}
+
 const router = Router();
 const db = DatabaseService.getInstance();
 
@@ -55,11 +59,11 @@ router.get('/services', async (_req, res) => {
       });
       
       if (response.ok) {
-        const version = await response.json();
+        const version = await response.json() as OllamaVersionResponse;
         ollamaChecks.push({
           host,
           status: 'healthy',
-          version: version.version,
+          version: version.version || 'unknown',
         });
       } else {
         ollamaChecks.push({
