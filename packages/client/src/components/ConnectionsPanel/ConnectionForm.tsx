@@ -45,6 +45,19 @@ export function ConnectionForm({ open, onOpenChange, onSuccess }: ConnectionForm
     setIsSubmitting(true);
 
     try {
+      let credentials: Record<string, string> | undefined;
+      
+      if (formData.authType === 'basic') {
+        credentials = {
+          username: formData.username,
+          password: formData.password,
+        };
+      } else if (formData.authType === 'token') {
+        credentials = {
+          token: formData.token,
+        };
+      }
+
       const connection = {
         type: formData.type,
         name: formData.name,
@@ -53,9 +66,7 @@ export function ConnectionForm({ open, onOpenChange, onSuccess }: ConnectionForm
         metadata: {},
         authentication: formData.authType !== 'none' ? {
           type: formData.authType,
-          credentials: formData.authType === 'basic' 
-            ? { username: formData.username, password: formData.password }
-            : { token: formData.token },
+          credentials,
         } : undefined,
       };
 
