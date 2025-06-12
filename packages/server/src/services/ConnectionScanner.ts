@@ -11,6 +11,17 @@ import { MongoClient } from 'mongodb';
 
 const execAsync = promisify(exec);
 
+interface MCPServerConfig {
+  command?: string;
+  endpoint?: string;
+  args?: string[];
+  env?: Record<string, string>;
+}
+
+interface MCPConfig {
+  servers?: Record<string, MCPServerConfig>;
+}
+
 export class ConnectionScanner extends EventEmitter {
   private scanning = false;
 
@@ -99,7 +110,7 @@ export class ConnectionScanner extends EventEmitter {
     const results: ScanResult[] = [];
     
     try {
-      const { stdout } = await execAsync('docker ps --format "table {{.Names}}\t{{.Ports}}"');
+      const { stdout } = await execAsync('docker ps --format "table {{.Names}}\\t{{.Ports}}"');
       const lines = stdout.split('\n').slice(1); // Skip header
       
       for (const line of lines) {
@@ -142,7 +153,7 @@ export class ConnectionScanner extends EventEmitter {
       try {
         const configPath = path.join(mcpPaths[i], 'config.json');
         const config = await fs.readFile(configPath, 'utf-8');
-        const parsed = JSON.parse(config);
+        const parsed = JSON.parse(config) as MCPConfig;
         
         if (parsed.servers) {
           for (const [name, server] of Object.entries(parsed.servers)) {
@@ -221,7 +232,7 @@ export class ConnectionScanner extends EventEmitter {
     const mongoNames = ['mongo', 'mongodb', 'olympian-db'];
     
     try {
-      const { stdout } = await execAsync('docker ps --format "table {{.Names}}\t{{.Ports}}"');
+      const { stdout } = await execAsync('docker ps --format "table {{.Names}}\\t{{.Ports}}"');
       const lines = stdout.split('\n').slice(1);
       
       for (const line of lines) {
