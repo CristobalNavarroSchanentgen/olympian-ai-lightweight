@@ -2,17 +2,27 @@
 # All services (Ollama, MongoDB, MCP) run on the same host but in different containers
 
 services:
-  # Application services
+  # Frontend with integrated nginx (serves both static files and proxies backend)
   frontend:
     build:
       context: .
       dockerfile: docker/frontend/Dockerfile
     container_name: olympian-frontend
     restart: unless-stopped
+    ports:
+      - "${APP_PORT:-8080}:80"
+    environment:
+      DEPLOYMENT_MODE: same-host
     depends_on:
       - backend
     networks:
       - olympian-network
+    healthcheck:
+      test: ["CMD", "/healthcheck.sh"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   backend:
     build:
@@ -37,22 +47,12 @@ services:
       - ollama
     networks:
       - olympian-network
-
-  nginx:
-    build:
-      context: .
-      dockerfile: docker/nginx/Dockerfile
-    container_name: olympian-nginx
-    restart: unless-stopped
-    environment:
-      DEPLOYMENT_MODE: same-host
-    ports:
-      - "${APP_PORT:-8080}:80"
-    depends_on:
-      - frontend
-      - backend
-    networks:
-      - olympian-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
   # External services on same host
   mongodb:
@@ -65,6 +65,12 @@ services:
       MONGO_INITDB_DATABASE: olympian_ai_lite
     networks:
       - olympian-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   ollama:
     image: ollama/ollama:latest
@@ -81,6 +87,12 @@ services:
               capabilities: [gpu]
     networks:
       - olympian-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
   # Example MCP server
   mcp-filesystem:
@@ -93,6 +105,12 @@ services:
       - mcp-data:/data
     networks:
       - olympian-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000", "||", "exit", "1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
 volumes:
   config-data:
