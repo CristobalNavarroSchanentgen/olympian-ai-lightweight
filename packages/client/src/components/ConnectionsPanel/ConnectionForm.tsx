@@ -34,7 +34,7 @@ export function ConnectionForm({ open, onOpenChange, onSuccess }: ConnectionForm
     type: 'ollama' as ConnectionType,
     name: '',
     endpoint: '',
-    authType: 'none' as const,
+    authType: 'none' as 'none' | 'basic' | 'token',
     username: '',
     password: '',
     token: '',
