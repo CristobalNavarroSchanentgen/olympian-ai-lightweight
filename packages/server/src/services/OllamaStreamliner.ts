@@ -1,13 +1,29 @@
 import { ChatRequest, ProcessedRequest, ModelCapability } from '@olympian/shared';
 import { logger } from '../utils/logger';
 import { AppError } from '../middleware/errorHandler';
+import { getDeploymentConfig, OllamaLoadBalancer } from '../config/deployment';
 
 export class OllamaStreamliner {
   private modelCapabilities: Map<string, ModelCapability> = new Map();
-  private ollamaHost: string;
+  private deploymentConfig = getDeploymentConfig();
+  private loadBalancer?: OllamaLoadBalancer;
 
-  constructor(ollamaHost: string = process.env.OLLAMA_HOST || 'http://localhost:11434') {
-    this.ollamaHost = ollamaHost;
+  constructor() {
+    // Initialize load balancer if multiple hosts are configured
+    if (this.deploymentConfig.ollama.hosts.length > 0) {
+      this.loadBalancer = new OllamaLoadBalancer(
+        this.deploymentConfig.ollama.hosts,
+        this.deploymentConfig.ollama.loadBalancer
+      );
+      logger.info(`Initialized Ollama load balancer with ${this.deploymentConfig.ollama.hosts.length} hosts`);
+    }
+  }
+
+  private getOllamaHost(clientIp?: string): string {
+    if (this.loadBalancer && this.deploymentConfig.ollama.hosts.length > 0) {
+      return this.loadBalancer.getNextHost(clientIp);
+    }
+    return this.deploymentConfig.ollama.host;
   }
 
   async detectCapabilities(model: string): Promise<ModelCapability> {
@@ -16,9 +32,11 @@ export class OllamaStreamliner {
       return this.modelCapabilities.get(model)!;
     }
 
+    const ollamaHost = this.getOllamaHost();
+
     try {
       // Query model info from Ollama
-      const response = await fetch(`${this.ollamaHost}/api/show`, {
+      const response = await fetch(`${ollamaHost}/api/show`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: model }),
@@ -47,6 +65,10 @@ export class OllamaStreamliner {
       return capability;
     } catch (error) {
       logger.error(`Failed to detect capabilities for model ${model}:`, error);
+      
+      if (this.loadBalancer) {
+        this.loadBalancer.reportFailure(ollamaHost);
+      }
       
       // Return default capabilities
       return {
@@ -127,55 +149,76 @@ export class OllamaStreamliner {
     };
   }
 
-  async streamChat(processedRequest: ProcessedRequest, onToken: (token: string) => void): Promise<void> {
-    const response = await fetch(`${this.ollamaHost}/api/chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(processedRequest),
-    });
-
-    if (!response.ok) {
-      throw new AppError(response.status, `Ollama request failed: ${response.statusText}`);
-    }
-
-    const reader = response.body?.getReader();
-    if (!reader) {
-      throw new Error('No response body');
-    }
-
-    const decoder = new TextDecoder();
-    let buffer = '';
-
+  async streamChat(
+    processedRequest: ProcessedRequest,
+    onToken: (token: string) => void,
+    clientIp?: string
+  ): Promise<void> {
+    const ollamaHost = this.getOllamaHost(clientIp);
+    
     try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+      const response = await fetch(`${ollamaHost}/api/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(processedRequest),
+      });
 
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
+      if (!response.ok) {
+        throw new AppError(response.status, `Ollama request failed: ${response.statusText}`);
+      }
 
-        for (const line of lines) {
-          if (line.trim()) {
-            try {
-              const json = JSON.parse(line);
-              if (json.message?.content) {
-                onToken(json.message.content);
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error('No response body');
+      }
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            if (line.trim()) {
+              try {
+                const json = JSON.parse(line);
+                if (json.message?.content) {
+                  onToken(json.message.content);
+                }
+              } catch (error) {
+                logger.error('Failed to parse Ollama response:', error);
               }
-            } catch (error) {
-              logger.error('Failed to parse Ollama response:', error);
             }
           }
         }
+        
+        // Report success to load balancer
+        if (this.loadBalancer) {
+          this.loadBalancer.reportSuccess(ollamaHost);
+        }
+      } finally {
+        reader.releaseLock();
       }
-    } finally {
-      reader.releaseLock();
+    } catch (error) {
+      // Report failure to load balancer
+      if (this.loadBalancer) {
+        this.loadBalancer.reportFailure(ollamaHost);
+      }
+      throw error;
     }
   }
 
   async listModels(): Promise<string[]> {
+    const ollamaHost = this.getOllamaHost();
+    
     try {
-      const response = await fetch(`${this.ollamaHost}/api/tags`);
+      const response = await fetch(`${ollamaHost}/api/tags`);
       if (!response.ok) {
         throw new Error(`Failed to list models: ${response.statusText}`);
       }
@@ -184,7 +227,17 @@ export class OllamaStreamliner {
       return data.models?.map((m: any) => m.name) || [];
     } catch (error) {
       logger.error('Failed to list Ollama models:', error);
+      
+      if (this.loadBalancer) {
+        this.loadBalancer.reportFailure(ollamaHost);
+      }
+      
       return [];
     }
+  }
+
+  // Get load balancer statistics (useful for monitoring)
+  getLoadBalancerStats(): Map<string, any> | null {
+    return this.loadBalancer?.getStats() || null;
   }
 }

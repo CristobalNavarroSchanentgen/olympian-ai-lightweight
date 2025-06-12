@@ -1,12 +1,13 @@
 import { MongoClient, Db, Collection } from 'mongodb';
 import { logger } from '../utils/logger';
-import { mongoConfig } from '../config/database';
+import { getDeploymentConfig } from '../config/deployment';
 import { Conversation, Message, Connection } from '@olympian/shared';
 
 export class DatabaseService {
   private static instance: DatabaseService;
   private client: MongoClient | null = null;
   private db: Db | null = null;
+  private deploymentConfig = getDeploymentConfig();
 
   private constructor() {}
 
@@ -17,9 +18,13 @@ export class DatabaseService {
     return DatabaseService.instance;
   }
 
-  async connect(connectionString: string = mongoConfig.connectionString): Promise<void> {
+  async connect(connectionString?: string): Promise<void> {
     try {
-      this.client = new MongoClient(connectionString, mongoConfig.options);
+      const uri = connectionString || this.deploymentConfig.mongodb.uri;
+      
+      logger.info(`Connecting to MongoDB in ${this.deploymentConfig.mode} mode...`);
+      
+      this.client = new MongoClient(uri, this.deploymentConfig.mongodb.options);
       await this.client.connect();
       this.db = this.client.db();
       

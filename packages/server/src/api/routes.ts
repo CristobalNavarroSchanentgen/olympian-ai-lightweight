@@ -3,12 +3,11 @@ import { connectionsRouter } from './connections';
 import { mcpRouter } from './mcp';
 import { chatRouter } from './chat';
 import { configRouter } from './config';
+import { healthRouter } from './health';
 
 export function setupRoutes(app: Application): void {
-  // Health check
-  app.get('/api/health', (_req, res) => {
-    res.json({ status: 'ok', timestamp: new Date() });
-  });
+  // Health and monitoring
+  app.use('/api/health', healthRouter);
 
   // API routes
   app.use('/api/connections', connectionsRouter);
