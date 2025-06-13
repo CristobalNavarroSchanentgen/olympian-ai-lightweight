@@ -1,5 +1,8 @@
 FROM nginx:alpine
 
+# Install required tools for the entrypoint script
+RUN apk add --no-cache curl
+
 # Copy nginx configuration
 COPY docker/nginx/nginx.conf /etc/nginx/nginx.conf
 
