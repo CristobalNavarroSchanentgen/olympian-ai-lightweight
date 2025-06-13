@@ -20,9 +20,17 @@ RUN npm run build:client
 # Production stage - Frontend with Nginx
 FROM nginx:alpine
 
+# Install required tools for the entrypoint script
+RUN apk add --no-cache curl
+
 # Copy custom nginx configuration for frontend
 COPY docker/nginx/nginx.conf /etc/nginx/nginx.conf
-COPY docker/nginx/conf.d/frontend.conf /etc/nginx/conf.d/default.conf
+COPY docker/nginx/conf.d/frontend.conf /etc/nginx/conf.d/frontend.conf
+COPY docker/nginx/conf.d/default.conf /etc/nginx/conf.d/default.conf
+
+# Copy and setup entrypoint script
+COPY docker/nginx/docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
 
 # Copy built frontend files
 COPY --from=builder /app/packages/client/dist /usr/share/nginx/html
@@ -39,5 +47,6 @@ EXPOSE 80
 # Health check
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 CMD ["/healthcheck.sh"]
 
-# Run nginx
+# Use the custom entrypoint
+ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["nginx", "-g", "daemon off;"]
