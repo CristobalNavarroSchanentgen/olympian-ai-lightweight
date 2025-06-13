@@ -172,8 +172,10 @@ fix-nginx:
 	@docker rmi olympian-ai-lightweight-frontend 2>/dev/null || true
 	@docker volume prune -f
 	@echo ""
-	@echo "Step 3: Building frontend locally to verify..."
-	@cd packages/client && npm run build && echo "✅ Local build successful" || (echo "❌ Local build failed" && exit 1)
+	@echo "Step 3: Building all packages locally to verify..."
+	@npm install
+	@npm run build:shared && echo "✅ Shared package built successfully" || (echo "❌ Shared package build failed" && exit 1)
+	@npm run build:client && echo "✅ Client package built successfully" || (echo "❌ Client package build failed" && exit 1)
 	@echo ""
 	@echo "Step 4: Rebuilding Docker images with no cache..."
 	@if docker ps -a | grep -q olympian-ollama; then \
