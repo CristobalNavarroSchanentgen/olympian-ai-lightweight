@@ -1,7 +1,7 @@
 # Olympian AI Lightweight Makefile
 # Simplifies common development and deployment tasks
 
-.PHONY: help install dev build test lint format clean docker-build docker-dev docker-prod-same docker-prod-multi setup env-dev env-docker-same env-docker-same-existing env-docker-multi nginx-test troubleshoot
+.PHONY: help install dev build test lint format clean docker-build docker-dev docker-prod-same docker-prod-multi setup env-dev env-docker-same env-docker-same-existing env-docker-multi nginx-test troubleshoot fix-nginx
 
 # Default target
 help:
@@ -33,6 +33,7 @@ help:
 	@echo "  make docker-restart         Restart all Docker containers"
 	@echo "  make nginx-test             Test nginx configuration"
 	@echo "  make troubleshoot           Run Docker troubleshooting diagnostics"
+	@echo "  make fix-nginx              Fix nginx serving issues (complete rebuild)"
 	@echo ""
 	@echo "Quick Commands:"
 	@echo "  make quick-dev              Quick development setup"
@@ -160,6 +161,37 @@ nginx-reload:
 		echo "❌ Frontend container not running. Start it first with 'make docker-dev' or similar."; \
 		exit 1; \
 	fi
+
+# Fix nginx serving issues
+fix-nginx:
+	@echo "🔧 Fixing nginx serving issues..."
+	@echo "Step 1: Stopping all containers..."
+	@make docker-down
+	@echo ""
+	@echo "Step 2: Removing old images and volumes..."
+	@docker rmi olympian-ai-lightweight-frontend 2>/dev/null || true
+	@docker volume prune -f
+	@echo ""
+	@echo "Step 3: Building frontend locally to verify..."
+	@cd packages/client && npm run build && echo "✅ Local build successful" || (echo "❌ Local build failed" && exit 1)
+	@echo ""
+	@echo "Step 4: Rebuilding Docker images with no cache..."
+	@if docker ps -a | grep -q olympian-ollama; then \
+		docker compose -f docker-compose.same-host.yml build --no-cache frontend; \
+	else \
+		docker compose -f docker-compose.same-host-existing-ollama.yml build --no-cache frontend; \
+	fi
+	@echo ""
+	@echo "Step 5: Starting containers..."
+	@if [ "$$(grep '^DEPLOYMENT_MODE=' .env | cut -d'=' -f2)" = "same-host-existing-ollama" ]; then \
+		make docker-same-existing; \
+	else \
+		make docker-same; \
+	fi
+	@echo ""
+	@echo "✅ Fix complete! Checking status..."
+	@sleep 5
+	@make health-check
 
 # Troubleshooting
 troubleshoot:
