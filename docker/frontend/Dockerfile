@@ -2,23 +2,29 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 
-# Copy workspace files
+# Copy all package files first
 COPY package*.json ./
+COPY packages/shared/package*.json ./packages/shared/
+COPY packages/client/package*.json ./packages/client/
+
+# Install ALL dependencies (including dev dependencies needed for build)
+RUN npm ci
+
+# Now copy source files
 COPY tsconfig.json ./
 COPY packages/shared ./packages/shared
 COPY packages/client ./packages/client
 
-# Install dependencies
-RUN npm ci --workspace=packages/shared --workspace=packages/client
-
 # Build shared package first
 RUN npm run build:shared
 
-# Build client with error handling
-RUN npm run build:client || (echo "Client build failed" && exit 1)
+# Build client with verbose output for debugging
+RUN npm run build:client || (echo "Client build failed" && ls -la packages/client && exit 1)
 
 # Verify build output exists
-RUN ls -la /app/packages/client/dist || (echo "Build output not found!" && exit 1)
+RUN echo "Checking build output..." && \
+    ls -la /app/packages/client && \
+    ls -la /app/packages/client/dist || (echo "Build output not found!" && exit 1)
 
 # Production stage - Frontend with Nginx
 FROM nginx:alpine
@@ -47,18 +53,16 @@ COPY --from=builder /app/packages/client/dist /usr/share/nginx/html
 RUN rm -f /usr/share/nginx/html/index.nginx-debian.html
 
 # Verify files were copied
-RUN ls -la /usr/share/nginx/html && \
+RUN echo "Verifying deployed files..." && \
+    ls -la /usr/share/nginx/html && \
     if [ ! -f /usr/share/nginx/html/index.html ]; then \
         echo "ERROR: index.html not found in /usr/share/nginx/html"; \
         exit 1; \
-    fi
+    fi && \
+    echo "✓ Frontend files deployed successfully"
 
 # Create a simple health check
 RUN echo '#!/bin/sh\ncurl -f http://localhost/health || exit 1' > /healthcheck.sh && chmod +x /healthcheck.sh
-
-# Add nginx user for better security (already exists in alpine)
-# RUN addgroup -g 101 -S nginx \
-#     && adduser -S -D -H -u 101 -h /var/cache/nginx -s /sbin/nologin -G nginx -g nginx nginx
 
 EXPOSE 80
 
