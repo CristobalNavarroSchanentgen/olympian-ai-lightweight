@@ -9,6 +9,7 @@ A minimalist MCP client application focused on seamless Ollama integration with 
 - **MCP Config Panel**: Visual editor for MCP configuration and tool descriptions
 - **Divine Dialog**: Advanced chat interface with model state indicators, image support, and persistent history
 - **Ollama Streamliner**: Intelligent request handling based on model capabilities
+- **Automatic Nginx Configuration**: Zero-config nginx setup with environment-based routing
 
 ## Tech Stack
 
@@ -17,7 +18,7 @@ A minimalist MCP client application focused on seamless Ollama integration with 
 - **Database**: MongoDB (local or remote)
 - **Communication**: WebSockets for real-time streaming
 - **MCP SDK**: Official MCP TypeScript SDK
-- **Proxy**: Integrated nginx in frontend container for optimal performance
+- **Proxy**: Integrated nginx with automatic configuration
 
 ## Prerequisites
 
@@ -26,8 +27,13 @@ A minimalist MCP client application focused on seamless Ollama integration with 
 - Ollama installed and running
 - MCP servers (optional)
 - Docker & Docker Compose (for containerized deployment)
+- Make (for running commands)
 
 ## Quick Start
+
+### 🚀 Everything is done through Make!
+
+All operations in Olympian AI Lightweight are handled through the Makefile for consistency and ease of use.
 
 ### 1. Initial Setup
 
@@ -49,92 +55,111 @@ make setup
 make quick-dev
 ```
 
-#### Option B: Docker Same-Host with Ollama Container (One Command)
+#### Option B: Docker Development (One Command)
 
 ```bash
-# Configure and deploy same-host Docker with containerized Ollama (auto-generates secure secrets)
+# Configure and start Docker development environment
+make quick-docker-dev
+```
+
+#### Option C: Production Deployments
+
+```bash
+# Same-host with Ollama container
 make quick-docker-same
-```
 
-#### Option B2: Docker Same-Host with Existing Ollama (One Command) ⭐ NEW
-
-```bash
-# Configure and deploy same-host Docker using existing host Ollama (auto-generates secure secrets)
+# Same-host with existing Ollama
 make quick-docker-same-existing
+
+# Multi-host deployment (configure .env first)
+make quick-docker-multi
 ```
 
-#### Option C: Docker Multi-Host
+## 🎯 Key Make Commands
+
+### Quick Start Commands
+```bash
+make quick-dev                    # Development setup + start
+make quick-docker-dev             # Docker dev setup + start
+make quick-docker-same            # Production same-host with Ollama
+make quick-docker-same-existing   # Production with existing Ollama
+```
+
+### Docker Operations
+```bash
+make docker-dev                   # Start Docker development
+make docker-same                  # Deploy same-host with Ollama
+make docker-same-existing         # Deploy with existing Ollama
+make docker-multi                 # Deploy multi-host setup
+make docker-down                  # Stop all containers
+make docker-restart               # Restart containers
+```
+
+### Nginx Management
+```bash
+make nginx-test                   # Test nginx configuration
+make nginx-reload                 # Reload nginx config
+```
+
+### Monitoring
+```bash
+make health-check                 # Check all services health
+make health-check-dev             # Check dev services
+make show-status                  # Show container status
+make logs-frontend                # View frontend/nginx logs
+make logs-backend                 # View backend logs
+```
+
+### Utilities
+```bash
+make shell-frontend               # Access frontend container shell
+make shell-backend                # Access backend container shell
+make show-env                     # Display current configuration
+make reset-all                    # Reset everything (careful!)
+```
+
+## 🔧 Automatic Nginx Configuration
+
+The application now features fully automatic nginx configuration that adapts based on your deployment mode:
+
+### How It Works
+
+1. **Environment Detection**: Reads `DEPLOYMENT_MODE` to determine configuration
+2. **Dynamic URL Updates**: Automatically configures backend URLs
+3. **Configuration Testing**: Validates nginx config before starting
+4. **Zero Manual Setup**: No manual nginx configuration required
+
+### Environment Variables
 
 ```bash
-# Configure for multi-host (auto-generates secure secrets)
-make env-docker-multi
-
-# Edit .env to set your actual service IPs and credentials
-nano .env
-
-# Deploy the application
-make docker-multi
+# These are automatically set by make commands
+DEPLOYMENT_MODE=same-host         # or multi-host, development
+BACKEND_HOST=backend              # Backend service hostname
+BACKEND_PORT=4000                 # Backend service port
 ```
 
-### Alternative: Step-by-Step
+### Nginx Features
 
-If you prefer more control:
-
-```bash
-# Step 1: Configure environment (automatically generates secure secrets)
-make env-docker-same              # Docker with Ollama container
-make env-docker-same-existing     # Docker with existing host Ollama
-# or env-dev, env-docker-multi
-
-# Step 2: Check configuration
-make show-env
-
-# Step 3: Deploy
-make docker-same                  # Docker with Ollama container
-make docker-same-existing         # Docker with existing host Ollama
-# or dev, docker-multi
-```
-
-## Environment Configuration
-
-The application uses a single `.env` file that's automatically configured:
-
-### 🔧 Automatic Configuration Commands
-
-- `make env-dev` - Configure for development + generate secrets
-- `make env-docker-same` - Configure for Docker same-host with Ollama container + generate secrets
-- `make env-docker-same-existing` - Configure for Docker same-host with existing host Ollama + generate secrets ⭐ NEW
-- `make env-docker-multi` - Configure for Docker multi-host + generate secrets
-
-All environment commands automatically:
-✅ Set appropriate service URLs  
-✅ Generate secure JWT and session secrets  
-✅ Configure deployment mode  
-
-### 🚀 One-Step Deployment Commands
-
-- `make quick-dev` - Configure + start development
-- `make quick-docker-same` - Configure + deploy Docker same-host with Ollama container
-- `make quick-docker-same-existing` - Configure + deploy Docker same-host with existing host Ollama ⭐ NEW
+- ✅ Automatic backend URL configuration
+- ✅ Deployment mode detection
+- ✅ Health check endpoints
+- ✅ Static asset caching
+- ✅ WebSocket proxy support
+- ✅ Security headers
+- ✅ Gzip compression
 
 ## Available Commands
 
 ### Setup & Environment
 ```bash
+make help                         # Show all available commands
 make setup                        # Initial project setup
-make env-dev                      # Configure for development (auto-generates secrets)
-make env-docker-same              # Configure for Docker same-host with Ollama container (auto-generates secrets)
-make env-docker-same-existing     # Configure for Docker same-host with existing host Ollama (auto-generates secrets)
-make env-docker-multi             # Configure for Docker multi-host (auto-generates secrets)
-make show-env                     # Show current configuration and security status
-make apply-secrets                # Generate and apply new secrets to existing .env
-```
-
-### Quick Deployment
-```bash
-make quick-dev                    # One-step development setup
-make quick-docker-same            # One-step Docker same-host deployment (with Ollama container)
-make quick-docker-same-existing   # One-step Docker same-host deployment (with existing host Ollama)
+make env-dev                      # Configure for development
+make env-docker-same              # Configure for same-host with Ollama
+make env-docker-same-existing     # Configure for existing Ollama
+make env-docker-multi             # Configure for multi-host
+make show-env                     # Show current configuration
+make apply-secrets                # Generate new secrets
 ```
 
 ### Development
@@ -149,31 +174,36 @@ make clean                        # Clean build artifacts
 
 ### Docker Deployment
 ```bash
+make docker-build                 # Build Docker images
 make docker-dev                   # Run development in Docker
-make docker-same                  # Production deployment (same-host with Ollama container)
-make docker-same-existing         # Production deployment (same-host with existing host Ollama)
-make docker-multi                 # Production deployment (multi-host)
-make docker-build                 # Build Docker images only
+make docker-same                  # Deploy same-host with Ollama
+make docker-same-existing         # Deploy with existing Ollama
+make docker-multi                 # Deploy multi-host setup
+make docker-down                  # Stop all containers
+make docker-restart               # Restart containers
 ```
 
 ### Monitoring & Maintenance
 ```bash
 make health-check                 # Check service health
+make health-check-dev             # Check dev service health
+make show-status                  # Show container status
 make logs-dev                     # View development logs
 make logs-prod                    # View production logs
-make logs-same-existing           # View logs for same-host with existing Ollama deployment
-make stop-dev                     # Stop development containers
-make stop-prod                    # Stop production containers
-make stop-same-existing           # Stop same-host with existing Ollama containers
+make logs-frontend                # View frontend/nginx logs
+make logs-backend                 # View backend logs
+make nginx-test                   # Test nginx configuration
+make nginx-reload                 # Reload nginx config
 make db-backup                    # Backup MongoDB
-make db-restore                   # Restore MongoDB from latest backup
+make db-restore                   # Restore MongoDB
 ```
 
 ## Usage
 
 1. **Access the application**:
    - Development: http://localhost:3000 (frontend) + http://localhost:4000 (backend)
-   - Docker: http://localhost:8080 (or your configured APP_PORT)
+   - Docker Dev: http://localhost:3000
+   - Production: http://localhost:8080 (or your configured APP_PORT)
 
 2. **Auto-discover connections**: The app automatically scans for Ollama, MCP servers, and MongoDB
 
@@ -183,218 +213,140 @@ make db-restore                   # Restore MongoDB from latest backup
 
 ## Architecture Improvements
 
-### 🚀 Integrated Nginx Frontend Architecture
+### 🚀 Automatic Nginx Configuration
 
-The application now uses an optimized nginx architecture:
+The application now features intelligent nginx configuration that automatically adapts to your deployment:
 
-- **Unified Frontend Container**: Single container handles both static file serving and backend proxying
-- **Optimized Performance**: Direct nginx serving with intelligent caching for static assets
-- **Simplified Deployment**: No separate nginx proxy container needed
-- **Health Monitoring**: Built-in health checks and monitoring endpoints
+**Key Benefits**:
+- ✅ **Zero Configuration**: Nginx automatically configures itself based on environment
+- ✅ **Dynamic Backend URLs**: Backend host/port automatically detected and configured
+- ✅ **Deployment Mode Aware**: Different configs for same-host vs multi-host
+- ✅ **Health Monitoring**: Built-in health check endpoints
+- ✅ **Configuration Validation**: Tests config before starting
 
-**Before (Issue)**:
+**Architecture**:
 ```
-Host:8080 → Nginx Proxy (empty, shows default page) ❌
-              ↓
-             Frontend Container (has files but not exposed) ⚠️
-              ↓
-             Backend Container
+Environment Variables
+    ↓
+docker-entrypoint.sh (reads env)
+    ↓
+Selects appropriate nginx config
+    ↓
+Updates backend URLs dynamically
+    ↓
+Tests configuration
+    ↓
+Starts nginx
 ```
-
-**After (Fixed)**:
-```
-Host:8080 → Frontend Container (nginx + React app + backend proxy) ✅
-              ↓
-             Backend Container
-```
-
-Benefits:
-- ✅ **Eliminates Default Page Issue**: Frontend files are properly served
-- ✅ **Better Performance**: Direct nginx serving with asset caching
-- ✅ **Simplified Architecture**: Fewer containers and network hops
-- ✅ **Easier Maintenance**: Single point for frontend and proxy configuration
 
 ## Deployment Configurations
 
-Choose the deployment option that best fits your setup:
+All deployments are handled through make commands:
 
-### 🏠 Development (make env-dev)
-Best for: Local development and testing
-- Ollama: Uses existing host installation at `localhost:11434`
-- MongoDB: Uses local MongoDB installation
-- All services run natively on host
-
-### 🐳 Docker Same-Host with Ollama Container (make env-docker-same)
-Best for: Production deployment where you want everything containerized
-- Ollama: Downloads and runs in Docker container
-- MongoDB: Runs in Docker container
-- All services isolated in containers
-
-### 🐳⚡ Docker Same-Host with Existing Ollama (make env-docker-same-existing) ⭐ NEW
-Best for: Production deployment where Ollama is already running on host
-- Ollama: Uses existing host installation via `host.docker.internal:11434`
-- MongoDB: Runs in Docker container
-- Hybrid approach - existing Ollama + containerized app services
-
-### 🌐 Docker Multi-Host (make env-docker-multi)
-Best for: Distributed deployment across multiple servers
-- Ollama: Uses remote Ollama server
-- MongoDB: Uses remote MongoDB server
-- App services in containers, external dependencies on separate hosts
-
-## Example Environment Configurations
-
-After running the environment commands, your `.env` will be automatically configured:
-
-### Development Setup (make env-dev)
+### 🏠 Development
 ```bash
-DEPLOYMENT_MODE=development
-MONGODB_URI=mongodb://localhost:27017/olympian_ai_lite
-OLLAMA_HOST=http://localhost:11434
-JWT_SECRET=<auto-generated-secure-secret>
-SESSION_SECRET=<auto-generated-secure-secret>
+make quick-dev                    # Local development
+make quick-docker-dev             # Docker development
 ```
 
-### Docker Same-Host with Ollama Container (make env-docker-same)
+### 🐳 Production Same-Host
 ```bash
-DEPLOYMENT_MODE=docker-same-host
-MONGODB_URI=mongodb://olympian-mongodb:27017/olympian_ai_lite
-OLLAMA_HOST=http://olympian-ollama:11434
-JWT_SECRET=<auto-generated-secure-secret>
-SESSION_SECRET=<auto-generated-secure-secret>
+make quick-docker-same            # With Ollama container
+make quick-docker-same-existing   # With existing Ollama
 ```
 
-### Docker Same-Host with Existing Ollama (make env-docker-same-existing) ⭐ NEW
+### 🌐 Production Multi-Host
 ```bash
-DEPLOYMENT_MODE=same-host-existing-ollama
-MONGODB_URI=mongodb://olympian-mongodb:27017/olympian_ai_lite
-OLLAMA_HOST=http://host.docker.internal:11434
-JWT_SECRET=<auto-generated-secure-secret>
-SESSION_SECRET=<auto-generated-secure-secret>
-```
-
-### Docker Multi-Host Setup (make env-docker-multi)
-```bash
-DEPLOYMENT_MODE=docker-multi-host
-MONGODB_URI=mongodb://username:password@192.168.1.10:27017/olympian_ai_lite
-OLLAMA_HOST=http://192.168.1.11:11434
-JWT_SECRET=<auto-generated-secure-secret>
-SESSION_SECRET=<auto-generated-secure-secret>
+make env-docker-multi             # Configure environment
+# Edit .env for your IPs
+make docker-multi                 # Deploy
 ```
 
 ## Troubleshooting
 
-### Environment Issues
+### Quick Fixes
 ```bash
-# Check current configuration and security status
+# Check everything
+make health-check
+make show-status
 make show-env
 
-# Reconfigure for your deployment mode (auto-generates new secrets)
-make env-dev                      # or env-docker-same, env-docker-same-existing, env-docker-multi
+# View logs
+make logs-frontend                # Nginx/frontend logs
+make logs-backend                 # Backend logs
 
-# Apply new secrets to existing configuration
-make apply-secrets
+# Test nginx
+make nginx-test
+
+# Restart everything
+make docker-restart
+
+# Full reset (careful!)
+make reset-all
 ```
 
-### Docker Issues
+### Nginx Issues
 ```bash
-# Check service logs
-make logs-prod                    # For standard same-host deployment
-make logs-same-existing           # For same-host with existing Ollama
+# Test nginx configuration
+make nginx-test
 
-# Restart services
-docker compose -f docker-compose.same-host.yml restart                    # Standard same-host
-docker compose -f docker-compose.same-host-existing-ollama.yml restart    # Same-host with existing Ollama
+# View nginx logs
+make logs-frontend
 
-# Rebuild images
-make docker-build
-```
+# Access frontend container
+make shell-frontend
 
-### Frontend/Nginx Issues
-```bash
-# Check if you're seeing the default nginx page instead of the app
-curl -I http://localhost:8080
-
-# If you see "nginx/1.x.x" in Server header but app doesn't load:
-# 1. Check if frontend container is healthy
-docker ps --filter "name=olympian-frontend" --format "table {{.Names}}\t{{.Status}}"
-
-# 2. Check frontend container logs
-docker logs olympian-frontend
-
-# 3. Verify nginx configuration is correct
+# Check nginx config inside container
 docker exec olympian-frontend cat /etc/nginx/conf.d/default.conf
-
-# 4. Test backend connectivity from frontend container
-docker exec olympian-frontend curl -f http://backend:4000/api/health
-
-# 5. Rebuild frontend with latest architecture fixes
-make docker-build
-docker compose down
-docker compose up -d
 ```
 
-### Ollama Connection Issues (Existing Host Ollama)
+### Connection Issues
 ```bash
-# Verify Ollama is running on host
-curl http://localhost:11434/api/tags
-
-# Check if Docker can reach host Ollama
-docker run --rm --add-host host.docker.internal:host-gateway curlimages/curl curl -s http://host.docker.internal:11434/api/tags
-
-# View container logs to debug connection
-make logs-same-existing
-```
-
-### Development Issues
-```bash
-# Check if services are running
+# Check service health
 make health-check
 
-# Restart development environment
-make stop-dev
-make dev
+# Check if backend is accessible
+docker exec olympian-frontend curl -f http://backend:4000/api/health
+
+# For existing Ollama setup
+curl http://localhost:11434/api/tags
 ```
 
 ## Project Structure
 
 ```
 olympian-ai-lightweight/
-├── .env.example                                    # Environment template (committed)
-├── .env                                           # Your configuration (gitignored, auto-generated)
-├── docker-compose.yml                             # Development Docker setup
-├── docker-compose.same-host.yml                   # Same-host with Ollama container
-├── docker-compose.same-host-existing-ollama.yml   # Same-host with existing Ollama ⭐ NEW
-├── docker-compose.prod.yml                        # Production setup
+├── Makefile                      # 🎯 All commands (use this!)
+├── docker-compose.yml            # Development Docker setup
+├── docker-compose.*.yml          # Various deployment configs
 ├── packages/
-│   ├── client/                                    # React frontend
-│   ├── server/                                    # Express backend
-│   └── shared/                                    # Shared types and utilities
-├── docker/                                        # Docker configurations
-│   ├── frontend/                                  # Frontend Dockerfile with integrated nginx
-│   ├── backend/                                   # Backend Dockerfile
-│   └── nginx/                                     # Nginx configurations
-│       ├── conf.d/
-│       │   ├── default.conf                       # Original nginx config (kept for reference)
-│       │   └── frontend.conf                      # New integrated frontend config ⭐ NEW
-│       └── nginx.conf                            # Main nginx configuration
-├── scripts/                                       # Setup and deployment scripts
-├── docs/                                          # Documentation
-└── Makefile                                       # Automation commands
+│   ├── client/                   # React frontend
+│   ├── server/                   # Express backend
+│   └── shared/                   # Shared types
+├── docker/
+│   ├── frontend/                 # Frontend + nginx
+│   ├── backend/                  # Backend service
+│   └── nginx/                    # Nginx configs
+│       ├── docker-entrypoint.sh  # 🔧 Auto-config script
+│       └── conf.d/               # Nginx configurations
+├── docs/
+│   └── nginx-configuration.md    # Nginx documentation
+└── scripts/                      # Helper scripts
 ```
 
 ## Security Features
 
-- **🔐 Automatic Secret Generation** - All environment commands generate cryptographically secure JWT secrets
-- **🛡️ Default Protection** - Deployment scripts detect and reject default/insecure secrets
-- **📊 Security Status** - `make show-env` shows whether your secrets are secure
-- **🔄 Secret Rotation** - `make apply-secrets` generates new secrets for existing configurations
-- **🚫 Git Protection** - `.env` is automatically gitignored, only `.env.example` is committed
+- **🔐 Automatic Secret Generation** - All environment commands generate secure secrets
+- **🛡️ Configuration Validation** - Nginx config tested before starting
+- **📊 Security Status** - `make show-env` shows security status
+- **🔄 Secret Rotation** - `make apply-secrets` for new secrets
+- **🚫 Git Protection** - `.env` is gitignored
 
 ## Documentation
 
 - [Architecture Overview](docs/ARCHITECTURE.md)
 - [API Documentation](docs/API.md)
+- [Nginx Configuration Guide](docs/nginx-configuration.md)
 - [Docker Deployment Guide](docker/README.md)
 - [Contributing Guide](CONTRIBUTING.md)
 
