@@ -85,6 +85,7 @@ docker-same:
 	export BACKEND_PORT=4000 && \
 	export APP_PORT=$${APP_PORT:-8080} && \
 	docker compose -f docker-compose.same-host.yml down && \
+	docker compose -f docker-compose.same-host.yml build --no-cache && \
 	docker compose -f docker-compose.same-host.yml up -d
 	@echo "✅ Same-host deployment complete!"
 	@echo "📍 Access at: http://localhost:$${APP_PORT:-8080}"
@@ -97,6 +98,7 @@ docker-same-existing:
 	export BACKEND_PORT=4000 && \
 	export APP_PORT=$${APP_PORT:-8080} && \
 	docker compose -f docker-compose.same-host-existing-ollama.yml down && \
+	docker compose -f docker-compose.same-host-existing-ollama.yml build --no-cache && \
 	docker compose -f docker-compose.same-host-existing-ollama.yml up -d
 	@echo "✅ Deployment complete!"
 	@echo "📍 Access at: http://localhost:$${APP_PORT:-8080}"
@@ -110,6 +112,7 @@ docker-multi:
 	export BACKEND_PORT=$${BACKEND_PORT:-4000} && \
 	export APP_PORT=$${APP_PORT:-8080} && \
 	docker compose -f docker-compose.prod.yml down && \
+	docker compose -f docker-compose.prod.yml build --no-cache && \
 	docker compose -f docker-compose.prod.yml up -d
 	@echo "✅ Multi-host deployment complete!"
 	@echo "📍 Access at: http://localhost:$${APP_PORT:-8080}"
@@ -298,10 +301,10 @@ health-check:
 	@curl -s http://localhost:$${APP_PORT:-8080}/health 2>/dev/null && echo "✅ Healthy" || echo "❌ Not responding"
 	@echo ""
 	@echo "Backend API:"
-	@curl -s http://localhost:$${APP_PORT:-8080}/api/health 2>/dev/null | jq '.' || echo "❌ Not responding"
+	@curl -s http://localhost:$${APP_PORT:-8080}/api/health 2>/dev/null | jq '.' 2>/dev/null || echo "❌ Not responding"
 	@echo ""
 	@echo "Services:"
-	@curl -s http://localhost:$${APP_PORT:-8080}/api/health/services 2>/dev/null | jq '.' || echo "❌ Not responding"
+	@curl -s http://localhost:$${APP_PORT:-8080}/api/health/services 2>/dev/null | jq '.' 2>/dev/null || echo "❌ Not responding"
 
 health-check-dev:
 	@echo "🏥 Checking development service health..."
@@ -418,3 +421,18 @@ reset-all:
 	else \
 		echo "❌ Reset cancelled"; \
 	fi
+
+# Rebuild containers
+rebuild-frontend:
+	@echo "🔨 Rebuilding frontend container..."
+	@docker compose -f docker-compose.same-host-existing-ollama.yml build --no-cache frontend
+	@echo "✅ Frontend rebuild complete"
+
+rebuild-all:
+	@echo "🔨 Rebuilding all containers..."
+	@if docker ps | grep -q olympian-ollama; then \
+		docker compose -f docker-compose.same-host.yml build --no-cache; \
+	else \
+		docker compose -f docker-compose.same-host-existing-ollama.yml build --no-cache; \
+	fi
+	@echo "✅ All containers rebuilt"
