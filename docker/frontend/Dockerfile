@@ -14,8 +14,11 @@ RUN npm ci --workspace=packages/shared --workspace=packages/client
 # Build shared package first
 RUN npm run build:shared
 
-# Build client
-RUN npm run build:client
+# Build client with error handling
+RUN npm run build:client || (echo "Client build failed" && exit 1)
+
+# Verify build output exists
+RUN ls -la /app/packages/client/dist || (echo "Build output not found!" && exit 1)
 
 # Production stage - Frontend with Nginx
 FROM nginx:alpine
@@ -35,12 +38,19 @@ RUN chmod +x /docker-entrypoint.sh
 # Copy built frontend files
 COPY --from=builder /app/packages/client/dist /usr/share/nginx/html
 
+# Verify files were copied
+RUN ls -la /usr/share/nginx/html && \
+    if [ ! -f /usr/share/nginx/html/index.html ]; then \
+        echo "ERROR: index.html not found in /usr/share/nginx/html"; \
+        exit 1; \
+    fi
+
 # Create a simple health check
 RUN echo '#!/bin/sh\ncurl -f http://localhost/health || exit 1' > /healthcheck.sh && chmod +x /healthcheck.sh
 
-# Add nginx user for better security
-RUN addgroup -g 101 -S nginx \
-    && adduser -S -D -H -u 101 -h /var/cache/nginx -s /sbin/nologin -G nginx -g nginx nginx
+# Add nginx user for better security (already exists in alpine)
+# RUN addgroup -g 101 -S nginx \
+#     && adduser -S -D -H -u 101 -h /var/cache/nginx -s /sbin/nologin -G nginx -g nginx nginx
 
 EXPOSE 80
 
