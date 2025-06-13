@@ -1,7 +1,7 @@
 # Olympian AI Lightweight Makefile
 # Simplifies common development and deployment tasks
 
-.PHONY: help install dev build test lint format clean docker-build docker-dev docker-prod-same docker-prod-multi setup env-dev env-docker-same env-docker-same-existing env-docker-multi nginx-test
+.PHONY: help install dev build test lint format clean docker-build docker-dev docker-prod-same docker-prod-multi setup env-dev env-docker-same env-docker-same-existing env-docker-multi nginx-test troubleshoot
 
 # Default target
 help:
@@ -32,6 +32,7 @@ help:
 	@echo "  make docker-down            Stop all Docker containers"
 	@echo "  make docker-restart         Restart all Docker containers"
 	@echo "  make nginx-test             Test nginx configuration"
+	@echo "  make troubleshoot           Run Docker troubleshooting diagnostics"
 	@echo ""
 	@echo "Quick Commands:"
 	@echo "  make quick-dev              Quick development setup"
@@ -159,6 +160,12 @@ nginx-reload:
 		echo "❌ Frontend container not running. Start it first with 'make docker-dev' or similar."; \
 		exit 1; \
 	fi
+
+# Troubleshooting
+troubleshoot:
+	@echo "🔍 Running Docker troubleshooting diagnostics..."
+	@chmod +x scripts/troubleshoot-docker.sh
+	@./scripts/troubleshoot-docker.sh
 
 # Setup
 setup:
