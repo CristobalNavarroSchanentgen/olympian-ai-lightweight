@@ -8,6 +8,11 @@ services:
       dockerfile: docker/frontend/Dockerfile
     container_name: olympian-frontend
     restart: unless-stopped
+    environment:
+      # Pass nginx configuration to frontend
+      BACKEND_HOST: backend
+      BACKEND_PORT: 4000
+      DEPLOYMENT_MODE: ${DEPLOYMENT_MODE:-multi-host}
     depends_on:
       - backend
     networks:
@@ -61,6 +66,8 @@ services:
     restart: unless-stopped
     environment:
       DEPLOYMENT_MODE: ${DEPLOYMENT_MODE:-multi-host}
+      BACKEND_HOST: backend
+      BACKEND_PORT: 4000
     ports:
       - "${APP_PORT:-8080}:80"
     depends_on:
