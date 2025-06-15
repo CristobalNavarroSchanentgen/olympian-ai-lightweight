@@ -4,6 +4,12 @@ import path from 'path';
 
 export default defineConfig({
   plugins: [react()],
+  base: '/',  // Ensure base path is set to root
+  build: {
+    outDir: 'dist',  // Explicitly set output directory
+    emptyOutDir: true,  // Clean the output directory before building
+    sourcemap: false,  // Disable sourcemaps for production
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
