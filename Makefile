@@ -1,7 +1,7 @@
 # Olympian AI Lightweight Makefile
 # Simplifies common development and deployment tasks
 
-.PHONY: help install dev build test lint format clean docker-build docker-dev docker-prod-same docker-prod-multi setup env-dev env-docker-same env-docker-same-existing env-docker-multi nginx-test troubleshoot fix-nginx
+.PHONY: help install dev build test lint format clean docker-build docker-dev docker-prod-same docker-prod-multi setup env-dev env-docker-same env-docker-same-existing env-docker-multi nginx-test troubleshoot fix-nginx debug-nginx
 
 # Default target
 help:
@@ -34,6 +34,7 @@ help:
 	@echo "  make nginx-test             Test nginx configuration"
 	@echo "  make troubleshoot           Run Docker troubleshooting diagnostics"
 	@echo "  make fix-nginx              Fix nginx serving issues (complete rebuild)"
+	@echo "  make debug-nginx            Debug nginx build and configuration issues"
 	@echo ""
 	@echo "Quick Commands:"
 	@echo "  make quick-dev              Quick development setup"
@@ -128,6 +129,7 @@ docker-down:
 	@docker compose -f docker-compose.prod.yml down 2>/dev/null || true
 	@docker compose -f docker-compose.same-host.yml down 2>/dev/null || true
 	@docker compose -f docker-compose.same-host-existing-ollama.yml down 2>/dev/null || true
+	@docker compose -f docker-compose.debug.yml down 2>/dev/null || true
 	@echo "✅ All containers stopped"
 
 docker-restart:
@@ -161,6 +163,38 @@ nginx-reload:
 		echo "❌ Frontend container not running. Start it first with 'make docker-dev' or similar."; \
 		exit 1; \
 	fi
+
+# Debug nginx issues
+debug-nginx:
+	@echo "🐛 Debugging nginx build and configuration..."
+	@echo ""
+	@echo "Step 1: Stopping all containers..."
+	@make docker-down
+	@echo ""
+	@echo "Step 2: Removing old images..."
+	@docker rmi olympian-ai-lightweight-frontend olympian-ai-lightweight-frontend-debug 2>/dev/null || true
+	@echo ""
+	@echo "Step 3: Building debug image..."
+	@mkdir -p debug-logs
+	@docker compose -f docker-compose.debug.yml build --no-cache --progress plain frontend 2>&1 | tee debug-logs/build.log
+	@echo ""
+	@echo "Step 4: Starting debug containers..."
+	@docker compose -f docker-compose.debug.yml up -d
+	@echo ""
+	@echo "Step 5: Waiting for startup..."
+	@sleep 5
+	@echo ""
+	@echo "Step 6: Checking container logs..."
+	@docker logs olympian-frontend-debug 2>&1 | tee debug-logs/startup.log
+	@echo ""
+	@echo "Step 7: Inspecting nginx content..."
+	@docker exec olympian-frontend-debug sh -c "ls -la /usr/share/nginx/html" 2>&1 | tee debug-logs/nginx-content.log
+	@echo ""
+	@echo "Step 8: Testing nginx response..."
+	@curl -v http://localhost:8080/ 2>&1 | tee debug-logs/curl-response.log
+	@echo ""
+	@echo "Debug logs saved in debug-logs/"
+	@echo "Check debug-logs/build.log for build issues"
 
 # Fix nginx serving issues
 fix-nginx:
@@ -304,6 +338,9 @@ logs-same:
 logs-same-existing:
 	docker compose -f docker-compose.same-host-existing-ollama.yml logs -f
 
+logs-debug:
+	docker compose -f docker-compose.debug.yml logs -f
+
 logs-frontend:
 	@CONTAINER=$$(docker ps --format "table {{.Names}}" | grep -E "olympian-frontend|olympian-frontend-dev" | head -1); \
 	if [ -n "$$CONTAINER" ]; then \
@@ -333,6 +370,9 @@ stop-same:
 
 stop-same-existing:
 	docker compose -f docker-compose.same-host-existing-ollama.yml down
+
+stop-debug:
+	docker compose -f docker-compose.debug.yml down
 
 # Health checks
 health-check:
