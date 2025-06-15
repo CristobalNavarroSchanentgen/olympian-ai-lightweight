@@ -16,6 +16,7 @@ interface ChatStore {
   
   fetchConversations: () => Promise<void>;
   selectConversation: (id: string) => Promise<void>;
+  setCurrentConversation: (conversation: Conversation) => void;
   createConversation: () => void;
   deleteConversation: (id: string) => Promise<void>;
   fetchMessages: (conversationId: string) => Promise<void>;
@@ -64,6 +65,18 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         variant: 'destructive',
       });
     }
+  },
+
+  setCurrentConversation: (conversation) => {
+    set({ currentConversation: conversation });
+    // Also add it to the conversations list if it's not there
+    set(state => {
+      const exists = state.conversations.some(c => c._id?.toString() === conversation._id?.toString());
+      if (!exists) {
+        return { conversations: [conversation, ...state.conversations] };
+      }
+      return state;
+    });
   },
 
   createConversation: () => {
