@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { ObjectId } from 'mongodb';
 import { DatabaseService } from '../services/DatabaseService';
 import { ConnectionScanner } from '../services/ConnectionScanner';
 import { Connection, ConnectionTestResult } from '@olympian/shared';
@@ -20,13 +21,23 @@ const createConnectionSchema = z.object({
   }).optional(),
 });
 
+// Helper function to format connection document
+function formatConnection(doc: any): Connection {
+  return {
+    ...doc,
+    _id: doc._id?.toString(),
+    createdAt: doc.createdAt instanceof Date ? doc.createdAt : new Date(doc.createdAt),
+    updatedAt: doc.updatedAt instanceof Date ? doc.updatedAt : new Date(doc.updatedAt),
+  };
+}
+
 // Get all connections
 router.get('/', async (_req, res, next) => {
   try {
     const connections = await db.connections.find({}).toArray();
     res.json({
       success: true,
-      data: connections,
+      data: connections.map(formatConnection),
       timestamp: new Date(),
     });
   } catch (error) {
@@ -38,7 +49,7 @@ router.get('/', async (_req, res, next) => {
 router.get('/:id', async (req, res, next) => {
   try {
     const connection = await db.connections.findOne({
-      _id: req.params.id,
+      _id: new ObjectId(req.params.id),
     });
 
     if (!connection) {
@@ -47,7 +58,7 @@ router.get('/:id', async (req, res, next) => {
 
     res.json({
       success: true,
-      data: connection,
+      data: formatConnection(connection),
       timestamp: new Date(),
     });
   } catch (error) {
@@ -60,7 +71,7 @@ router.post('/', async (req, res, next) => {
   try {
     const validated = createConnectionSchema.parse(req.body);
     
-    const connection: Connection = {
+    const connection: Omit<Connection, '_id'> = {
       ...validated,
       status: 'offline',
       metadata: {},
@@ -73,7 +84,7 @@ router.post('/', async (req, res, next) => {
     
     res.status(201).json({
       success: true,
-      data: { ...connection, _id: result.insertedId.toString() },
+      data: formatConnection({ ...connection, _id: result.insertedId }),
       timestamp: new Date(),
     });
   } catch (error) {
@@ -91,7 +102,7 @@ router.put('/:id', async (req, res, next) => {
     const validated = createConnectionSchema.partial().parse(req.body);
     
     const result = await db.connections.findOneAndUpdate(
-      { _id: req.params.id },
+      { _id: new ObjectId(req.params.id) },
       {
         $set: {
           ...validated,
@@ -107,7 +118,7 @@ router.put('/:id', async (req, res, next) => {
 
     res.json({
       success: true,
-      data: result,
+      data: formatConnection(result),
       timestamp: new Date(),
     });
   } catch (error) {
@@ -123,7 +134,7 @@ router.put('/:id', async (req, res, next) => {
 router.delete('/:id', async (req, res, next) => {
   try {
     const result = await db.connections.deleteOne({
-      _id: req.params.id,
+      _id: new ObjectId(req.params.id),
     });
 
     if (result.deletedCount === 0) {
@@ -143,7 +154,7 @@ router.delete('/:id', async (req, res, next) => {
 router.post('/:id/test', async (req, res, next) => {
   try {
     const connection = await db.connections.findOne({
-      _id: req.params.id,
+      _id: new ObjectId(req.params.id),
     });
 
     if (!connection) {
@@ -156,7 +167,7 @@ router.post('/:id/test', async (req, res, next) => {
 
     // Update connection status
     await db.connections.updateOne(
-      { _id: req.params.id },
+      { _id: new ObjectId(req.params.id) },
       {
         $set: {
           status: isOnline ? 'online' : 'offline',
