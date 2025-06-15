@@ -1,0 +1,79 @@
+# Debug version to diagnose nginx issues
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend/Dockerfile.debug
+    container_name: olympian-frontend-debug
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-8080}:80"
+    environment:
+      DEPLOYMENT_MODE: same-host-existing-ollama
+      BACKEND_HOST: backend
+      BACKEND_PORT: 4000
+    depends_on:
+      - backend
+    networks:
+      - olympian-network
+    volumes:
+      # Mount nginx config for live debugging
+      - ./docker/nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./debug-logs:/var/log/nginx
+
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile
+    container_name: olympian-backend
+    restart: unless-stopped
+    environment:
+      DEPLOYMENT_MODE: same-host-existing-ollama
+      MONGODB_URI: mongodb://olympian-mongodb:27017/olympian_ai_lite
+      OLLAMA_HOST: http://host.docker.internal:11434
+      NODE_ENV: production
+      PORT: 4000
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      JWT_SECRET: ${JWT_SECRET}
+      SESSION_SECRET: ${SESSION_SECRET}
+    volumes:
+      - config-data:/config/.olympian-ai-lite
+      - logs:/app/logs
+    depends_on:
+      - mongodb
+    networks:
+      - olympian-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  mongodb:
+    image: mongo:7
+    container_name: olympian-mongodb
+    restart: unless-stopped
+    volumes:
+      - mongodb-data:/data/db
+    environment:
+      MONGO_INITDB_DATABASE: olympian_ai_lite
+    networks:
+      - olympian-network
+
+  mcp-filesystem:
+    image: node:20-alpine
+    container_name: olympian-mcp-filesystem
+    restart: unless-stopped
+    working_dir: /app
+    command: npx -y @modelcontextprotocol/server-filesystem /data
+    volumes:
+      - mcp-data:/data
+    networks:
+      - olympian-network
+
+volumes:
+  config-data:
+  logs:
+  mongodb-data:
+  mcp-data:
+
+networks:
+  olympian-network:
+    driver: bridge
