@@ -18,14 +18,12 @@ COPY packages/client ./packages/client
 # Build shared package first
 RUN npm run build:shared
 
-# Build client - this should create packages/client/dist
-RUN cd packages/client && npm run build
-
-# Verify the build output
-RUN echo "=== Checking client dist ===" && \
+# Build client and verify output
+RUN npm run build:client && \
+    echo "=== Verifying build output ===" && \
     ls -la packages/client/dist/ && \
-    echo "=== Checking index.html ===" && \
-    cat packages/client/dist/index.html | head -20
+    echo "=== Content of built index.html ===" && \
+    cat packages/client/dist/index.html
 
 # Production stage
 FROM nginx:alpine
@@ -33,11 +31,12 @@ FROM nginx:alpine
 # Install curl for health checks
 RUN apk add --no-cache curl
 
-# Clear all default nginx content
+# Remove ALL default nginx files
 RUN rm -rf /etc/nginx/conf.d/* && \
     rm -rf /etc/nginx/sites-enabled/* && \
     rm -rf /etc/nginx/sites-available/* && \
-    rm -rf /usr/share/nginx/html/*
+    rm -rf /usr/share/nginx/html/* && \
+    rm -rf /var/www/html/*
 
 # Copy nginx configuration
 COPY docker/nginx/nginx.conf /etc/nginx/nginx.conf
@@ -47,20 +46,25 @@ COPY docker/nginx/conf.d/ /etc/nginx/conf.d/
 COPY docker/nginx/docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 
-# IMPORTANT: Copy from the correct dist directory
-COPY --from=builder /app/packages/client/dist/* /usr/share/nginx/html/
-COPY --from=builder /app/packages/client/dist/assets /usr/share/nginx/html/assets
+# Copy built frontend files from the correct location
+COPY --from=builder /app/packages/client/dist /usr/share/nginx/html
 
-# Verify files
-RUN echo "=== Final nginx content ===" && \
+# Verify deployment
+RUN echo "=== Deployed files ===" && \
     ls -la /usr/share/nginx/html/ && \
-    echo "=== Index.html content ===" && \
-    cat /usr/share/nginx/html/index.html | head -20
+    echo "=== Index.html verification ===" && \
+    if grep -q "src=\"/src/main.tsx\"" /usr/share/nginx/html/index.html; then \
+        echo "ERROR: Source index.html detected instead of built version!" && exit 1; \
+    else \
+        echo "✓ Built index.html confirmed"; \
+    fi
 
 # Health check
-RUN echo '#!/bin/sh\ncurl -f http://localhost/ || exit 1' > /healthcheck.sh && chmod +x /healthcheck.sh
+RUN echo '#!/bin/sh\ncurl -sf http://localhost/ || exit 1' > /healthcheck.sh && chmod +x /healthcheck.sh
 
 EXPOSE 80
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 CMD ["/healthcheck.sh"]
 
 ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["nginx", "-g", "daemon off;"]
