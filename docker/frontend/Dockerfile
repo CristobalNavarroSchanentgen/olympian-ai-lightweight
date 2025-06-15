@@ -32,15 +32,15 @@ FROM nginx:alpine
 # Install required tools for the entrypoint script
 RUN apk add --no-cache curl
 
-# Remove default nginx configurations
-RUN rm -f /etc/nginx/conf.d/default.conf
-RUN rm -f /etc/nginx/sites-enabled/default
-RUN rm -f /etc/nginx/sites-available/default
+# Remove ALL default nginx configurations
+RUN rm -rf /etc/nginx/conf.d/* && \
+    rm -rf /etc/nginx/sites-enabled/* && \
+    rm -rf /etc/nginx/sites-available/* && \
+    rm -rf /usr/share/nginx/html/*
 
-# Copy custom nginx configuration for frontend
+# Copy custom nginx configuration
 COPY docker/nginx/nginx.conf /etc/nginx/nginx.conf
-COPY docker/nginx/conf.d/frontend.conf /etc/nginx/conf.d/frontend.conf
-COPY docker/nginx/conf.d/default.conf /etc/nginx/conf.d/default.conf
+COPY docker/nginx/conf.d/ /etc/nginx/conf.d/
 
 # Copy and setup entrypoint script
 COPY docker/nginx/docker-entrypoint.sh /docker-entrypoint.sh
@@ -48,9 +48,6 @@ RUN chmod +x /docker-entrypoint.sh
 
 # Copy built frontend files
 COPY --from=builder /app/packages/client/dist /usr/share/nginx/html
-
-# Remove any default index.html from nginx
-RUN rm -f /usr/share/nginx/html/index.nginx-debian.html
 
 # Verify files were copied
 RUN echo "Verifying deployed files..." && \
@@ -62,7 +59,7 @@ RUN echo "Verifying deployed files..." && \
     echo "✓ Frontend files deployed successfully"
 
 # Create a simple health check
-RUN echo '#!/bin/sh\ncurl -f http://localhost/health || exit 1' > /healthcheck.sh && chmod +x /healthcheck.sh
+RUN echo '#!/bin/sh\ncurl -f http://localhost/health || curl -f http://localhost/ || exit 1' > /healthcheck.sh && chmod +x /healthcheck.sh
 
 EXPOSE 80
 
