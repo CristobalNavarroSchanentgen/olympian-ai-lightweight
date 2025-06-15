@@ -1,10 +1,11 @@
 import { Router } from 'express';
+import { ObjectId } from 'mongodb';
 import { DatabaseService } from '../services/DatabaseService';
 import { OllamaStreamliner } from '../services/OllamaStreamliner';
 import { AppError } from '../middleware/errorHandler';
 import { chatRateLimiter } from '../middleware/rateLimiter';
 import { z } from 'zod';
-import { Message } from '@olympian/shared';
+import { Message, Conversation } from '@olympian/shared';
 
 const router = Router();
 const db = DatabaseService.getInstance();
@@ -21,6 +22,24 @@ const sendMessageSchema = z.object({
   images: z.array(z.string()).optional(),
 });
 
+// Helper function to convert MongoDB document to proper format
+function formatConversation(doc: any): Conversation {
+  return {
+    ...doc,
+    _id: doc._id.toString(),
+    createdAt: doc.createdAt instanceof Date ? doc.createdAt : new Date(doc.createdAt),
+    updatedAt: doc.updatedAt instanceof Date ? doc.updatedAt : new Date(doc.updatedAt),
+  };
+}
+
+function formatMessage(doc: any): Message {
+  return {
+    ...doc,
+    _id: doc._id?.toString(),
+    createdAt: doc.createdAt instanceof Date ? doc.createdAt : new Date(doc.createdAt),
+  };
+}
+
 // Send a chat message (HTTP fallback for WebSocket)
 router.post('/send', async (req, res, next) => {
   try {
@@ -34,27 +53,44 @@ router.post('/send', async (req, res, next) => {
 
     // Get or create conversation
     let convId: string;
+    let conversation: Conversation;
+    
     if (conversationId) {
+      // Validate existing conversation
+      const existingConv = await db.conversations.findOne({ 
+        _id: new ObjectId(conversationId) 
+      });
+      if (!existingConv) {
+        throw new AppError(404, 'Conversation not found');
+      }
       convId = conversationId;
+      conversation = formatConversation(existingConv);
     } else {
-      const conversation = await db.conversations.insertOne({
-        title: message.substring(0, 50) + '...',
+      // Create new conversation
+      const newConversation: Omit<Conversation, '_id'> = {
+        title: message.substring(0, 50) + (message.length > 50 ? '...' : ''),
         model,
         createdAt: new Date(),
         updatedAt: new Date(),
         messageCount: 0,
+      };
+      const result = await db.conversations.insertOne(newConversation);
+      convId = result.insertedId.toString();
+      conversation = formatConversation({
+        ...newConversation,
+        _id: result.insertedId,
       });
-      convId = conversation.insertedId.toString();
     }
 
     // Save user message
-    await db.messages.insertOne({
+    const userMessage: Omit<Message, '_id'> = {
       conversationId: convId,
       role: 'user' as const,
       content: message,
       images,
       createdAt: new Date(),
-    });
+    };
+    await db.messages.insertOne(userMessage);
 
     // Process the request
     const processedRequest = await streamliner.processRequest({
@@ -75,7 +111,7 @@ router.post('/send', async (req, res, next) => {
     });
 
     // Save assistant message
-    const assistantMessage: Message = {
+    const assistantMessage: Omit<Message, '_id'> = {
       conversationId: convId,
       role: 'assistant' as const,
       content: assistantContent,
@@ -90,17 +126,18 @@ router.post('/send', async (req, res, next) => {
 
     // Update conversation
     await db.conversations.updateOne(
-      { _id: convId },
+      { _id: new ObjectId(convId) },
       {
         $set: { updatedAt: new Date() },
         $inc: { messageCount: 2 },
       }
     );
 
-    // Return response
+    // Return response with proper conversation object
     res.json({
       success: true,
       data: {
+        conversation,
         conversationId: convId,
         message: assistantContent,
         metadata: assistantMessage.metadata,
@@ -130,7 +167,7 @@ router.get('/conversations', async (req, res, next) => {
 
     res.json({
       success: true,
-      data: conversations,
+      data: conversations.map(formatConversation),
       page: Number(page),
       pageSize: Number(limit),
       total,
@@ -146,7 +183,7 @@ router.get('/conversations', async (req, res, next) => {
 router.get('/conversations/:id', async (req, res, next) => {
   try {
     const conversation = await db.conversations.findOne({
-      _id: req.params.id,
+      _id: new ObjectId(req.params.id),
     });
 
     if (!conversation) {
@@ -155,7 +192,7 @@ router.get('/conversations/:id', async (req, res, next) => {
 
     res.json({
       success: true,
-      data: conversation,
+      data: formatConversation(conversation),
       timestamp: new Date(),
     });
   } catch (error) {
@@ -182,7 +219,7 @@ router.get('/conversations/:id/messages', async (req, res, next) => {
 
     res.json({
       success: true,
-      data: messages,
+      data: messages.map(formatMessage),
       page: Number(page),
       pageSize: Number(limit),
       total,
@@ -203,7 +240,9 @@ router.delete('/conversations/:id', async (req, res, next) => {
     await db.messages.deleteMany({ conversationId });
 
     // Delete the conversation
-    const result = await db.conversations.deleteOne({ _id: conversationId });
+    const result = await db.conversations.deleteOne({ 
+      _id: new ObjectId(conversationId) 
+    });
 
     if (result.deletedCount === 0) {
       throw new AppError(404, 'Conversation not found');
@@ -241,7 +280,7 @@ router.get('/search', async (req, res, next) => {
 
     res.json({
       success: true,
-      data: messages,
+      data: messages.map(formatMessage),
       page: Number(page),
       pageSize: Number(limit),
       total,
