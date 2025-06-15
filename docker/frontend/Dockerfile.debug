@@ -1,0 +1,90 @@
+# Build stage with extensive debugging
+FROM node:20-alpine AS builder
+WORKDIR /app
+
+# Install debugging tools
+RUN apk add --no-cache tree
+
+# Copy all package files first
+COPY package*.json ./
+COPY packages/shared/package*.json ./packages/shared/
+COPY packages/client/package*.json ./packages/client/
+
+# Show initial structure
+RUN echo "=== Initial package structure ===" && \
+    tree -L 3 .
+
+# Install ALL dependencies
+RUN npm ci
+
+# Show structure after npm install
+RUN echo "=== After npm install ===" && \
+    tree -L 3 . -I 'node_modules'
+
+# Copy source files
+COPY tsconfig.json ./
+COPY packages/shared ./packages/shared
+COPY packages/client ./packages/client
+
+# Show complete source structure
+RUN echo "=== Complete source structure ===" && \
+    tree -L 4 packages -I 'node_modules'
+
+# Build shared package
+RUN echo "=== Building shared package ===" && \
+    npm run build:shared && \
+    echo "=== Shared build output ===" && \
+    ls -la packages/shared/dist || echo "No shared dist found"
+
+# Build client with maximum verbosity
+RUN echo "=== Building client package ===" && \
+    cd packages/client && \
+    npm run build -- --debug && \
+    echo "=== Client build completed ===" && \
+    pwd && \
+    ls -la
+
+# Show final build output
+RUN echo "=== Final build output ===" && \
+    tree /app/packages/client/dist || echo "No dist directory found" && \
+    echo "=== Checking for index.html ===" && \
+    find /app -name "index.html" -type f && \
+    echo "=== All HTML files ===" && \
+    find /app -name "*.html" -type f
+
+# Production stage
+FROM nginx:alpine
+
+# Install debugging tools
+RUN apk add --no-cache curl tree
+
+# Remove ALL default nginx configurations
+RUN rm -rf /etc/nginx/conf.d/* && \
+    rm -rf /etc/nginx/sites-enabled/* && \
+    rm -rf /etc/nginx/sites-available/* && \
+    rm -rf /usr/share/nginx/html/*
+
+# Copy nginx configuration
+COPY docker/nginx/nginx.conf /etc/nginx/nginx.conf
+COPY docker/nginx/conf.d/ /etc/nginx/conf.d/
+
+# Copy entrypoint
+COPY docker/nginx/docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
+
+# Copy built files - with debugging
+COPY --from=builder /app/packages/client/dist /usr/share/nginx/html
+
+# Debug what was copied
+RUN echo "=== Nginx HTML directory contents ===" && \
+    tree /usr/share/nginx/html && \
+    echo "=== Checking for index.html ===" && \
+    ls -la /usr/share/nginx/html/index.html || echo "index.html not found!"
+
+# Create health check
+RUN echo '#!/bin/sh\ncurl -f http://localhost/ || exit 1' > /healthcheck.sh && chmod +x /healthcheck.sh
+
+EXPOSE 80
+
+ENTRYPOINT ["/docker-entrypoint.sh"]
+CMD ["nginx", "-g", "daemon off;"]
