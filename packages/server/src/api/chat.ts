@@ -12,6 +12,105 @@ const streamliner = new OllamaStreamliner();
 // Apply rate limiting to chat endpoints
 router.use(chatRateLimiter);
 
+// Input validation schemas
+const sendMessageSchema = z.object({
+  message: z.string().min(1).max(10000),
+  conversationId: z.string().optional(),
+  model: z.string().min(1),
+  images: z.array(z.string()).optional(),
+});
+
+// Send a chat message (HTTP fallback for WebSocket)
+router.post('/send', async (req, res, next) => {
+  try {
+    // Validate input
+    const validation = sendMessageSchema.safeParse(req.body);
+    if (!validation.success) {
+      throw new AppError(400, 'Invalid request body', validation.error.errors);
+    }
+
+    const { message, conversationId, model, images } = validation.data;
+
+    // Get or create conversation
+    let convId: string;
+    if (conversationId) {
+      convId = conversationId;
+    } else {
+      const conversation = await db.conversations.insertOne({
+        title: message.substring(0, 50) + '...',
+        model,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        messageCount: 0,
+      });
+      convId = conversation.insertedId.toString();
+    }
+
+    // Save user message
+    await db.messages.insertOne({
+      conversationId: convId,
+      role: 'user',
+      content: message,
+      images,
+      createdAt: new Date(),
+    });
+
+    // Process the request
+    const processedRequest = await streamliner.processRequest({
+      content: message,
+      model,
+      images,
+      conversationId: convId,
+    });
+
+    // Get response from Ollama (non-streaming for HTTP)
+    let assistantContent = '';
+    const startTime = Date.now();
+    let tokenCount = 0;
+
+    await streamliner.streamChat(processedRequest, (token: string) => {
+      assistantContent += token;
+      tokenCount++;
+    });
+
+    // Save assistant message
+    const assistantMessage = {
+      conversationId: convId,
+      role: 'assistant',
+      content: assistantContent,
+      metadata: {
+        model,
+        tokens: tokenCount,
+        generationTime: Date.now() - startTime,
+      },
+      createdAt: new Date(),
+    };
+    await db.messages.insertOne(assistantMessage);
+
+    // Update conversation
+    await db.conversations.updateOne(
+      { _id: convId },
+      {
+        $set: { updatedAt: new Date() },
+        $inc: { messageCount: 2 },
+      }
+    );
+
+    // Return response
+    res.json({
+      success: true,
+      data: {
+        conversationId: convId,
+        message: assistantContent,
+        metadata: assistantMessage.metadata,
+      },
+      timestamp: new Date(),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // Get conversations
 router.get('/conversations', async (req, res, next) => {
   try {
