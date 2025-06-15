@@ -1,7 +1,7 @@
 # Olympian AI Lightweight Makefile
 # Simplifies common development and deployment tasks
 
-.PHONY: help install dev build test lint format clean docker-build docker-dev docker-prod-same docker-prod-multi setup env-dev env-docker-same env-docker-same-existing env-docker-multi nginx-test troubleshoot fix-nginx debug-nginx
+.PHONY: help install dev build test lint format clean docker-build docker-dev docker-prod-same docker-prod-multi setup env-dev env-docker-same env-docker-same-existing env-docker-multi nginx-test troubleshoot fix-nginx debug-nginx diagnose-chat
 
 # Default target
 help:
@@ -35,6 +35,7 @@ help:
 	@echo "  make troubleshoot           Run Docker troubleshooting diagnostics"
 	@echo "  make fix-nginx              Fix nginx serving issues (complete rebuild)"
 	@echo "  make debug-nginx            Debug nginx build and configuration issues"
+	@echo "  make diagnose-chat          Diagnose chat functionality issues"
 	@echo ""
 	@echo "Quick Commands:"
 	@echo "  make quick-dev              Quick development setup"
@@ -228,6 +229,12 @@ fix-nginx:
 	@echo "✅ Fix complete! Checking status..."
 	@sleep 5
 	@make health-check
+
+# Diagnose chat issues
+diagnose-chat:
+	@echo "🔍 Diagnosing chat functionality..."
+	@chmod +x scripts/diagnose-chat.sh
+	@./scripts/diagnose-chat.sh
 
 # Troubleshooting
 troubleshoot:
