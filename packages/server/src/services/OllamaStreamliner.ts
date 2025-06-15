@@ -2,6 +2,7 @@ import { ChatRequest, ProcessedRequest, ModelCapability } from '@olympian/shared
 import { logger } from '../utils/logger';
 import { AppError } from '../middleware/errorHandler';
 import { getDeploymentConfig, OllamaLoadBalancer } from '../config/deployment';
+import { ChatMemoryService, MemoryConfig } from './ChatMemoryService';
 
 interface OllamaModelInfo {
   modelfile?: string;
@@ -22,6 +23,7 @@ export class OllamaStreamliner {
   private modelCapabilities: Map<string, ModelCapability> = new Map();
   private deploymentConfig = getDeploymentConfig();
   private loadBalancer?: OllamaLoadBalancer;
+  private memoryService: ChatMemoryService;
 
   constructor() {
     // Initialize load balancer if multiple hosts are configured
@@ -32,6 +34,9 @@ export class OllamaStreamliner {
       );
       logger.info(`Initialized Ollama load balancer with ${this.deploymentConfig.ollama.hosts.length} hosts`);
     }
+    
+    // Initialize memory service
+    this.memoryService = ChatMemoryService.getInstance();
   }
 
   private getOllamaHost(clientIp?: string): string {
@@ -122,8 +127,36 @@ export class OllamaStreamliner {
     return match ? parseInt(match[1], 10) : null;
   }
 
-  async processRequest(request: ChatRequest): Promise<ProcessedRequest> {
+  async processRequest(
+    request: ChatRequest,
+    memoryConfig?: MemoryConfig
+  ): Promise<ProcessedRequest> {
     const capabilities = await this.detectCapabilities(request.model);
+
+    // Get conversation history if conversationId is provided
+    let messages: Array<{ role: string; content: string; images?: string[] }> = [];
+    
+    if (request.conversationId) {
+      try {
+        // Calculate token budget for history based on model capabilities
+        const contextWindow = capabilities.contextWindow;
+        const maxHistoryTokens = Math.floor(contextWindow * 0.5); // Use 50% of context for history
+        
+        const adjustedMemoryConfig: MemoryConfig = {
+          ...memoryConfig,
+          maxTokens: Math.min(memoryConfig?.maxTokens || 4000, maxHistoryTokens),
+        };
+        
+        messages = await this.memoryService.getConversationHistory(
+          request.conversationId,
+          adjustedMemoryConfig
+        );
+        logger.debug(`Loaded ${messages.length} messages from conversation history`);
+      } catch (error) {
+        logger.error('Failed to load conversation history:', error);
+        // Continue without history if loading fails
+      }
+    }
 
     // Vision handling
     if (request.images && request.images.length > 0) {
@@ -134,32 +167,50 @@ export class OllamaStreamliner {
           'MODEL_CAPABILITY_ERROR'
         );
       }
-      return this.formatVisionRequest(request);
+      return this.formatVisionRequest(request, messages);
     }
 
     // Standard text handling
-    return this.formatTextRequest(request);
+    return this.formatTextRequest(request, messages);
   }
 
-  private formatVisionRequest(request: ChatRequest): ProcessedRequest {
-    return {
-      model: request.model,
-      messages: [{
+  private formatVisionRequest(
+    request: ChatRequest,
+    history: Array<{ role: string; content: string; images?: string[] }>
+  ): ProcessedRequest {
+    // Add current message to history
+    const messages = [
+      ...history,
+      {
         role: 'user',
         content: request.content,
         images: request.images,
-      }],
+      },
+    ];
+
+    return {
+      model: request.model,
+      messages,
       stream: true,
     };
   }
 
-  private formatTextRequest(request: ChatRequest): ProcessedRequest {
-    return {
-      model: request.model,
-      messages: [{
+  private formatTextRequest(
+    request: ChatRequest,
+    history: Array<{ role: string; content: string; images?: string[] }>
+  ): ProcessedRequest {
+    // Add current message to history
+    const messages = [
+      ...history,
+      {
         role: 'user',
         content: request.content,
-      }],
+      },
+    ];
+
+    return {
+      model: request.model,
+      messages,
       stream: true,
     };
   }
