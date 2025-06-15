@@ -100,6 +100,24 @@ class ApiService {
   }
 
   // Chat API
+  async sendMessage(params: {
+    message: string;
+    model: string;
+    conversationId?: string;
+    images?: string[];
+  }): Promise<{
+    conversationId: string;
+    message: string;
+    metadata: any;
+  }> {
+    const { data } = await this.client.post<ApiResponse<{
+      conversationId: string;
+      message: string;
+      metadata: any;
+    }>>('/chat/send', params);
+    return data.data!;
+  }
+
   async getConversations(page = 1, limit = 20): Promise<{ conversations: Conversation[]; total: number }> {
     const { data } = await this.client.get<ApiResponse<Conversation[]> & { total: number }>(
       `/chat/conversations?page=${page}&limit=${limit}`
