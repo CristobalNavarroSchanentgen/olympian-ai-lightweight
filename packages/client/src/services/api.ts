@@ -106,11 +106,13 @@ class ApiService {
     conversationId?: string;
     images?: string[];
   }): Promise<{
+    conversation: Conversation;
     conversationId: string;
     message: string;
     metadata: any;
   }> {
     const { data } = await this.client.post<ApiResponse<{
+      conversation: Conversation;
       conversationId: string;
       message: string;
       metadata: any;
