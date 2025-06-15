@@ -64,15 +64,13 @@ export function DivineDialog() {
       const response = await api.sendMessage({
         message: content,
         model: selectedModel,
-        conversationId: currentConversation?._id?.toString(),
+        conversationId: currentConversation?._id,
         images,
       });
 
-      // If this was a new conversation, update the current conversation ID
-      if (!currentConversation && response.conversationId) {
-        // Fetch the new conversation details
-        const newConversation = await api.getConversation(response.conversationId);
-        setCurrentConversation(newConversation);
+      // If this was a new conversation, update the current conversation
+      if (!currentConversation && response.conversation) {
+        setCurrentConversation(response.conversation);
       }
 
       // Add the assistant message to the store
