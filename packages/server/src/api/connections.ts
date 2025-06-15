@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { ObjectId, WithId } from 'mongodb';
+import { ObjectId } from 'mongodb';
 import { DatabaseService } from '../services/DatabaseService';
 import { ConnectionScanner } from '../services/ConnectionScanner';
 import { Connection, ConnectionTestResult } from '@olympian/shared';
@@ -25,10 +25,10 @@ const createConnectionSchema = z.object({
 type ConnectionDoc = Omit<Connection, '_id'> & { _id?: ObjectId };
 
 // Helper function to format connection document
-function formatConnection(doc: WithId<ConnectionDoc>): Connection {
+function formatConnection(doc: any): Connection {
   return {
     ...doc,
-    _id: doc._id?.toString(),
+    _id: doc._id?.toString ? doc._id.toString() : doc._id,
     createdAt: doc.createdAt instanceof Date ? doc.createdAt : new Date(doc.createdAt),
     updatedAt: doc.updatedAt instanceof Date ? doc.updatedAt : new Date(doc.updatedAt),
   };
@@ -40,7 +40,7 @@ router.get('/', async (_req, res, next) => {
     const connections = await db.connections.find({}).toArray();
     res.json({
       success: true,
-      data: connections.map(conn => formatConnection(conn as WithId<ConnectionDoc>)),
+      data: connections.map(formatConnection),
       timestamp: new Date(),
     });
   } catch (error) {
@@ -61,7 +61,7 @@ router.get('/:id', async (req, res, next) => {
 
     res.json({
       success: true,
-      data: formatConnection(connection as WithId<ConnectionDoc>),
+      data: formatConnection(connection),
       timestamp: new Date(),
     });
   } catch (error) {
@@ -121,7 +121,7 @@ router.put('/:id', async (req, res, next) => {
 
     res.json({
       success: true,
-      data: formatConnection(result as WithId<ConnectionDoc>),
+      data: formatConnection(result),
       timestamp: new Date(),
     });
   } catch (error) {
