@@ -379,25 +379,25 @@ health-check:
 	@echo "🏥 Checking service health..."
 	@echo ""
 	@echo "Frontend (nginx):"
-	@curl -s http://localhost:$${APP_PORT:-8080}/health 2>/dev/null && echo "✅ Healthy" || echo "❌ Not responding"
+	@curl -sf http://localhost:$${APP_PORT:-8080}/ > /dev/null && echo "✅ Healthy" || echo "❌ Not responding"
 	@echo ""
 	@echo "Backend API:"
-	@curl -s http://localhost:$${APP_PORT:-8080}/api/health 2>/dev/null | jq '.' 2>/dev/null || echo "❌ Not responding"
+	@curl -sf http://localhost:$${APP_PORT:-8080}/api/health 2>/dev/null | jq '.' 2>/dev/null || echo "❌ Not responding"
 	@echo ""
 	@echo "Services:"
-	@curl -s http://localhost:$${APP_PORT:-8080}/api/health/services 2>/dev/null | jq '.' 2>/dev/null || echo "❌ Not responding"
+	@curl -sf http://localhost:$${APP_PORT:-8080}/api/health/services 2>/dev/null | jq '.' 2>/dev/null || echo "❌ Not responding"
 
 health-check-dev:
 	@echo "🏥 Checking development service health..."
 	@echo ""
 	@echo "Frontend:"
-	@curl -s http://localhost:3000/health 2>/dev/null && echo "✅ Healthy" || echo "❌ Not responding"
+	@curl -sf http://localhost:3000/ > /dev/null && echo "✅ Healthy" || echo "❌ Not responding"
 	@echo ""
 	@echo "Backend API:"
-	@curl -s http://localhost:4000/api/health 2>/dev/null | jq '.' || echo "❌ Not responding"
+	@curl -sf http://localhost:4000/api/health 2>/dev/null | jq '.' || echo "❌ Not responding"
 	@echo ""
 	@echo "Services:"
-	@curl -s http://localhost:4000/api/health/services 2>/dev/null | jq '.' || echo "❌ Not responding"
+	@curl -sf http://localhost:4000/api/health/services 2>/dev/null | jq '.' || echo "❌ Not responding"
 
 # Database operations
 db-backup:
@@ -517,3 +517,9 @@ rebuild-all:
 		docker compose -f docker-compose.same-host-existing-ollama.yml build --no-cache; \
 	fi
 	@echo "✅ All containers rebuilt"
+
+# Diagnostic command
+diagnose:
+	@echo "🔍 Running deployment diagnostics..."
+	@chmod +x scripts/diagnose-deployment.sh
+	@./scripts/diagnose-deployment.sh
