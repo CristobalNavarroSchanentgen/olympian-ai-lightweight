@@ -27,19 +27,19 @@ type ConversationDoc = Omit<Conversation, '_id'> & { _id?: ObjectId };
 type MessageDoc = Omit<Message, '_id'> & { _id?: ObjectId };
 
 // Helper function to convert MongoDB document to proper format
-function formatConversation(doc: WithId<ConversationDoc>): Conversation {
+function formatConversation(doc: any): Conversation {
   return {
     ...doc,
-    _id: doc._id.toString(),
+    _id: doc._id?.toString ? doc._id.toString() : doc._id,
     createdAt: doc.createdAt instanceof Date ? doc.createdAt : new Date(doc.createdAt),
     updatedAt: doc.updatedAt instanceof Date ? doc.updatedAt : new Date(doc.updatedAt),
   };
 }
 
-function formatMessage(doc: WithId<MessageDoc>): Message {
+function formatMessage(doc: any): Message {
   return {
     ...doc,
-    _id: doc._id?.toString(),
+    _id: doc._id?.toString ? doc._id.toString() : doc._id,
     createdAt: doc.createdAt instanceof Date ? doc.createdAt : new Date(doc.createdAt),
   };
 }
@@ -68,7 +68,7 @@ router.post('/send', async (req, res, next) => {
         throw new AppError(404, 'Conversation not found');
       }
       convId = conversationId;
-      conversation = formatConversation(existingConv as WithId<ConversationDoc>);
+      conversation = formatConversation(existingConv);
     } else {
       // Create new conversation
       const newConversation: ConversationDoc = {
@@ -171,7 +171,7 @@ router.get('/conversations', async (req, res, next) => {
 
     res.json({
       success: true,
-      data: conversations.map(conv => formatConversation(conv as WithId<ConversationDoc>)),
+      data: conversations.map(formatConversation),
       page: Number(page),
       pageSize: Number(limit),
       total,
@@ -196,7 +196,7 @@ router.get('/conversations/:id', async (req, res, next) => {
 
     res.json({
       success: true,
-      data: formatConversation(conversation as WithId<ConversationDoc>),
+      data: formatConversation(conversation),
       timestamp: new Date(),
     });
   } catch (error) {
@@ -223,7 +223,7 @@ router.get('/conversations/:id/messages', async (req, res, next) => {
 
     res.json({
       success: true,
-      data: messages.map(msg => formatMessage(msg as WithId<MessageDoc>)),
+      data: messages.map(formatMessage),
       page: Number(page),
       pageSize: Number(limit),
       total,
@@ -284,7 +284,7 @@ router.get('/search', async (req, res, next) => {
 
     res.json({
       success: true,
-      data: messages.map(msg => formatMessage(msg as WithId<MessageDoc>)),
+      data: messages.map(formatMessage),
       page: Number(page),
       pageSize: Number(limit),
       total,
