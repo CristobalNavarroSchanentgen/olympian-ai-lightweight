@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { ObjectId } from 'mongodb';
+import { ObjectId, WithId } from 'mongodb';
 import { DatabaseService } from '../services/DatabaseService';
 import { ConnectionScanner } from '../services/ConnectionScanner';
 import { Connection, ConnectionTestResult } from '@olympian/shared';
@@ -21,8 +21,11 @@ const createConnectionSchema = z.object({
   }).optional(),
 });
 
+// Database document type (with ObjectId)
+type ConnectionDoc = Omit<Connection, '_id'> & { _id?: ObjectId };
+
 // Helper function to format connection document
-function formatConnection(doc: any): Connection {
+function formatConnection(doc: WithId<ConnectionDoc>): Connection {
   return {
     ...doc,
     _id: doc._id?.toString(),
@@ -37,7 +40,7 @@ router.get('/', async (_req, res, next) => {
     const connections = await db.connections.find({}).toArray();
     res.json({
       success: true,
-      data: connections.map(formatConnection),
+      data: connections.map(conn => formatConnection(conn as WithId<ConnectionDoc>)),
       timestamp: new Date(),
     });
   } catch (error) {
@@ -50,7 +53,7 @@ router.get('/:id', async (req, res, next) => {
   try {
     const connection = await db.connections.findOne({
       _id: new ObjectId(req.params.id),
-    });
+    } as any);
 
     if (!connection) {
       throw new AppError(404, 'Connection not found');
@@ -58,7 +61,7 @@ router.get('/:id', async (req, res, next) => {
 
     res.json({
       success: true,
-      data: formatConnection(connection),
+      data: formatConnection(connection as WithId<ConnectionDoc>),
       timestamp: new Date(),
     });
   } catch (error) {
@@ -71,7 +74,7 @@ router.post('/', async (req, res, next) => {
   try {
     const validated = createConnectionSchema.parse(req.body);
     
-    const connection: Omit<Connection, '_id'> = {
+    const connection: ConnectionDoc = {
       ...validated,
       status: 'offline',
       metadata: {},
@@ -80,7 +83,7 @@ router.post('/', async (req, res, next) => {
       isManual: true,
     };
 
-    const result = await db.connections.insertOne(connection);
+    const result = await db.connections.insertOne(connection as any);
     
     res.status(201).json({
       success: true,
@@ -102,7 +105,7 @@ router.put('/:id', async (req, res, next) => {
     const validated = createConnectionSchema.partial().parse(req.body);
     
     const result = await db.connections.findOneAndUpdate(
-      { _id: new ObjectId(req.params.id) },
+      { _id: new ObjectId(req.params.id) } as any,
       {
         $set: {
           ...validated,
@@ -118,7 +121,7 @@ router.put('/:id', async (req, res, next) => {
 
     res.json({
       success: true,
-      data: formatConnection(result),
+      data: formatConnection(result as WithId<ConnectionDoc>),
       timestamp: new Date(),
     });
   } catch (error) {
@@ -135,7 +138,7 @@ router.delete('/:id', async (req, res, next) => {
   try {
     const result = await db.connections.deleteOne({
       _id: new ObjectId(req.params.id),
-    });
+    } as any);
 
     if (result.deletedCount === 0) {
       throw new AppError(404, 'Connection not found');
@@ -155,7 +158,7 @@ router.post('/:id/test', async (req, res, next) => {
   try {
     const connection = await db.connections.findOne({
       _id: new ObjectId(req.params.id),
-    });
+    } as any);
 
     if (!connection) {
       throw new AppError(404, 'Connection not found');
@@ -167,7 +170,7 @@ router.post('/:id/test', async (req, res, next) => {
 
     // Update connection status
     await db.connections.updateOne(
-      { _id: new ObjectId(req.params.id) },
+      { _id: new ObjectId(req.params.id) } as any,
       {
         $set: {
           status: isOnline ? 'online' : 'offline',
@@ -201,7 +204,7 @@ router.post('/scan', async (req, res, next) => {
     // Save results to database
     for (const result of results) {
       await db.connections.updateOne(
-        { endpoint: result.endpoint },
+        { endpoint: result.endpoint } as any,
         {
           $set: {
             ...result,
