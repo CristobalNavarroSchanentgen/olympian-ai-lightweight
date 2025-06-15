@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Card } from '@/components/ui/card';
 import { useChatStore } from '@/stores/useChatStore';
-import { useWebSocket } from '@/hooks/useWebSocket';
+import { api } from '@/services/api';
 import { ChatInput } from './ChatInput';
 import { MessageList } from './MessageList';
 import { ConversationSidebar } from './ConversationSidebar';
@@ -16,87 +16,18 @@ export function DivineDialog() {
     selectedModel,
     fetchModels,
     addMessage,
+    setCurrentConversation,
   } = useChatStore();
   
-  const { emit, on, off } = useWebSocket();
   const [isThinking, setIsThinking] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [currentMessageId, setCurrentMessageId] = useState<string | null>(null);
   const [streamedContent, setStreamedContent] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     fetchModels();
   }, [fetchModels]);
-
-  useEffect(() => {
-    // WebSocket event handlers
-    const handleThinking = ({ messageId }: { messageId: string }) => {
-      setCurrentMessageId(messageId);
-      setIsThinking(true);
-      setIsGenerating(false);
-    };
-
-    const handleGenerating = ({ messageId }: { messageId: string }) => {
-      setCurrentMessageId(messageId);
-      setIsThinking(false);
-      setIsGenerating(true);
-    };
-
-    const handleToken = ({ messageId, token }: { messageId: string; token: string }) => {
-      if (messageId === currentMessageId) {
-        setStreamedContent(prev => prev + token);
-      }
-    };
-
-    const handleComplete = ({ messageId, metadata }: { messageId: string; metadata: any }) => {
-      if (messageId === currentMessageId) {
-        // Add the assistant message to the store
-        const assistantMessage: Message = {
-          conversationId: currentConversation?._id || '',
-          role: 'assistant',
-          content: streamedContent,
-          metadata,
-          createdAt: new Date(),
-        };
-        addMessage(assistantMessage);
-        
-        // Reset states
-        setIsThinking(false);
-        setIsGenerating(false);
-        setCurrentMessageId(null);
-        setStreamedContent('');
-      }
-    };
-
-    const handleError = ({ messageId, error }: { messageId: string; error: string }) => {
-      if (messageId === currentMessageId) {
-        toast({
-          title: 'Error',
-          description: error,
-          variant: 'destructive',
-        });
-        setIsThinking(false);
-        setIsGenerating(false);
-        setCurrentMessageId(null);
-        setStreamedContent('');
-      }
-    };
-
-    on('chat:thinking', handleThinking);
-    on('chat:generating', handleGenerating);
-    on('chat:token', handleToken);
-    on('chat:complete', handleComplete);
-    on('chat:error', handleError);
-
-    return () => {
-      off('chat:thinking', handleThinking);
-      off('chat:generating', handleGenerating);
-      off('chat:token', handleToken);
-      off('chat:complete', handleComplete);
-      off('chat:error', handleError);
-    };
-  }, [currentMessageId, streamedContent, currentConversation, addMessage, on, off]);
 
   useEffect(() => {
     // Auto-scroll to bottom when new messages arrive
@@ -123,23 +54,62 @@ export function DivineDialog() {
     };
     addMessage(userMessage);
 
-    // Send message via WebSocket
-    emit('chat:message', {
-      content,
-      images,
-      model: selectedModel,
-      conversationId: currentConversation?._id?.toString() || '',
-    });
+    // Set loading states
+    setIsThinking(true);
+    setIsGenerating(false);
+    setStreamedContent('');
+
+    try {
+      // Send message via REST API
+      const response = await api.sendMessage({
+        message: content,
+        model: selectedModel,
+        conversationId: currentConversation?._id?.toString(),
+        images,
+      });
+
+      // If this was a new conversation, update the current conversation ID
+      if (!currentConversation && response.conversationId) {
+        // Fetch the new conversation details
+        const newConversation = await api.getConversation(response.conversationId);
+        setCurrentConversation(newConversation);
+      }
+
+      // Add the assistant message to the store
+      const assistantMessage: Message = {
+        conversationId: response.conversationId,
+        role: 'assistant',
+        content: response.message,
+        metadata: response.metadata,
+        createdAt: new Date(),
+      };
+      addMessage(assistantMessage);
+
+      // Reset states
+      setIsThinking(false);
+      setIsGenerating(false);
+      setStreamedContent('');
+    } catch (error) {
+      console.error('Error sending message:', error);
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to send message',
+        variant: 'destructive',
+      });
+      setIsThinking(false);
+      setIsGenerating(false);
+      setStreamedContent('');
+    }
   };
 
   const handleCancelGeneration = () => {
-    if (currentMessageId) {
-      emit('chat:cancel', { messageId: currentMessageId });
-      setIsThinking(false);
-      setIsGenerating(false);
-      setCurrentMessageId(null);
-      setStreamedContent('');
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
     }
+    setIsThinking(false);
+    setIsGenerating(false);
+    setStreamedContent('');
   };
 
   return (
