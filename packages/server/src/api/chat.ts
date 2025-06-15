@@ -4,6 +4,7 @@ import { OllamaStreamliner } from '../services/OllamaStreamliner';
 import { AppError } from '../middleware/errorHandler';
 import { chatRateLimiter } from '../middleware/rateLimiter';
 import { z } from 'zod';
+import { Message } from '@olympian/shared';
 
 const router = Router();
 const db = DatabaseService.getInstance();
@@ -26,7 +27,7 @@ router.post('/send', async (req, res, next) => {
     // Validate input
     const validation = sendMessageSchema.safeParse(req.body);
     if (!validation.success) {
-      throw new AppError(400, 'Invalid request body', validation.error.errors);
+      throw new AppError(400, 'Invalid request body');
     }
 
     const { message, conversationId, model, images } = validation.data;
@@ -49,7 +50,7 @@ router.post('/send', async (req, res, next) => {
     // Save user message
     await db.messages.insertOne({
       conversationId: convId,
-      role: 'user',
+      role: 'user' as const,
       content: message,
       images,
       createdAt: new Date(),
@@ -74,9 +75,9 @@ router.post('/send', async (req, res, next) => {
     });
 
     // Save assistant message
-    const assistantMessage = {
+    const assistantMessage: Message = {
       conversationId: convId,
-      role: 'assistant',
+      role: 'assistant' as const,
       content: assistantContent,
       metadata: {
         model,
