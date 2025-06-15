@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { ObjectId } from 'mongodb';
+import { ObjectId, WithId } from 'mongodb';
 import { DatabaseService } from '../services/DatabaseService';
 import { OllamaStreamliner } from '../services/OllamaStreamliner';
 import { AppError } from '../middleware/errorHandler';
@@ -22,8 +22,12 @@ const sendMessageSchema = z.object({
   images: z.array(z.string()).optional(),
 });
 
+// Database document types (with ObjectId)
+type ConversationDoc = Omit<Conversation, '_id'> & { _id?: ObjectId };
+type MessageDoc = Omit<Message, '_id'> & { _id?: ObjectId };
+
 // Helper function to convert MongoDB document to proper format
-function formatConversation(doc: any): Conversation {
+function formatConversation(doc: WithId<ConversationDoc>): Conversation {
   return {
     ...doc,
     _id: doc._id.toString(),
@@ -32,7 +36,7 @@ function formatConversation(doc: any): Conversation {
   };
 }
 
-function formatMessage(doc: any): Message {
+function formatMessage(doc: WithId<MessageDoc>): Message {
   return {
     ...doc,
     _id: doc._id?.toString(),
@@ -59,22 +63,22 @@ router.post('/send', async (req, res, next) => {
       // Validate existing conversation
       const existingConv = await db.conversations.findOne({ 
         _id: new ObjectId(conversationId) 
-      });
+      } as any);
       if (!existingConv) {
         throw new AppError(404, 'Conversation not found');
       }
       convId = conversationId;
-      conversation = formatConversation(existingConv);
+      conversation = formatConversation(existingConv as WithId<ConversationDoc>);
     } else {
       // Create new conversation
-      const newConversation: Omit<Conversation, '_id'> = {
+      const newConversation: ConversationDoc = {
         title: message.substring(0, 50) + (message.length > 50 ? '...' : ''),
         model,
         createdAt: new Date(),
         updatedAt: new Date(),
         messageCount: 0,
       };
-      const result = await db.conversations.insertOne(newConversation);
+      const result = await db.conversations.insertOne(newConversation as any);
       convId = result.insertedId.toString();
       conversation = formatConversation({
         ...newConversation,
@@ -83,14 +87,14 @@ router.post('/send', async (req, res, next) => {
     }
 
     // Save user message
-    const userMessage: Omit<Message, '_id'> = {
+    const userMessage: MessageDoc = {
       conversationId: convId,
       role: 'user' as const,
       content: message,
       images,
       createdAt: new Date(),
     };
-    await db.messages.insertOne(userMessage);
+    await db.messages.insertOne(userMessage as any);
 
     // Process the request
     const processedRequest = await streamliner.processRequest({
@@ -111,7 +115,7 @@ router.post('/send', async (req, res, next) => {
     });
 
     // Save assistant message
-    const assistantMessage: Omit<Message, '_id'> = {
+    const assistantMessage: MessageDoc = {
       conversationId: convId,
       role: 'assistant' as const,
       content: assistantContent,
@@ -122,11 +126,11 @@ router.post('/send', async (req, res, next) => {
       },
       createdAt: new Date(),
     };
-    await db.messages.insertOne(assistantMessage);
+    await db.messages.insertOne(assistantMessage as any);
 
     // Update conversation
     await db.conversations.updateOne(
-      { _id: new ObjectId(convId) },
+      { _id: new ObjectId(convId) } as any,
       {
         $set: { updatedAt: new Date() },
         $inc: { messageCount: 2 },
@@ -167,7 +171,7 @@ router.get('/conversations', async (req, res, next) => {
 
     res.json({
       success: true,
-      data: conversations.map(formatConversation),
+      data: conversations.map(conv => formatConversation(conv as WithId<ConversationDoc>)),
       page: Number(page),
       pageSize: Number(limit),
       total,
@@ -184,7 +188,7 @@ router.get('/conversations/:id', async (req, res, next) => {
   try {
     const conversation = await db.conversations.findOne({
       _id: new ObjectId(req.params.id),
-    });
+    } as any);
 
     if (!conversation) {
       throw new AppError(404, 'Conversation not found');
@@ -192,7 +196,7 @@ router.get('/conversations/:id', async (req, res, next) => {
 
     res.json({
       success: true,
-      data: formatConversation(conversation),
+      data: formatConversation(conversation as WithId<ConversationDoc>),
       timestamp: new Date(),
     });
   } catch (error) {
@@ -209,17 +213,17 @@ router.get('/conversations/:id/messages', async (req, res, next) => {
 
     const [messages, total] = await Promise.all([
       db.messages
-        .find({ conversationId })
+        .find({ conversationId } as any)
         .sort({ createdAt: 1 })
         .skip(skip)
         .limit(Number(limit))
         .toArray(),
-      db.messages.countDocuments({ conversationId }),
+      db.messages.countDocuments({ conversationId } as any),
     ]);
 
     res.json({
       success: true,
-      data: messages.map(formatMessage),
+      data: messages.map(msg => formatMessage(msg as WithId<MessageDoc>)),
       page: Number(page),
       pageSize: Number(limit),
       total,
@@ -237,12 +241,12 @@ router.delete('/conversations/:id', async (req, res, next) => {
     const conversationId = req.params.id;
 
     // Delete all messages first
-    await db.messages.deleteMany({ conversationId });
+    await db.messages.deleteMany({ conversationId } as any);
 
     // Delete the conversation
     const result = await db.conversations.deleteOne({ 
       _id: new ObjectId(conversationId) 
-    });
+    } as any);
 
     if (result.deletedCount === 0) {
       throw new AppError(404, 'Conversation not found');
@@ -270,17 +274,17 @@ router.get('/search', async (req, res, next) => {
 
     const [messages, total] = await Promise.all([
       db.messages
-        .find({ $text: { $search: q } })
-        .sort({ score: { $meta: 'textScore' } })
+        .find({ $text: { $search: q } } as any)
+        .sort({ score: { $meta: 'textScore' } } as any)
         .skip(skip)
         .limit(Number(limit))
         .toArray(),
-      db.messages.countDocuments({ $text: { $search: q } }),
+      db.messages.countDocuments({ $text: { $search: q } } as any),
     ]);
 
     res.json({
       success: true,
-      data: messages.map(formatMessage),
+      data: messages.map(msg => formatMessage(msg as WithId<MessageDoc>)),
       page: Number(page),
       pageSize: Number(limit),
       total,
