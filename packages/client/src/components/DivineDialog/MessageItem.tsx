@@ -1,15 +1,26 @@
+import { useState, useEffect } from 'react';
 import { Message } from '@olympian/shared';
 import { format } from 'date-fns';
 import { User, Bot } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { cn } from '@/lib/utils';
+import { TypewriterText } from './TypewriterText';
 
 interface MessageItemProps {
   message: Message;
+  isLatest?: boolean;
 }
 
-export function MessageItem({ message }: MessageItemProps) {
+export function MessageItem({ message, isLatest = false }: MessageItemProps) {
   const isUser = message.role === 'user';
+  const [hasTyped, setHasTyped] = useState(!isLatest || isUser);
+
+  // Reset typing state when message changes
+  useEffect(() => {
+    if (isLatest && !isUser) {
+      setHasTyped(false);
+    }
+  }, [message._id, isLatest, isUser]);
 
   return (
     <div className={cn('flex items-start gap-3', isUser && 'flex-row-reverse')}>
@@ -67,30 +78,40 @@ export function MessageItem({ message }: MessageItemProps) {
           {isUser ? (
             <p className="text-sm whitespace-pre-wrap">{message.content}</p>
           ) : (
-            <ReactMarkdown
-              className="prose prose-sm dark:prose-invert max-w-none"
-              components={{
-                pre: ({ node, ...props }) => (
-                  <pre className="overflow-x-auto rounded-lg bg-background p-3" {...props} />
-                ),
-                code: ({ node, children, className, ...props }) => {
-                  const match = /language-(\w+)/.exec(className || '');
-                  const isInline = !match;
-                  
-                  return isInline ? (
-                    <code className="rounded bg-background px-1 py-0.5" {...props}>
-                      {children}
-                    </code>
-                  ) : (
-                    <code className={className} {...props}>
-                      {children}
-                    </code>
-                  );
-                },
-              }}
-            >
-              {message.content}
-            </ReactMarkdown>
+            <>
+              {!hasTyped && isLatest ? (
+                <TypewriterText
+                  content={message.content}
+                  speed={15}
+                  onComplete={() => setHasTyped(true)}
+                />
+              ) : (
+                <ReactMarkdown
+                  className="prose prose-sm dark:prose-invert max-w-none"
+                  components={{
+                    pre: ({ node, ...props }) => (
+                      <pre className="overflow-x-auto rounded-lg bg-background p-3" {...props} />
+                    ),
+                    code: ({ node, children, className, ...props }) => {
+                      const match = /language-(\w+)/.exec(className || '');
+                      const isInline = !match;
+                      
+                      return isInline ? (
+                        <code className="rounded bg-background px-1 py-0.5" {...props}>
+                          {children}
+                        </code>
+                      ) : (
+                        <code className={className} {...props}>
+                          {children}
+                        </code>
+                      );
+                    },
+                  }}
+                >
+                  {message.content}
+                </ReactMarkdown>
+              )}
+            </>
           )}
           
           {/* Error */}
