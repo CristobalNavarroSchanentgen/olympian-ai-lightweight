@@ -31,7 +31,11 @@ export function MessageList({
   return (
     <div className="space-y-4">
       {messages.map((message, index) => (
-        <MessageItem key={message._id?.toString() || index} message={message} />
+        <MessageItem 
+          key={message._id?.toString() || index} 
+          message={message} 
+          isLatest={index === messages.length - 1 && message.role === 'assistant'}
+        />
       ))}
       
       {/* Thinking State */}
