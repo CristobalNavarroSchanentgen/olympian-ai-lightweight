@@ -57,3 +57,35 @@
     @apply bg-background text-foreground;
   }
 }
+
+@layer components {
+  /* Typewriter cursor animation */
+  .typewriter-cursor {
+    display: inline-block;
+    width: 3px;
+    height: 1.2em;
+    background-color: hsl(var(--foreground));
+    animation: cursor-blink 1s infinite;
+    margin-left: 2px;
+    vertical-align: text-bottom;
+  }
+
+  @keyframes cursor-blink {
+    0% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0;
+    }
+    100% {
+      opacity: 1;
+    }
+  }
+
+  /* Ensure cursor appears inline with text */
+  .prose .typewriter-cursor {
+    display: inline-block;
+    vertical-align: baseline;
+    margin-bottom: -0.1em;
+  }
+}
