@@ -42,6 +42,9 @@ services:
       # Deployment mode
       DEPLOYMENT_MODE: ${DEPLOYMENT_MODE:-multi-host}
       
+      # Docker environment indicator
+      RUNNING_IN_DOCKER: "true"
+      
       # External services (configured in .env)
       # Use Docker service name for MongoDB when containerized
       MONGODB_URI: ${MONGODB_URI:-mongodb://mongodb:27017/olympian_ai_lite}
