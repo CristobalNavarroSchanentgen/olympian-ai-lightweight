@@ -206,11 +206,12 @@ env-docker-multi-interactive: ## Interactive multi-host environment configuratio
 	sed -i.bak 's|^OLLAMA_HOST=.*|OLLAMA_HOST='"$$ollama_url"'|' .env
 	@echo ""
 	@echo "$(CYAN)🗄️  MongoDB Configuration:$(RESET)"
+	@echo "$(YELLOW)Note: Backend uses host networking mode, so containerized MongoDB will be accessible via localhost:27017$(RESET)"
 	@printf "Use default MongoDB setup? (y/N): "; \
 	read use_default_mongo; \
 	if [ "$$use_default_mongo" = "y" ] || [ "$$use_default_mongo" = "Y" ]; then \
-		sed -i.bak 's|^MONGODB_URI=.*|MONGODB_URI=mongodb://olympian-mongodb:27017/olympian_ai_lite|' .env; \
-		echo "$(GREEN)✅ Using containerized MongoDB$(RESET)"; \
+		sed -i.bak 's|^MONGODB_URI=.*|MONGODB_URI=mongodb://localhost:27017/olympian_ai_lite|' .env; \
+		echo "$(GREEN)✅ Using containerized MongoDB (accessible via localhost due to host networking)$(RESET)"; \
 	else \
 		printf "Enter MongoDB host (IP address or DNS name, or press Enter to use containerized MongoDB): "; \
 		read mongo_host; \
@@ -227,8 +228,8 @@ env-docker-multi-interactive: ## Interactive multi-host environment configuratio
 			sed -i.bak 's|^MONGODB_URI=.*|MONGODB_URI='"$$mongo_uri"'|' .env; \
 			echo "$(GREEN)✅ MongoDB configured for external host: $$mongo_host$(RESET)"; \
 		else \
-			sed -i.bak 's|^MONGODB_URI=.*|MONGODB_URI=mongodb://olympian-mongodb:27017/olympian_ai_lite|' .env; \
-			echo "$(GREEN)✅ Using containerized MongoDB$(RESET)"; \
+			sed -i.bak 's|^MONGODB_URI=.*|MONGODB_URI=mongodb://localhost:27017/olympian_ai_lite|' .env; \
+			echo "$(GREEN)✅ Using containerized MongoDB (accessible via localhost due to host networking)$(RESET)"; \
 		fi; \
 	fi
 	@echo ""
