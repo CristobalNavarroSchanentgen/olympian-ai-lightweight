@@ -42,6 +42,7 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       JWT_SECRET: ${JWT_SECRET}
       SESSION_SECRET: ${SESSION_SECRET}
+      RUNNING_IN_DOCKER: "true"
     volumes:
       - config-data:/config/.olympian-ai-lite
       - logs:/app/logs
