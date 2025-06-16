@@ -26,7 +26,11 @@ const deploymentConfig = getDeploymentConfig();
 
 // Configure Express trust proxy for multi-host deployments
 // This is crucial for rate limiting and client IP detection when behind reverse proxies
-if (deploymentConfig.mode === 'multi-host') {
+// Also handle legacy "docker-multi-host" mode designation
+const isMultiHostDeployment = deploymentConfig.mode === 'multi-host' || 
+                              process.env.DEPLOYMENT_MODE?.includes('multi-host');
+
+if (isMultiHostDeployment) {
   logger.info('Configuring Express to trust proxy headers for multi-host deployment');
   app.set('trust proxy', true);
 }
