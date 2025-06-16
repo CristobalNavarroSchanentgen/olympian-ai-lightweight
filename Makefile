@@ -35,7 +35,7 @@ setup: ## Install dependencies and create .env from template
 
 quick-docker-multi: env-docker-multi-interactive build-prod up-prod ## Quick setup for multi-host Docker deployment
 
-quick-docker-same-existing: build-prod up-prod ## Quick setup for same-host Docker deployment with existing config
+quick-docker-same-existing: build-prod-clean up-prod ## Quick setup for same-host Docker deployment with existing config (forces clean rebuild)
 
 ##@ 🏗️  Building
 
@@ -46,6 +46,10 @@ build: ## Build the application for development
 build-prod: ## Build the application for production
 	@echo "$(CYAN)🏗️  Building application for production...$(RESET)"
 	@docker-compose -f docker-compose.prod.yml build
+
+build-prod-clean: ## Build the application for production (no cache)
+	@echo "$(CYAN)🏗️  Building application for production (clean build)...$(RESET)"
+	@docker-compose -f docker-compose.prod.yml build --no-cache
 
 ##@ 🐳 Docker Commands
 
