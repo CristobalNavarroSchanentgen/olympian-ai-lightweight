@@ -237,34 +237,38 @@ export class OllamaStreamliner {
         }
       }
 
-      // Method 7: Enhanced modelfile inspection
+      // Method 7: More specific modelfile inspection (avoid false positives)
       const modelfile = modelInfo.modelfile || '';
       if (modelfile) {
-        const visionModelfilePatterns = [
-          'vision_encoder', 'image_processor', 'clip', 'vit',
-          'PARAMETER vision', 'vision true', 'multimodal',
-          'image_size', 'patch_size', 'vision_config',
-          'image_token', 'visual', 'img_', 'image_'
+        // Be more specific to avoid false positives - look for actual vision configuration
+        const specificVisionPatterns = [
+          'vision_encoder', 'image_processor', 'clip_model', 'vision_tower',
+          'PARAMETER.*vision', 'vision.*true', 'multimodal.*true',
+          'image_size.*\\d+', 'patch_size.*\\d+', 'vision_config',
+          'image_token_index', 'vision_feature', 'visual_encoder'
         ];
-        detectionResults.modelfile = visionModelfilePatterns.some(pattern => 
-          modelfile.toLowerCase().includes(pattern.toLowerCase())
-        );
+        detectionResults.modelfile = specificVisionPatterns.some(pattern => {
+          const regex = new RegExp(pattern, 'i');
+          return regex.test(modelfile);
+        });
         if (detectionResults.modelfile) {
-          logger.info(`✓ Vision detected via modelfile patterns for '${model}'`);
+          logger.info(`✓ Vision detected via specific modelfile patterns for '${model}'`);
           return true;
         }
       }
 
-      // Method 8: Enhanced name pattern matching (fallback)
+      // Method 8: Enhanced and more specific name pattern matching (fallback)
       const visionNamePatterns = [
         'llava', 'bakllava', 'llava-llama3', 'llava-phi3', 'llava-v1.6',
-        'llama3.2-vision', 'moondream', 'vision', 'multimodal',
-        'cogvlm', 'instructblip', 'blip', 'minicpm-v', 'qwen-vl',
-        'internvl', 'deepseek-vl', 'yi-vl', 'phi-3-vision'
+        'llama3.2-vision', 'moondream', 'cogvlm', 'instructblip', 'blip',
+        'minicpm-v', 'qwen.*vl', 'qwen.*vision', 'internvl', 'deepseek-vl', 
+        'yi-vl', 'phi.*vision', 'phi-3-vision', 'vision', 'multimodal'
       ];
-      detectionResults.namePattern = visionNamePatterns.some(pattern => 
-        model.toLowerCase().includes(pattern.toLowerCase())
-      );
+      
+      detectionResults.namePattern = visionNamePatterns.some(pattern => {
+        const regex = new RegExp(pattern, 'i');
+        return regex.test(model);
+      });
       
       if (detectionResults.namePattern) {
         logger.info(`✓ Vision detected via name pattern for '${model}'`);
@@ -372,6 +376,7 @@ export class OllamaStreamliner {
       }
 
       logger.info(`Successfully processed images with vision model, response length: ${result.response.length}`);
+      logger.debug(`Vision model response preview: ${result.response.substring(0, 200)}...`);
       return result.response;
     } catch (error) {
       logger.error('Failed to process image with vision model:', {
@@ -485,27 +490,40 @@ export class OllamaStreamliner {
     request: ChatRequest,
     history: Array<{ role: string; content: string; images?: string[] }>
   ): Promise<ProcessedRequest> {
-    // Process images with vision model first
-    const imageDescription = await this.processImageWithVisionModel(
-      request.images!,
-      request.content,
-      request.visionModel!
-    );
+    logger.info(`Starting hybrid vision processing for request`);
+    
+    try {
+      // Process images with vision model first
+      const imageDescription = await this.processImageWithVisionModel(
+        request.images!,
+        request.content,
+        request.visionModel!
+      );
 
-    // Add the processed content to history
-    const messages = [
-      ...history,
-      {
-        role: 'user',
-        content: `${request.content} [Image Description: ${imageDescription}]`,
-      },
-    ];
+      logger.info(`Vision processing complete, description length: ${imageDescription.length}`);
 
-    return {
-      model: request.model,
-      messages,
-      stream: true,
-    };
+      // Add the processed content to history
+      const enhancedContent = `${request.content}\n\n[Image Analysis: ${imageDescription}]`;
+      const messages = [
+        ...history,
+        {
+          role: 'user',
+          content: enhancedContent,
+        },
+      ];
+
+      logger.info(`Hybrid request formatted with ${messages.length} total messages`);
+      logger.debug(`Enhanced content preview: ${enhancedContent.substring(0, 200)}...`);
+
+      return {
+        model: request.model,
+        messages,
+        stream: true,
+      };
+    } catch (error) {
+      logger.error('Error in formatHybridVisionRequest:', error);
+      throw error;
+    }
   }
 
   private formatVisionRequest(
@@ -556,6 +574,13 @@ export class OllamaStreamliner {
   ): Promise<void> {
     const ollamaHost = this.getOllamaHost(clientIp);
     
+    logger.info(`Starting stream chat with model: ${processedRequest.model}`);
+    logger.debug(`Request preview: ${JSON.stringify({
+      model: processedRequest.model,
+      messageCount: processedRequest.messages.length,
+      lastMessagePreview: processedRequest.messages[processedRequest.messages.length - 1]?.content?.substring(0, 100) + '...'
+    })}`);
+    
     try {
       const response = await fetch(`${ollamaHost}/api/chat`, {
         method: 'POST',
@@ -564,7 +589,9 @@ export class OllamaStreamliner {
       });
 
       if (!response.ok) {
-        throw new AppError(response.status, `Ollama request failed: ${response.statusText}`);
+        const errorText = await response.text();
+        logger.error(`Ollama chat request failed: ${response.status} ${response.statusText}`, { errorText });
+        throw new AppError(response.status, `Ollama request failed: ${response.statusText} - ${errorText}`);
       }
 
       const reader = response.body?.getReader();
@@ -574,8 +601,11 @@ export class OllamaStreamliner {
 
       const decoder = new TextDecoder();
       let buffer = '';
+      let tokenCount = 0;
 
       try {
+        logger.info('Starting to stream response tokens...');
+        
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
@@ -589,14 +619,24 @@ export class OllamaStreamliner {
               try {
                 const json = JSON.parse(line) as OllamaStreamResponse;
                 if (json.message?.content) {
+                  tokenCount++;
                   onToken(json.message.content);
+                  
+                  if (tokenCount === 1) {
+                    logger.info('First token received and sent to client');
+                  }
+                  if (tokenCount % 50 === 0) {
+                    logger.debug(`Streamed ${tokenCount} tokens so far`);
+                  }
                 }
               } catch (error) {
-                logger.error('Failed to parse Ollama response:', error);
+                logger.error('Failed to parse Ollama response line:', { line, error });
               }
             }
           }
         }
+        
+        logger.info(`Stream completed successfully with ${tokenCount} tokens`);
         
         // Report success to load balancer
         if (this.loadBalancer) {
@@ -606,6 +646,12 @@ export class OllamaStreamliner {
         reader.releaseLock();
       }
     } catch (error) {
+      logger.error('Error in streamChat:', {
+        error: error instanceof Error ? error.message : error,
+        host: ollamaHost,
+        model: processedRequest.model
+      });
+      
       // Report failure to load balancer
       if (this.loadBalancer) {
         this.loadBalancer.reportFailure(ollamaHost);

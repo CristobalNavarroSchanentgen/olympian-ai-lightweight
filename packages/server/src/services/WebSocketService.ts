@@ -76,14 +76,25 @@ export class WebSocketService {
     const abortController = new AbortController();
     this.activeChats.set(messageId, abortController);
 
+    logger.info(`Starting chat message processing`, {
+      messageId,
+      model: data.model,
+      hasImages: !!data.images?.length,
+      imageCount: data.images?.length || 0,
+      hasVisionModel: !!data.visionModel,
+      conversationId: data.conversationId
+    });
+
     try {
       // Emit thinking state
       socket.emit('chat:thinking', { messageId });
+      logger.debug(`Emitted thinking state for message ${messageId}`);
 
       // Get or create conversation
       let conversationId: string;
       if (data.conversationId) {
         conversationId = data.conversationId;
+        logger.debug(`Using existing conversation: ${conversationId}`);
       } else {
         const conversation = await this.db.conversations.insertOne({
           title: data.content.substring(0, 50) + '...',
@@ -93,6 +104,7 @@ export class WebSocketService {
           messageCount: 0,
         });
         conversationId = conversation.insertedId.toString();
+        logger.info(`Created new conversation: ${conversationId}`);
         
         // Emit new conversation created
         socket.emit('conversation:created', { conversationId });
@@ -106,28 +118,60 @@ export class WebSocketService {
         images: data.images,
         createdAt: new Date(),
       });
+      logger.debug(`Saved user message to database for conversation ${conversationId}`);
 
       // Process the request with conversation history
+      logger.info(`Processing request for model ${data.model} with streamliner`);
       const processedRequest = await this.streamliner.processRequest({
         ...data,
         conversationId,
       });
+      logger.info(`Request processed successfully`, {
+        model: processedRequest.model,
+        messageCount: processedRequest.messages.length
+      });
 
       // Emit generating state
       socket.emit('chat:generating', { messageId });
+      logger.debug(`Emitted generating state for message ${messageId}`);
 
       // Stream the response
       let assistantContent = '';
       const startTime = Date.now();
       let tokenCount = 0;
+      let firstTokenTime: number | null = null;
+
+      logger.info(`Starting stream chat for message ${messageId}`);
 
       await this.streamliner.streamChat(processedRequest, (token: string) => {
         if (abortController.signal.aborted) {
+          logger.warn(`Chat cancelled for message ${messageId}`);
           throw new Error('Chat cancelled');
         }
+        
         assistantContent += token;
         tokenCount++;
+        
+        if (tokenCount === 1) {
+          firstTokenTime = Date.now();
+          logger.info(`First token received for message ${messageId}, latency: ${firstTokenTime - startTime}ms`);
+        }
+        
+        // Emit token to client
         socket.emit('chat:token', { messageId, token });
+        
+        if (tokenCount % 10 === 0) {
+          logger.debug(`Emitted token ${tokenCount} for message ${messageId}`);
+        }
+      });
+
+      const totalTime = Date.now() - startTime;
+      logger.info(`Stream completed for message ${messageId}`, {
+        totalTokens: tokenCount,
+        totalTime: `${totalTime}ms`,
+        firstTokenLatency: firstTokenTime ? `${firstTokenTime - startTime}ms` : 'N/A',
+        contentLength: assistantContent.length,
+        tokensPerSecond: tokenCount > 0 ? Math.round((tokenCount / totalTime) * 1000) : 0
       });
 
       // Save assistant message
@@ -138,11 +182,12 @@ export class WebSocketService {
         metadata: {
           model: data.model,
           tokens: tokenCount,
-          generationTime: Date.now() - startTime,
+          generationTime: totalTime,
         },
         createdAt: new Date(),
       };
       await this.db.messages.insertOne(assistantMessage);
+      logger.debug(`Saved assistant message to database (${assistantContent.length} chars)`);
 
       // Update conversation
       await this.db.conversations.updateOne(
@@ -166,22 +211,35 @@ export class WebSocketService {
         conversationId,
         metadata: assistantMessage.metadata!,
       });
+      logger.info(`Chat completed successfully for message ${messageId}`);
+
     } catch (error) {
-      logger.error('Chat error:', error);
+      logger.error(`Chat error for message ${messageId}:`, {
+        error: error instanceof Error ? error.message : error,
+        stack: error instanceof Error ? error.stack : undefined,
+        messageId,
+        model: data.model,
+        hasImages: !!data.images?.length
+      });
+      
       socket.emit('chat:error', {
         messageId,
         error: error instanceof Error ? error.message : 'Unknown error',
       });
     } finally {
       this.activeChats.delete(messageId);
+      logger.debug(`Cleaned up active chat for message ${messageId}`);
     }
   }
 
   private handleChatCancel(messageId: string): void {
     const controller = this.activeChats.get(messageId);
     if (controller) {
+      logger.info(`Cancelling chat for message ${messageId}`);
       controller.abort();
       this.activeChats.delete(messageId);
+    } else {
+      logger.warn(`Attempted to cancel non-existent chat: ${messageId}`);
     }
   }
 
@@ -190,8 +248,10 @@ export class WebSocketService {
     data: ClientEvents['model:select']
   ): Promise<void> {
     try {
+      logger.debug(`Model selected: ${data.model}`);
       const capabilities = await this.streamliner.detectCapabilities(data.model);
       socket.emit('model:capabilities', capabilities);
+      logger.debug(`Emitted capabilities for model ${data.model}:`, capabilities);
     } catch (error) {
       logger.error('Model select error:', error);
     }
