@@ -15,7 +15,7 @@ export const rateLimiter = rateLimit({
   keyGenerator: (req) => {
     // When trust proxy is enabled, express-rate-limit will automatically
     // use the correct client IP from X-Forwarded-For headers
-    return req.ip;
+    return req.ip || 'unknown';
   },
 });
 
@@ -29,7 +29,7 @@ export const chatRateLimiter = rateLimit({
   skipSuccessfulRequests: false,
   skipFailedRequests: false,
   keyGenerator: (req) => {
-    return req.ip;
+    return req.ip || 'unknown';
   },
 });
 
@@ -43,6 +43,6 @@ export const authRateLimiter = rateLimit({
   skipSuccessfulRequests: true, // Don't count successful auth attempts
   skipFailedRequests: false,
   keyGenerator: (req) => {
-    return req.ip;
+    return req.ip || 'unknown';
   },
 });
