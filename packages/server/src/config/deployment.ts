@@ -39,6 +39,10 @@ export function getDeploymentConfig(): DeploymentConfig {
                    // Check if MONGODB_URI contains mongodb service name
                    (process.env.MONGODB_URI && process.env.MONGODB_URI.includes('mongodb://mongodb:'));
 
+  // Debug logging
+  logger.info(`Docker environment detection: RUNNING_IN_DOCKER=${process.env.RUNNING_IN_DOCKER}, NODE_ENV=${process.env.NODE_ENV}, isDocker=${isDocker}`);
+  logger.info(`Environment MONGODB_URI: ${process.env.MONGODB_URI}`);
+
   if (mode === 'development') {
     // Development mode configuration
     // When running in Docker, use Docker service names
@@ -49,6 +53,8 @@ export function getDeploymentConfig(): DeploymentConfig {
     const ollamaHost = isDocker
       ? (process.env.OLLAMA_HOST || 'http://host.docker.internal:11434')
       : (process.env.OLLAMA_HOST || 'http://localhost:11434');
+
+    logger.info(`Development mode configuration: mongoUri=${mongoUri}, ollamaHost=${ollamaHost}`);
 
     return {
       mode,
