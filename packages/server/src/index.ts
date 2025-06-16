@@ -56,8 +56,8 @@ const PORT = process.env.PORT || 4000;
 
 async function start(): Promise<void> {
   try {
-    // Connect to MongoDB
-    await dbService.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/olympian_ai_lite');
+    // Connect to MongoDB using deployment configuration
+    await dbService.connect();
     logger.info('Connected to MongoDB');
 
     // Start WebSocket service
