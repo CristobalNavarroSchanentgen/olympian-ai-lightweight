@@ -13,7 +13,8 @@ services:
       - "${APP_PORT:-8080}:80"
     environment:
       DEPLOYMENT_MODE: ${DEPLOYMENT_MODE:-multi-host}
-      BACKEND_HOST: backend
+      # When backend uses host networking, connect via localhost
+      BACKEND_HOST: ${BACKEND_HOST:-localhost}
       BACKEND_PORT: 4000
     depends_on:
       - backend
@@ -32,12 +33,14 @@ services:
       dockerfile: docker/backend/Dockerfile
     container_name: olympian-backend
     restart: unless-stopped
+    # Use host networking to access internal network resources like Ollama
+    network_mode: host
     environment:
       # Deployment mode
       DEPLOYMENT_MODE: ${DEPLOYMENT_MODE:-multi-host}
       
       # External services (configured in .env)
-      MONGODB_URI: ${MONGODB_URI}
+      MONGODB_URI: ${MONGODB_URI:-mongodb://localhost:27017/olympian_ai_lite}
       OLLAMA_HOST: ${OLLAMA_HOST}
       
       # Optional: Multiple hosts for load balancing
@@ -64,8 +67,6 @@ services:
       - logs:/app/logs
     depends_on:
       - mongodb
-    networks:
-      - olympian-network
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:4000/api/health"]
       interval: 30s
@@ -78,6 +79,8 @@ services:
     image: mongo:7
     container_name: olympian-mongodb
     restart: unless-stopped
+    ports:
+      - "27017:27017"  # Expose to host so backend can access via host networking
     volumes:
       - mongodb-data:/data/db
     environment:
