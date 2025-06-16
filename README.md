@@ -9,8 +9,21 @@ A minimalist MCP client application focused on seamless Ollama integration with 
 - **MCP Config Panel**: Visual editor for MCP configuration and tool descriptions
 - **Divine Dialog**: Advanced chat interface with model state indicators, image support, and persistent history
 - **Chat Memory**: Intelligent conversation context management for coherent multi-turn conversations
+- **Vision Capabilities**: Process images with vision models or hybrid vision/text processing
 - **Ollama Streamliner**: Intelligent request handling based on model capabilities
 - **Automatic Nginx Configuration**: Zero-config nginx setup with environment-based routing
+
+## What's New: Vision Capabilities 🎨
+
+The latest version includes comprehensive vision support for processing images with AI models:
+
+- **Image Upload**: Drag-and-drop or browse to upload images in chat
+- **Vision Model Detection**: Automatically identifies vision-capable models
+- **Hybrid Processing**: Use separate vision and text models for flexibility
+- **Smart Fallback**: Clear guidance when vision models are needed
+- **Multiple Formats**: Support for PNG, JPG, JPEG, GIF, and WebP
+
+[Read the full Vision Capabilities documentation](docs/VISION_CAPABILITIES.md)
 
 ## What's New: Chat Memory Feature 🧠
 
@@ -225,9 +238,31 @@ make db-restore                   # Restore MongoDB
 4. **Start chatting**: Select a model in Divine Dialog and start conversing
    - Your conversation history is automatically maintained
    - The AI has context of previous messages
+   - Upload images for vision models to analyze
    - Monitor memory usage with the new API endpoints
 
 ## Architecture Improvements
+
+### 🎨 Vision Processing System
+
+The application now supports comprehensive image processing with intelligent model selection:
+
+**Key Benefits**:
+- ✅ **Automatic Vision Detection**: Identifies which models support vision
+- ✅ **Hybrid Processing**: Use separate vision and text models
+- ✅ **Smart Fallback**: Clear guidance when vision capabilities are needed
+- ✅ **Multiple Formats**: Support for common image formats
+
+**Architecture**:
+```
+Image Upload
+    ↓
+Vision Model Selection
+    ↓
+Direct Vision (if supported) OR Hybrid Processing
+    ↓
+AI Response with Image Understanding
+```
 
 ### 🚀 Automatic Nginx Configuration
 
@@ -352,6 +387,18 @@ docker exec olympian-frontend curl -f http://backend:4000/api/health
 curl http://localhost:11434/api/tags
 ```
 
+### Vision Model Issues
+```bash
+# Check available vision models
+curl http://localhost:4000/api/chat/vision-models
+
+# Pull a vision model if none available
+ollama pull llava:13b
+
+# Check model capabilities
+curl http://localhost:4000/api/chat/models/{modelName}/capabilities
+```
+
 ### Chat Memory Issues
 ```bash
 # Check memory stats for a conversation
@@ -374,7 +421,8 @@ olympian-ai-lightweight/
 │   ├── client/                   # React frontend
 │   ├── server/                   # Express backend
 │   │   └── services/
-│   │       └── ChatMemoryService.ts  # 🧠 Memory management
+│   │       ├── ChatMemoryService.ts  # 🧠 Memory management
+│   │       └── OllamaStreamliner.ts  # 🎨 Vision processing
 │   └── shared/                   # Shared types
 ├── docker/
 │   ├── frontend/                 # Frontend + nginx
@@ -384,7 +432,8 @@ olympian-ai-lightweight/
 │       └── conf.d/               # Nginx configurations
 ├── docs/
 │   ├── nginx-configuration.md    # Nginx documentation
-│   └── CHAT_MEMORY.md           # Chat memory documentation
+│   ├── CHAT_MEMORY.md           # Chat memory documentation
+│   └── VISION_CAPABILITIES.md   # Vision features documentation
 └── scripts/                      # Helper scripts
 ```
 
@@ -401,7 +450,8 @@ olympian-ai-lightweight/
 - [Architecture Overview](docs/ARCHITECTURE.md)
 - [API Documentation](docs/API.md)
 - [Nginx Configuration Guide](docs/nginx-configuration.md)
-- [Chat Memory Feature](docs/CHAT_MEMORY.md) - NEW!
+- [Chat Memory Feature](docs/CHAT_MEMORY.md)
+- [Vision Capabilities](docs/VISION_CAPABILITIES.md) - NEW!
 - [Docker Deployment Guide](docker/README.md)
 - [Contributing Guide](CONTRIBUTING.md)
 
