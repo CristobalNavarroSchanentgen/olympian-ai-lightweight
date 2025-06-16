@@ -1,7 +1,7 @@
 # Olympian AI Lightweight Makefile
 # Simplifies common development and deployment tasks
 
-.PHONY: help install dev build test lint format clean docker-build docker-dev docker-prod-same docker-prod-multi setup env-dev env-docker-same env-docker-same-existing env-docker-multi nginx-test troubleshoot fix-nginx debug-nginx diagnose-chat
+.PHONY: help install dev build test lint format clean docker-build docker-dev docker-prod-same docker-prod-multi setup env-dev env-docker-same env-docker-same-existing env-docker-multi env-docker-multi-interactive env-docker-multi-advanced nginx-test troubleshoot fix-nginx debug-nginx diagnose-chat
 
 # Default target
 help:
@@ -13,6 +13,8 @@ help:
 	@echo "  make env-docker-same        Configure .env for Docker same-host with Ollama container (auto-generates secrets)"
 	@echo "  make env-docker-same-existing Configure .env for Docker same-host with existing host Ollama (auto-generates secrets)"
 	@echo "  make env-docker-multi       Configure .env for Docker multi-host (auto-generates secrets)"
+	@echo "  make env-docker-multi-interactive Configure .env for Docker multi-host with guided setup"
+	@echo "  make env-docker-multi-advanced Configure .env for Docker multi-host with full interactive setup"
 	@echo ""
 	@echo "Development:"
 	@echo "  make install                Install dependencies"
@@ -41,6 +43,7 @@ help:
 	@echo "  make quick-dev              Quick development setup"
 	@echo "  make quick-docker-same      Quick Docker same-host deployment"
 	@echo "  make quick-docker-same-existing Quick Docker with existing Ollama"
+	@echo "  make quick-docker-multi     Quick Docker multi-host deployment (automated setup)"
 	@echo ""
 
 # Development commands
@@ -247,6 +250,21 @@ setup:
 	@chmod +x scripts/*.sh
 	@./scripts/setup.sh
 
+# Validation helper function for IP addresses
+validate-ip:
+	@if echo "$(IP)" | grep -E '^([0-9]{1,3}\.){3}[0-9]{1,3}$$' >/dev/null; then \
+		for octet in $$(echo "$(IP)" | tr '.' ' '); do \
+			if [ $$octet -gt 255 ]; then \
+				echo "❌ Invalid IP address: $(IP)"; \
+				exit 1; \
+			fi; \
+		done; \
+		echo "✅ Valid IP address: $(IP)"; \
+	else \
+		echo "❌ Invalid IP address format: $(IP)"; \
+		exit 1; \
+	fi
+
 # Environment configuration helpers with automatic secret generation
 env-dev:
 	@echo "🔧 Configuring .env for development..."
@@ -313,6 +331,158 @@ env-docker-multi:
 	@rm -f .env.bak
 	@echo "✅ Docker multi-host configuration applied with secure secrets"
 	@echo "⚠️  Please update the IP addresses and credentials in .env for your environment"
+
+# Interactive multi-host environment configuration
+env-docker-multi-interactive:
+	@echo "🔧 Interactive Docker multi-host configuration setup..."
+	@echo ""
+	@if [ ! -f .env ]; then cp .env.example .env; fi
+	@sed -i.bak 's|^DEPLOYMENT_MODE=.*|DEPLOYMENT_MODE=docker-multi-host|' .env
+	@echo "📋 Setting up multi-host deployment configuration"
+	@echo ""
+	@echo "🔌 Ollama Configuration:"
+	@printf "Enter Ollama host IP address (e.g., 192.168.1.11): "; \
+	read ollama_ip; \
+	if [ -z "$$ollama_ip" ]; then \
+		echo "❌ Ollama IP is required for multi-host deployment!"; \
+		exit 1; \
+	fi; \
+	if echo "$$ollama_ip" | grep -E '^([0-9]{1,3}\.){3}[0-9]{1,3}$$' >/dev/null; then \
+		for octet in $$(echo "$$ollama_ip" | tr '.' ' '); do \
+			if [ $$octet -gt 255 ]; then \
+				echo "❌ Invalid IP address: $$ollama_ip"; \
+				exit 1; \
+			fi; \
+		done; \
+		echo "✅ Ollama IP validated: $$ollama_ip"; \
+		sed -i.bak "s|^OLLAMA_HOST=.*|# OLLAMA_HOST=http://localhost:11434|" .env; \
+		sed -i.bak "s|^# OLLAMA_HOST=http://192.168.1.11|OLLAMA_HOST=http://$$ollama_ip:11434|" .env; \
+	else \
+		echo "❌ Invalid IP address format: $$ollama_ip"; \
+		exit 1; \
+	fi
+	@echo ""
+	@echo "🗄️  MongoDB Configuration:"
+	@printf "Use default MongoDB setup? (y/N): "; \
+	read use_default_mongo; \
+	if [ "$$use_default_mongo" = "y" ] || [ "$$use_default_mongo" = "Y" ]; then \
+		sed -i.bak 's|^MONGODB_URI=.*|# MONGODB_URI=mongodb://localhost:27017/olympian_ai_lite|' .env; \
+		sed -i.bak 's|^# MONGODB_URI=mongodb://olympian-mongodb|MONGODB_URI=mongodb://olympian-mongodb|' .env; \
+		echo "✅ Using containerized MongoDB"; \
+	else \
+		printf "Enter MongoDB host IP address (or press Enter to use containerized MongoDB): "; \
+		read mongo_ip; \
+		if [ -n "$$mongo_ip" ]; then \
+			printf "Enter MongoDB username (or press Enter for no auth): "; \
+			read mongo_user; \
+			if [ -n "$$mongo_user" ]; then \
+				printf "Enter MongoDB password: "; \
+				read -s mongo_pass; echo; \
+				mongo_uri="mongodb://$$mongo_user:$$mongo_pass@$$mongo_ip:27017/olympian_ai_lite?authSource=admin"; \
+			else \
+				mongo_uri="mongodb://$$mongo_ip:27017/olympian_ai_lite"; \
+			fi; \
+			sed -i.bak "s|^MONGODB_URI=.*|# MONGODB_URI=mongodb://localhost:27017/olympian_ai_lite|" .env; \
+			sed -i.bak "s|^# MONGODB_URI=mongodb://username:password@192.168.1.10|MONGODB_URI=$$mongo_uri|" .env; \
+			echo "✅ MongoDB configured for external host: $$mongo_ip"; \
+		else \
+			sed -i.bak 's|^MONGODB_URI=.*|# MONGODB_URI=mongodb://localhost:27017/olympian_ai_lite|' .env; \
+			sed -i.bak 's|^# MONGODB_URI=mongodb://olympian-mongodb|MONGODB_URI=mongodb://olympian-mongodb|' .env; \
+			echo "✅ Using containerized MongoDB"; \
+		fi; \
+	fi
+	@echo ""
+	@echo "🔐 Generating secure secrets..."
+	@JWT_SECRET=$$(openssl rand -base64 32); \
+	SESSION_SECRET=$$(openssl rand -base64 32); \
+	sed -i.bak "s|^JWT_SECRET=.*|JWT_SECRET=$$JWT_SECRET|" .env; \
+	sed -i.bak "s|^SESSION_SECRET=.*|SESSION_SECRET=$$SESSION_SECRET|" .env
+	@rm -f .env.bak
+	@echo ""
+	@echo "✅ Interactive multi-host configuration complete!"
+	@echo "📋 Configuration summary:"
+	@grep "^OLLAMA_HOST=" .env | sed 's/^/  /'
+	@grep "^MONGODB_URI=" .env | sed 's/^/  /'
+
+# Advanced interactive multi-host environment configuration
+env-docker-multi-advanced:
+	@echo "🔧 Advanced interactive Docker multi-host configuration setup..."
+	@echo ""
+	@if [ ! -f .env ]; then cp .env.example .env; fi
+	@sed -i.bak 's|^DEPLOYMENT_MODE=.*|DEPLOYMENT_MODE=docker-multi-host|' .env
+	@echo "📋 Setting up advanced multi-host deployment configuration"
+	@echo ""
+	@echo "🔌 Ollama Configuration:"
+	@printf "Enter Ollama host IP address (e.g., 192.168.1.11): "; \
+	read ollama_ip; \
+	if [ -z "$$ollama_ip" ]; then \
+		echo "❌ Ollama IP is required for multi-host deployment!"; \
+		exit 1; \
+	fi; \
+	printf "Enter Ollama port (default: 11434): "; \
+	read ollama_port; \
+	if [ -z "$$ollama_port" ]; then ollama_port=11434; fi; \
+	sed -i.bak "s|^OLLAMA_HOST=.*|# OLLAMA_HOST=http://localhost:11434|" .env; \
+	sed -i.bak "s|^# OLLAMA_HOST=http://192.168.1.11|OLLAMA_HOST=http://$$ollama_ip:$$ollama_port|" .env; \
+	echo "✅ Ollama configured: $$ollama_ip:$$ollama_port"
+	@echo ""
+	@echo "🗄️  MongoDB Configuration:"
+	@printf "Use containerized MongoDB? (Y/n): "; \
+	read use_container_mongo; \
+	if [ "$$use_container_mongo" = "n" ] || [ "$$use_container_mongo" = "N" ]; then \
+		printf "Enter MongoDB host IP address: "; \
+		read mongo_ip; \
+		printf "Enter MongoDB port (default: 27017): "; \
+		read mongo_port; \
+		if [ -z "$$mongo_port" ]; then mongo_port=27017; fi; \
+		printf "Enter MongoDB database name (default: olympian_ai_lite): "; \
+		read mongo_db; \
+		if [ -z "$$mongo_db" ]; then mongo_db=olympian_ai_lite; fi; \
+		printf "Enter MongoDB username (or press Enter for no auth): "; \
+		read mongo_user; \
+		if [ -n "$$mongo_user" ]; then \
+			printf "Enter MongoDB password: "; \
+			read -s mongo_pass; echo; \
+			mongo_uri="mongodb://$$mongo_user:$$mongo_pass@$$mongo_ip:$$mongo_port/$$mongo_db?authSource=admin"; \
+		else \
+			mongo_uri="mongodb://$$mongo_ip:$$mongo_port/$$mongo_db"; \
+		fi; \
+		sed -i.bak "s|^MONGODB_URI=.*|# MONGODB_URI=mongodb://localhost:27017/olympian_ai_lite|" .env; \
+		sed -i.bak "s|^# MONGODB_URI=mongodb://username:password@192.168.1.10|MONGODB_URI=$$mongo_uri|" .env; \
+		echo "✅ MongoDB configured for external host: $$mongo_ip:$$mongo_port"; \
+	else \
+		sed -i.bak 's|^MONGODB_URI=.*|# MONGODB_URI=mongodb://localhost:27017/olympian_ai_lite|' .env; \
+		sed -i.bak 's|^# MONGODB_URI=mongodb://olympian-mongodb|MONGODB_URI=mongodb://olympian-mongodb|' .env; \
+		echo "✅ Using containerized MongoDB"; \
+	fi
+	@echo ""
+	@echo "🌐 Application Configuration:"
+	@printf "Enter application port (default: 8080): "; \
+	read app_port; \
+	if [ -n "$$app_port" ]; then \
+		if grep -q "^APP_PORT=" .env; then \
+			sed -i.bak "s|^APP_PORT=.*|APP_PORT=$$app_port|" .env; \
+		else \
+			echo "APP_PORT=$$app_port" >> .env; \
+		fi; \
+		echo "✅ Application port set to: $$app_port"; \
+	else \
+		echo "✅ Using default application port: 8080"; \
+	fi
+	@echo ""
+	@echo "🔐 Generating secure secrets..."
+	@JWT_SECRET=$$(openssl rand -base64 32); \
+	SESSION_SECRET=$$(openssl rand -base64 32); \
+	sed -i.bak "s|^JWT_SECRET=.*|JWT_SECRET=$$JWT_SECRET|" .env; \
+	sed -i.bak "s|^SESSION_SECRET=.*|SESSION_SECRET=$$SESSION_SECRET|" .env
+	@rm -f .env.bak
+	@echo ""
+	@echo "✅ Advanced multi-host configuration complete!"
+	@echo "📋 Configuration summary:"
+	@grep "^DEPLOYMENT_MODE=" .env | sed 's/^/  /'
+	@grep "^OLLAMA_HOST=" .env | sed 's/^/  /'
+	@grep "^MONGODB_URI=" .env | sed 's/^/  /'
+	@grep "^APP_PORT=" .env | sed 's/^/  /' || echo "  APP_PORT=8080 (default)"
 
 # Generate secure secrets (manual command if needed)
 generate-secrets:
@@ -471,10 +641,21 @@ quick-docker-same-existing:
 	@make health-check
 
 quick-docker-multi:
-	@echo "🚀 Quick Docker multi-host deployment..."
-	@make env-docker-multi
-	@echo "⚠️  Please edit .env to set your actual service IPs before continuing..."
-	@echo "Then run: make docker-multi"
+	@echo "🚀 Quick Docker multi-host deployment with automated setup..."
+	@echo ""
+	@echo "📋 This will configure and deploy Olympian AI for multi-host setup"
+	@echo "💡 You'll be prompted for your Ollama host IP address"
+	@echo ""
+	@make env-docker-multi-interactive
+	@echo ""
+	@echo "🚀 Starting deployment..."
+	@make docker-multi
+	@sleep 10
+	@echo ""
+	@make health-check
+	@echo ""
+	@echo "✅ Multi-host deployment complete and automated!"
+	@echo "📍 Access your application at: http://localhost:$${APP_PORT:-8080}"
 
 # Utility commands
 shell-frontend:
