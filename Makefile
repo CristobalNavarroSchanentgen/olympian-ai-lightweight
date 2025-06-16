@@ -114,6 +114,8 @@ docker-same-existing:
 
 docker-multi:
 	@echo "🚀 Deploying multi-host configuration..."
+	@echo "🧹 Cleaning up any conflicting Docker networks..."
+	@docker network prune -f
 	@export DEPLOYMENT_MODE=multi-host && \
 	export BACKEND_HOST=$${BACKEND_HOST:-backend} && \
 	export BACKEND_PORT=$${BACKEND_PORT:-4000} && \
@@ -400,15 +402,15 @@ env-docker-multi-interactive:
 		echo "❌ Invalid host format (must be IP address or DNS name): $$ollama_host"; \
 		exit 1; \
 	fi; \
-	sed -i.bak "s|^OLLAMA_HOST=.*|# OLLAMA_HOST=http://localhost:11434|" .env; \
-	sed -i.bak "s|^# OLLAMA_HOST=http://192.168.1.11|OLLAMA_HOST=http://$$ollama_host:11434|" .env
+	sed -i.bak 's|^OLLAMA_HOST=.*|# OLLAMA_HOST=http://localhost:11434|' .env; \
+	sed -i.bak 's|^# OLLAMA_HOST=http://192.168.1.11|OLLAMA_HOST=http://'"$$ollama_host"':11434|' .env
 	@echo ""
 	@echo "🗄️  MongoDB Configuration:"
 	@printf "Use default MongoDB setup? (y/N): "; \
 	read use_default_mongo; \
 	if [ "$$use_default_mongo" = "y" ] || [ "$$use_default_mongo" = "Y" ]; then \
 		sed -i.bak 's|^MONGODB_URI=.*|# MONGODB_URI=mongodb://localhost:27017/olympian_ai_lite|' .env; \
-		sed -i.bak 's|^# MONGODB_URI=mongodb://olympian-mongodb|MONGODB_URI=mongodb://olympian-mongodb|' .env; \
+		sed -i.bak 's|^# MONGODB_URI=mongodb://olympian-mongodb:27017|MONGODB_URI=mongodb://olympian-mongodb:27017/olympian_ai_lite|' .env; \
 		echo "✅ Using containerized MongoDB"; \
 	else \
 		printf "Enter MongoDB host (IP address or DNS name, or press Enter to use containerized MongoDB): "; \
@@ -423,12 +425,12 @@ env-docker-multi-interactive:
 			else \
 				mongo_uri="mongodb://$$mongo_host:27017/olympian_ai_lite"; \
 			fi; \
-			sed -i.bak "s|^MONGODB_URI=.*|# MONGODB_URI=mongodb://localhost:27017/olympian_ai_lite|" .env; \
-			sed -i.bak "s|^# MONGODB_URI=mongodb://username:password@192.168.1.10|MONGODB_URI=$$mongo_uri|" .env; \
+			sed -i.bak 's|^MONGODB_URI=.*|# MONGODB_URI=mongodb://localhost:27017/olympian_ai_lite|' .env; \
+			sed -i.bak 's|^# MONGODB_URI=mongodb://username:password@192.168.1.10|MONGODB_URI='"$$mongo_uri"'|' .env; \
 			echo "✅ MongoDB configured for external host: $$mongo_host"; \
 		else \
 			sed -i.bak 's|^MONGODB_URI=.*|# MONGODB_URI=mongodb://localhost:27017/olympian_ai_lite|' .env; \
-			sed -i.bak 's|^# MONGODB_URI=mongodb://olympian-mongodb|MONGODB_URI=mongodb://olympian-mongodb|' .env; \
+			sed -i.bak 's|^# MONGODB_URI=mongodb://olympian-mongodb:27017|MONGODB_URI=mongodb://olympian-mongodb:27017/olympian_ai_lite|' .env; \
 			echo "✅ Using containerized MongoDB"; \
 		fi; \
 	fi
@@ -443,7 +445,7 @@ env-docker-multi-interactive:
 	@echo "✅ Interactive multi-host configuration complete!"
 	@echo "📋 Configuration summary:"
 	@grep "^OLLAMA_HOST=" .env | sed 's/^/  /'
-	@grep "^MONGODB_URI=" .env | sed 's/^/  /'
+	@grep "^MONGODB_URI=" .env | head -1 | sed 's/^/  /'
 
 # Advanced interactive multi-host environment configuration
 env-docker-multi-advanced:
@@ -482,8 +484,8 @@ env-docker-multi-advanced:
 	printf "Enter Ollama port (default: 11434): "; \
 	read ollama_port; \
 	if [ -z "$$ollama_port" ]; then ollama_port=11434; fi; \
-	sed -i.bak "s|^OLLAMA_HOST=.*|# OLLAMA_HOST=http://localhost:11434|" .env; \
-	sed -i.bak "s|^# OLLAMA_HOST=http://192.168.1.11|OLLAMA_HOST=http://$$ollama_host:$$ollama_port|" .env; \
+	sed -i.bak 's|^OLLAMA_HOST=.*|# OLLAMA_HOST=http://localhost:11434|' .env; \
+	sed -i.bak 's|^# OLLAMA_HOST=http://192.168.1.11|OLLAMA_HOST=http://'"$$ollama_host"':'"$$ollama_port"'|' .env; \
 	echo "✅ Ollama configured: $$ollama_host:$$ollama_port"
 	@echo ""
 	@echo "🗄️  MongoDB Configuration:"
@@ -507,12 +509,12 @@ env-docker-multi-advanced:
 		else \
 			mongo_uri="mongodb://$$mongo_host:$$mongo_port/$$mongo_db"; \
 		fi; \
-		sed -i.bak "s|^MONGODB_URI=.*|# MONGODB_URI=mongodb://localhost:27017/olympian_ai_lite|" .env; \
-		sed -i.bak "s|^# MONGODB_URI=mongodb://username:password@192.168.1.10|MONGODB_URI=$$mongo_uri|" .env; \
+		sed -i.bak 's|^MONGODB_URI=.*|# MONGODB_URI=mongodb://localhost:27017/olympian_ai_lite|' .env; \
+		sed -i.bak 's|^# MONGODB_URI=mongodb://username:password@192.168.1.10|MONGODB_URI='"$$mongo_uri"'|' .env; \
 		echo "✅ MongoDB configured for external host: $$mongo_host:$$mongo_port"; \
 	else \
 		sed -i.bak 's|^MONGODB_URI=.*|# MONGODB_URI=mongodb://localhost:27017/olympian_ai_lite|' .env; \
-		sed -i.bak 's|^# MONGODB_URI=mongodb://olympian-mongodb|MONGODB_URI=mongodb://olympian-mongodb|' .env; \
+		sed -i.bak 's|^# MONGODB_URI=mongodb://olympian-mongodb:27017|MONGODB_URI=mongodb://olympian-mongodb:27017/olympian_ai_lite|' .env; \
 		echo "✅ Using containerized MongoDB"; \
 	fi
 	@echo ""
@@ -541,7 +543,7 @@ env-docker-multi-advanced:
 	@echo "📋 Configuration summary:"
 	@grep "^DEPLOYMENT_MODE=" .env | sed 's/^/  /'
 	@grep "^OLLAMA_HOST=" .env | sed 's/^/  /'
-	@grep "^MONGODB_URI=" .env | sed 's/^/  /'
+	@grep "^MONGODB_URI=" .env | head -1 | sed 's/^/  /'
 	@grep "^APP_PORT=" .env | sed 's/^/  /' || echo "  APP_PORT=8080 (default)"
 
 # Generate secure secrets (manual command if needed)
@@ -561,6 +563,12 @@ apply-secrets:
 	sed -i.bak "s|^SESSION_SECRET=.*|SESSION_SECRET=$$SESSION_SECRET|" .env
 	@rm -f .env.bak
 	@echo "✅ Secure secrets applied to .env"
+
+# Docker network cleanup utility
+docker-network-cleanup:
+	@echo "🧹 Cleaning up Docker networks..."
+	@docker network prune -f
+	@echo "✅ Network cleanup complete"
 
 # Additional helpful targets
 logs-dev:
@@ -660,7 +668,7 @@ show-env:
 	@echo "📋 Current environment configuration:"
 	@if [ -f .env ]; then \
 		echo "DEPLOYMENT_MODE: $$(grep '^DEPLOYMENT_MODE=' .env | cut -d'=' -f2)"; \
-		echo "MongoDB: $$(grep '^MONGODB_URI=' .env | cut -d'=' -f2- | head -c 50)..."; \
+		echo "MongoDB: $$(grep '^MONGODB_URI=' .env | head -1 | cut -d'=' -f2- | head -c 50)..."; \
 		echo "Ollama: $$(grep '^OLLAMA_HOST=' .env | cut -d'=' -f2)"; \
 		echo "Port: $$(grep '^APP_PORT=' .env | cut -d'=' -f2 || echo '8080 (default)')"; \
 		echo "JWT Secret: $$(if grep -q 'your-jwt-secret-key-here' .env; then echo '⚠️  Default (INSECURE)'; else echo '✅ Custom'; fi)"; \
