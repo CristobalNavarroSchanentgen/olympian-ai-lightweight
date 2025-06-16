@@ -16,6 +16,7 @@ export function ChatInput({ onSendMessage, onCancel, isDisabled, isGenerating }:
   const [message, setMessage] = useState('');
   const [images, setImages] = useState<{ file: File; preview: string }[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const onDrop = (acceptedFiles: File[]) => {
     const imageFiles = acceptedFiles.filter(file => file.type.startsWith('image/'));
@@ -83,6 +84,21 @@ export function ChatInput({ onSendMessage, onCancel, isDisabled, isGenerating }:
     });
   };
 
+  const handleImageButtonClick = () => {
+    if (!isDisabled && fileInputRef.current) {
+      fileInputRef.current.click();
+    }
+  };
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || []);
+    if (files.length > 0) {
+      onDrop(files);
+      // Reset the input value so the same file can be selected again
+      event.target.value = '';
+    }
+  };
+
   return (
     <div className="space-y-2">
       {/* Image Previews */}
@@ -98,6 +114,7 @@ export function ChatInput({ onSendMessage, onCancel, isDisabled, isGenerating }:
               <button
                 onClick={() => removeImage(index)}
                 className="absolute -top-2 -right-2 bg-destructive text-destructive-foreground rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                aria-label={`Remove image ${index + 1}`}
               >
                 <X className="h-3 w-3" />
               </button>
@@ -128,28 +145,30 @@ export function ChatInput({ onSendMessage, onCancel, isDisabled, isGenerating }:
               rows={3}
               disabled={isDisabled}
             />
-            <label className="absolute bottom-2 right-2">
-              <input
-                type="file"
-                multiple
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => {
-                  const files = Array.from(e.target.files || []);
-                  onDrop(files);
-                }}
-                disabled={isDisabled}
-              />
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                disabled={isDisabled}
-              >
-                <ImageIcon className="h-4 w-4" />
-              </Button>
-            </label>
+            
+            {/* Hidden file input */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept="image/*"
+              className="hidden"
+              onChange={handleFileChange}
+              disabled={isDisabled}
+            />
+            
+            {/* Image upload button */}
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="absolute bottom-2 right-2 h-8 w-8"
+              disabled={isDisabled}
+              onClick={handleImageButtonClick}
+              aria-label="Upload images"
+            >
+              <ImageIcon className="h-4 w-4" />
+            </Button>
           </div>
           
           {isGenerating ? (
