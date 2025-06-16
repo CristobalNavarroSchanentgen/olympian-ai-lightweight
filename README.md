@@ -17,13 +17,16 @@ A minimalist MCP client application focused on seamless Ollama integration with 
 
 The latest version includes comprehensive vision support for processing images with AI models:
 
-- **Image Upload**: Drag-and-drop or browse to upload images in chat
-- **Vision Model Detection**: Automatically identifies vision-capable models
-- **Hybrid Processing**: Use separate vision and text models for flexibility
-- **Smart Fallback**: Clear guidance when vision models are needed
-- **Multiple Formats**: Support for PNG, JPG, JPEG, GIF, and WebP
+- **🔍 Intelligent Vision Detection**: Automatic 8-method detection system for vision capabilities
+- **🖼️ Image Upload**: Drag-and-drop or browse to upload images in chat
+- **🤖 Vision Model Detection**: Automatically identifies vision-capable models
+- **🔄 Hybrid Processing**: Use separate vision and text models for flexibility
+- **💡 Smart Fallback**: Clear guidance when vision models are needed
+- **📎 Multiple Formats**: Support for PNG, JPG, JPEG, GIF, and WebP
 
-[Read the full Vision Capabilities documentation](docs/VISION_CAPABILITIES.md)
+**📚 Documentation**:
+- [Vision Capabilities (User Guide)](docs/VISION_CAPABILITIES.md) - Complete user documentation
+- [Vision Detection Technical](docs/VISION_DETECTION_TECHNICAL.md) - **NEW!** Deep technical implementation details
 
 ## What's New: Chat Memory Feature 🧠
 
@@ -248,21 +251,27 @@ make db-restore                   # Restore MongoDB
 The application now supports comprehensive image processing with intelligent model selection:
 
 **Key Benefits**:
-- ✅ **Automatic Vision Detection**: Identifies which models support vision
-- ✅ **Hybrid Processing**: Use separate vision and text models
+- ✅ **Automatic Vision Detection**: 8-method intelligent detection system identifies which models support vision
+- ✅ **Hybrid Processing**: Use separate vision and text models for maximum flexibility
 - ✅ **Smart Fallback**: Clear guidance when vision capabilities are needed
 - ✅ **Multiple Formats**: Support for common image formats
+- ✅ **Performance Optimized**: Caching and load balancing for optimal performance
 
 **Architecture**:
 ```
 Image Upload
     ↓
-Vision Model Selection
-    ↓
+Intelligent Vision Detection (8 methods)
+    ↓ 
 Direct Vision (if supported) OR Hybrid Processing
     ↓
 AI Response with Image Understanding
 ```
+
+**Technical Implementation**:
+For detailed technical information about how vision detection works, including the 8-method detection system, API communication, caching strategies, and deployment-specific configurations, see our comprehensive technical documentation:
+
+📖 **[Vision Detection Technical Guide](docs/VISION_DETECTION_TECHNICAL.md)**
 
 ### 🚀 Automatic Nginx Configuration
 
@@ -397,6 +406,9 @@ ollama pull llava:13b
 
 # Check model capabilities
 curl http://localhost:4000/api/chat/models/{modelName}/capabilities
+
+# Debug vision detection (see technical docs for detailed debugging)
+docker logs olympian-backend | grep "Vision detection"
 ```
 
 ### Chat Memory Issues
@@ -422,7 +434,7 @@ olympian-ai-lightweight/
 │   ├── server/                   # Express backend
 │   │   └── services/
 │   │       ├── ChatMemoryService.ts  # 🧠 Memory management
-│   │       └── OllamaStreamliner.ts  # 🎨 Vision processing
+│   │       └── OllamaStreamliner.ts  # 🎨 Vision processing & detection
 │   └── shared/                   # Shared types
 ├── docker/
 │   ├── frontend/                 # Frontend + nginx
@@ -433,7 +445,8 @@ olympian-ai-lightweight/
 ├── docs/
 │   ├── nginx-configuration.md    # Nginx documentation
 │   ├── CHAT_MEMORY.md           # Chat memory documentation
-│   └── VISION_CAPABILITIES.md   # Vision features documentation
+│   ├── VISION_CAPABILITIES.md   # Vision features user guide
+│   └── VISION_DETECTION_TECHNICAL.md # 🔬 Technical implementation details
 └── scripts/                      # Helper scripts
 ```
 
@@ -451,7 +464,8 @@ olympian-ai-lightweight/
 - [API Documentation](docs/API.md)
 - [Nginx Configuration Guide](docs/nginx-configuration.md)
 - [Chat Memory Feature](docs/CHAT_MEMORY.md)
-- [Vision Capabilities](docs/VISION_CAPABILITIES.md) - NEW!
+- [Vision Capabilities (User Guide)](docs/VISION_CAPABILITIES.md)
+- [Vision Detection Technical](docs/VISION_DETECTION_TECHNICAL.md) - **NEW!** Technical deep dive
 - [Docker Deployment Guide](docker/README.md)
 - [Contributing Guide](CONTRIBUTING.md)
 
