@@ -32,15 +32,20 @@ env-docker-multi-interactive:
 		echo "❌ Invalid host format (must be IP address or DNS name): $$ollama_host"; \
 		exit 1; \
 	fi; \
-	sed -i.bak 's|^OLLAMA_HOST=.*|OLLAMA_HOST=http://'"$$ollama_host"':11434|' .env; \
-	sed -i.bak 's|^# OLLAMA_HOST=http://192.168.1.11|# OLLAMA_HOST=http://192.168.1.11:11434|' .env
+	if echo "$$ollama_host" | grep -q ":"; then \
+		ollama_url="http://$$ollama_host"; \
+		echo "✅ Port detected in hostname, using as-is"; \
+	else \
+		ollama_url="http://$$ollama_host:11434"; \
+		echo "✅ Added default Ollama port 11434"; \
+	fi; \
+	sed -i.bak 's|^OLLAMA_HOST=.*|OLLAMA_HOST='"$$ollama_url"'|' .env
 	@echo ""
 	@echo "🗄️  MongoDB Configuration:"
 	@printf "Use default MongoDB setup? (y/N): "; \
 	read use_default_mongo; \
 	if [ "$$use_default_mongo" = "y" ] || [ "$$use_default_mongo" = "Y" ]; then \
 		sed -i.bak 's|^MONGODB_URI=.*|MONGODB_URI=mongodb://olympian-mongodb:27017/olympian_ai_lite|' .env; \
-		sed -i.bak 's|^# MONGODB_URI=mongodb://olympian-mongodb:27017|# MONGODB_URI=mongodb://olympian-mongodb:27017/olympian_ai_lite|' .env; \
 		echo "✅ Using containerized MongoDB"; \
 	else \
 		printf "Enter MongoDB host (IP address or DNS name, or press Enter to use containerized MongoDB): "; \
@@ -56,11 +61,9 @@ env-docker-multi-interactive:
 				mongo_uri="mongodb://$$mongo_host:27017/olympian_ai_lite"; \
 			fi; \
 			sed -i.bak 's|^MONGODB_URI=.*|MONGODB_URI='"$$mongo_uri"'|' .env; \
-			sed -i.bak 's|^# MONGODB_URI=mongodb://username:password@192.168.1.10|# MONGODB_URI=mongodb://username:password@192.168.1.10:27017/olympian_ai_lite?authSource=admin|' .env; \
 			echo "✅ MongoDB configured for external host: $$mongo_host"; \
 		else \
 			sed -i.bak 's|^MONGODB_URI=.*|MONGODB_URI=mongodb://olympian-mongodb:27017/olympian_ai_lite|' .env; \
-			sed -i.bak 's|^# MONGODB_URI=mongodb://olympian-mongodb:27017|# MONGODB_URI=mongodb://olympian-mongodb:27017/olympian_ai_lite|' .env; \
 			echo "✅ Using containerized MongoDB"; \
 		fi; \
 	fi
