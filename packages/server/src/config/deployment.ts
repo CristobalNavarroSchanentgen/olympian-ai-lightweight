@@ -93,10 +93,22 @@ export function getDeploymentConfig(): DeploymentConfig {
     const ollamaHosts = process.env.OLLAMA_HOSTS?.split(',').filter(Boolean) || [];
     const ollamaHost = process.env.OLLAMA_HOST || ollamaHosts[0] || 'http://ollama-host:11434';
     
+    // Determine MongoDB URI for multi-host mode
+    // If MONGODB_URI is not set, try to detect if we're in a containerized environment
+    let mongoUri = process.env.MONGODB_URI;
+    
+    if (!mongoUri) {
+      // Check if we're running in a Docker environment with olympian-mongodb service
+      // This handles the case of docker-compose.prod.yml where MongoDB runs in container
+      // even in multi-host mode (for quick setup scenarios)
+      mongoUri = 'mongodb://olympian-mongodb:27017/olympian_ai_lite';
+      logger.info('No MONGODB_URI specified, using containerized MongoDB: olympian-mongodb');
+    }
+    
     return {
       mode,
       mongodb: {
-        uri: process.env.MONGODB_URI || 'mongodb://mongo-host:27017/olympian_ai_lite',
+        uri: mongoUri,
         options: {
           maxPoolSize: 10,
           minPoolSize: 2,
