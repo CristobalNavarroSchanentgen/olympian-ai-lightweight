@@ -30,6 +30,36 @@ interface ChatStore {
   clearCurrentConversation: () => void;
 }
 
+// Fallback vision model detection based on common naming patterns
+function detectVisionModelsByName(models: string[]): string[] {
+  const visionModelPatterns = [
+    /llava/i,
+    /bakllava/i,
+    /llava-llama3/i,
+    /llava-phi3/i,
+    /llava-v1\.6/i,
+    /llama3\.2-vision/i,
+    /moondream/i,
+    /cogvlm/i,
+    /instructblip/i,
+    /blip/i,
+    /minicpm-v/i,
+    /qwen.*vl/i,
+    /qwen.*vision/i,
+    /internvl/i,
+    /deepseek-vl/i,
+    /yi-vl/i,
+    /phi.*vision/i,
+    /phi-3-vision/i,
+    /vision/i,
+    /multimodal/i
+  ];
+
+  return models.filter(model => 
+    visionModelPatterns.some(pattern => pattern.test(model))
+  );
+}
+
 export const useChatStore = create<ChatStore>((set, get) => ({
   conversations: [],
   currentConversation: null,
@@ -129,22 +159,39 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   fetchModels: async () => {
     set({ isLoadingModels: true });
     try {
-      // Fetch both regular models and vision models to filter properly
-      const [allModels, visionModels] = await Promise.all([
-        api.getModels(),
-        api.getVisionModels()
-      ]);
+      // Fetch all models first
+      const allModels = await api.getModels();
       
-      // Filter out vision models from the regular models list
-      const filteredModels = allModels.filter(model => !visionModels.includes(model));
+      // Try to fetch vision models from API, with fallback to name-based detection
+      let visionModels: string[] = [];
+      try {
+        visionModels = await api.getVisionModels();
+        console.log('Vision models from API:', visionModels);
+      } catch (error) {
+        console.warn('Failed to fetch vision models from API, using fallback detection:', error);
+        visionModels = detectVisionModelsByName(allModels);
+        console.log('Vision models from fallback detection:', visionModels);
+      }
       
-      set({ models: filteredModels, visionModels });
+      // Ensure we have some vision model detection, use both API and fallback
+      const fallbackVisionModels = detectVisionModelsByName(allModels);
+      const combinedVisionModels = [...new Set([...visionModels, ...fallbackVisionModels])];
+      
+      // Filter out ALL detected vision models from the regular models list
+      const filteredModels = allModels.filter(model => !combinedVisionModels.includes(model));
+      
+      console.log('All models:', allModels);
+      console.log('Combined vision models:', combinedVisionModels);
+      console.log('Filtered regular models (vision models excluded):', filteredModels);
+      
+      set({ models: filteredModels, visionModels: combinedVisionModels });
       
       // Auto-select first model if none selected
       if (filteredModels.length > 0 && !get().selectedModel) {
         await get().selectModel(filteredModels[0]);
       }
     } catch (error) {
+      console.error('Error in fetchModels:', error);
       toast({
         title: 'Error',
         description: 'Failed to fetch models',
@@ -162,6 +209,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     } catch (error) {
       console.error('Failed to fetch vision models:', error);
       // Don't show toast for vision models as they are optional
+      // Use fallback detection if API fails
+      const currentModels = get().models;
+      const currentVisionModels = get().visionModels;
+      if (currentModels.length > 0 && currentVisionModels.length === 0) {
+        const fallbackVisionModels = detectVisionModelsByName(currentModels);
+        set({ visionModels: fallbackVisionModels });
+      }
     }
   },
 
