@@ -14,6 +14,7 @@ export function DivineDialog() {
     currentConversation,
     messages,
     selectedModel,
+    selectedVisionModel,
     fetchModels,
     addMessage,
     setCurrentConversation,
@@ -22,6 +23,7 @@ export function DivineDialog() {
   const [isThinking, setIsThinking] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [streamedContent, setStreamedContent] = useState('');
+  const [hasImages, setHasImages] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -44,6 +46,9 @@ export function DivineDialog() {
       return;
     }
 
+    // Update hasImages state for model selector
+    setHasImages(!!images && images.length > 0);
+
     // Add user message to store
     const userMessage: Message = {
       conversationId: currentConversation?._id || '',
@@ -60,10 +65,11 @@ export function DivineDialog() {
     setStreamedContent('');
 
     try {
-      // Send message via REST API
+      // Send message via REST API with vision model if selected
       const response = await api.sendMessage({
         message: content,
         model: selectedModel,
+        visionModel: selectedVisionModel || undefined,
         conversationId: currentConversation?._id,
         images,
       });
@@ -87,13 +93,34 @@ export function DivineDialog() {
       setIsThinking(false);
       setIsGenerating(false);
       setStreamedContent('');
+      setHasImages(false);
     } catch (error) {
       console.error('Error sending message:', error);
-      toast({
-        title: 'Error',
-        description: error instanceof Error ? error.message : 'Failed to send message',
-        variant: 'destructive',
-      });
+      
+      // Handle vision-specific errors
+      if (error instanceof Error && error.message.includes('VISION_UNSUPPORTED')) {
+        try {
+          const errorData = JSON.parse(error.message);
+          toast({
+            title: 'Vision Model Required',
+            description: errorData.message,
+            variant: 'destructive',
+          });
+        } catch {
+          toast({
+            title: 'Error',
+            description: error.message,
+            variant: 'destructive',
+          });
+        }
+      } else {
+        toast({
+          title: 'Error',
+          description: error instanceof Error ? error.message : 'Failed to send message',
+          variant: 'destructive',
+        });
+      }
+      
       setIsThinking(false);
       setIsGenerating(false);
       setStreamedContent('');
@@ -125,7 +152,7 @@ export function DivineDialog() {
             <h3 className="text-lg font-semibold">
               {currentConversation ? currentConversation.title : 'New Conversation'}
             </h3>
-            <ModelSelector />
+            <ModelSelector hasImages={hasImages} />
           </div>
         </div>
 

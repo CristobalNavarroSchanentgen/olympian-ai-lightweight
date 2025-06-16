@@ -8,7 +8,9 @@ interface ChatStore {
   currentConversation: Conversation | null;
   messages: Message[];
   models: string[];
+  visionModels: string[];
   selectedModel: string | null;
+  selectedVisionModel: string | null;
   modelCapabilities: ModelCapability | null;
   isLoadingConversations: boolean;
   isLoadingMessages: boolean;
@@ -21,7 +23,9 @@ interface ChatStore {
   deleteConversation: (id: string) => Promise<void>;
   fetchMessages: (conversationId: string) => Promise<void>;
   fetchModels: () => Promise<void>;
+  fetchVisionModels: () => Promise<void>;
   selectModel: (model: string) => Promise<void>;
+  selectVisionModel: (model: string) => void;
   addMessage: (message: Message) => void;
   clearCurrentConversation: () => void;
 }
@@ -31,7 +35,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   currentConversation: null,
   messages: [],
   models: [],
+  visionModels: [],
   selectedModel: null,
+  selectedVisionModel: null,
   modelCapabilities: null,
   isLoadingConversations: false,
   isLoadingMessages: false,
@@ -141,6 +147,16 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }
   },
 
+  fetchVisionModels: async () => {
+    try {
+      const visionModels = await api.getVisionModels();
+      set({ visionModels });
+    } catch (error) {
+      console.error('Failed to fetch vision models:', error);
+      // Don't show toast for vision models as they are optional
+    }
+  },
+
   selectModel: async (model) => {
     try {
       const capabilities = await api.getModelCapabilities(model);
@@ -149,6 +165,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       // Fallback to basic selection without capabilities
       set({ selectedModel: model, modelCapabilities: null });
     }
+  },
+
+  selectVisionModel: (model) => {
+    set({ selectedVisionModel: model });
   },
 
   addMessage: (message) => {

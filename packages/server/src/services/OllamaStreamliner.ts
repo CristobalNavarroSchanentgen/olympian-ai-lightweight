@@ -1,4 +1,4 @@
-import { ChatRequest, ProcessedRequest, ModelCapability } from '@olympian/shared';
+import { ChatRequest, ProcessedRequest, ModelCapability, VisionError } from '@olympian/shared';
 import { logger } from '../utils/logger';
 import { AppError } from '../middleware/errorHandler';
 import { getDeploymentConfig, OllamaLoadBalancer } from '../config/deployment';
@@ -19,11 +19,16 @@ interface OllamaStreamResponse {
   };
 }
 
+interface OllamaGenerateResponse {
+  response?: string;
+}
+
 export class OllamaStreamliner {
   private modelCapabilities: Map<string, ModelCapability> = new Map();
   private deploymentConfig = getDeploymentConfig();
   private loadBalancer?: OllamaLoadBalancer;
   private memoryService: ChatMemoryService;
+  private visionModels = ['llava:13b', 'llava:7b', 'llama3.2-vision:11b', 'bakllava', 'llava-llama3', 'llava-phi3'];
 
   constructor() {
     // Initialize load balancer if multiple hosts are configured
@@ -103,7 +108,7 @@ export class OllamaStreamliner {
 
   private hasVisionSupport(model: string, modelfile: string): boolean {
     // Known vision models
-    const visionModels = ['llava', 'bakllava', 'llava-llama3', 'llava-phi3'];
+    const visionModels = ['llava', 'bakllava', 'llava-llama3', 'llava-phi3', 'llama3.2-vision'];
     return visionModels.some(vm => model.toLowerCase().includes(vm)) ||
            modelfile.toLowerCase().includes('vision') ||
            modelfile.toLowerCase().includes('image');
@@ -125,6 +130,54 @@ export class OllamaStreamliner {
   private parseContextWindow(modelfile: string): number | null {
     const match = modelfile.match(/num_ctx\s+(\d+)/);
     return match ? parseInt(match[1], 10) : null;
+  }
+
+  private async encodeImage(imagePath: string): Promise<string> {
+    // If the image is already base64 encoded, return it
+    if (imagePath.startsWith('data:image/')) {
+      return imagePath.split(',')[1];
+    }
+    return imagePath;
+  }
+
+  private async processImageWithVisionModel(
+    images: string[], 
+    content: string, 
+    visionModel: string,
+    clientIp?: string
+  ): Promise<string> {
+    const ollamaHost = this.getOllamaHost(clientIp);
+    
+    try {
+      // Use the vision model to describe the images
+      const response = await fetch(`${ollamaHost}/api/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: visionModel,
+          prompt: `Describe the following image(s) in detail: ${content}`,
+          images: await Promise.all(images.map(img => this.encodeImage(img))),
+          stream: false,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Vision model request failed: ${response.statusText}`);
+      }
+
+      const result = await response.json() as OllamaGenerateResponse;
+      return result.response || 'Unable to process image';
+    } catch (error) {
+      logger.error('Failed to process image with vision model:', error);
+      throw error;
+    }
+  }
+
+  async getAvailableVisionModels(): Promise<string[]> {
+    const models = await this.listModels();
+    return models.filter(model => 
+      this.visionModels.some(vm => model.toLowerCase().includes(vm.toLowerCase()))
+    );
   }
 
   async processRequest(
@@ -160,18 +213,53 @@ export class OllamaStreamliner {
 
     // Vision handling
     if (request.images && request.images.length > 0) {
+      // If a vision model is specified, use hybrid processing
+      if (request.visionModel) {
+        return await this.formatHybridVisionRequest(request, messages);
+      }
+      
+      // Otherwise, check if the current model supports vision
       if (!capabilities.vision) {
-        throw new AppError(
-          400,
-          `The selected model '${request.model}' doesn't support images. Please choose a vision-capable model like llava or bakllava.`,
-          'MODEL_CAPABILITY_ERROR'
-        );
+        const availableVisionModels = await this.getAvailableVisionModels();
+        const error: VisionError = {
+          error: 'VISION_UNSUPPORTED',
+          message: `The selected model '${request.model}' doesn't support images. Please choose a vision-capable model or enable hybrid processing with a vision model.`,
+          available_vision_models: availableVisionModels,
+        };
+        throw new AppError(400, JSON.stringify(error), 'MODEL_CAPABILITY_ERROR');
       }
       return this.formatVisionRequest(request, messages);
     }
 
     // Standard text handling
     return this.formatTextRequest(request, messages);
+  }
+
+  private async formatHybridVisionRequest(
+    request: ChatRequest,
+    history: Array<{ role: string; content: string; images?: string[] }>
+  ): Promise<ProcessedRequest> {
+    // Process images with vision model first
+    const imageDescription = await this.processImageWithVisionModel(
+      request.images!,
+      request.content,
+      request.visionModel!
+    );
+
+    // Add the processed content to history
+    const messages = [
+      ...history,
+      {
+        role: 'user',
+        content: `${request.content} [Image Description: ${imageDescription}]`,
+      },
+    ];
+
+    return {
+      model: request.model,
+      messages,
+      stream: true,
+    };
   }
 
   private formatVisionRequest(

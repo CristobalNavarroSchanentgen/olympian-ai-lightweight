@@ -4,6 +4,7 @@ export interface ClientEvents {
     content: string;
     images?: string[];
     model: string;
+    visionModel?: string;
     conversationId?: string;
   };
   'chat:cancel': {
@@ -35,22 +36,45 @@ export interface ServerEvents {
   };
   'chat:complete': {
     messageId: string;
+    conversationId: string;
     metadata: MessageMetadata;
   };
   'chat:error': {
     messageId: string;
     error: string;
   };
+  'conversation:created': {
+    conversationId: string;
+  };
   'scan:progress': ScanProgress;
   'scan:result': ScanResult;
   'scan:complete': {
     results: ScanResult[];
   };
+  'scan:error': {
+    error: string;
+  };
   'connection:status': {
     connectionId: string;
     status: ConnectionStatus;
   };
+  'connection:test:result': {
+    success: boolean;
+    message: string;
+  };
+  'model:capabilities': ModelCapability;
+  'memory:stats': {
+    conversationId: string;
+    stats: any;
+  };
+  'memory:cleared': {
+    conversationId: string;
+    message: string;
+  };
+  'memory:error': {
+    error: string;
+  };
 }
 
 import { ConnectionType, ConnectionStatus, ScanResult, ScanProgress } from './connections';
-import { MessageMetadata } from './chat';
+import { MessageMetadata, ModelCapability } from './chat';

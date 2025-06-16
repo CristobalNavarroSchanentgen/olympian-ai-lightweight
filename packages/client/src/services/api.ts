@@ -103,6 +103,7 @@ class ApiService {
   async sendMessage(params: {
     message: string;
     model: string;
+    visionModel?: string;
     conversationId?: string;
     images?: string[];
   }): Promise<{
@@ -152,6 +153,11 @@ class ApiService {
 
   async getModels(): Promise<string[]> {
     const { data } = await this.client.get<ApiResponse<string[]>>('/chat/models');
+    return data.data || [];
+  }
+
+  async getVisionModels(): Promise<string[]> {
+    const { data } = await this.client.get<ApiResponse<string[]>>('/chat/vision-models');
     return data.data || [];
   }
 

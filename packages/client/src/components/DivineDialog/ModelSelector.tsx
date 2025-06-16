@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useChatStore } from '@/stores/useChatStore';
 import {
   Select,
@@ -7,46 +8,104 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Bot, Eye, Wrench } from 'lucide-react';
+import { Bot, Eye, Wrench, ImageIcon } from 'lucide-react';
+import { Label } from '@/components/ui/label';
 
-export function ModelSelector() {
-  const { models, selectedModel, modelCapabilities, selectModel } = useChatStore();
+interface ModelSelectorProps {
+  hasImages?: boolean;
+}
+
+export function ModelSelector({ hasImages }: ModelSelectorProps) {
+  const { 
+    models, 
+    visionModels,
+    selectedModel, 
+    selectedVisionModel,
+    modelCapabilities, 
+    selectModel,
+    selectVisionModel,
+    fetchVisionModels
+  } = useChatStore();
+
+  useEffect(() => {
+    if (hasImages) {
+      fetchVisionModels();
+    }
+  }, [hasImages, fetchVisionModels]);
 
   return (
-    <div className="flex items-center gap-4">
-      <Select value={selectedModel || ''} onValueChange={selectModel}>
-        <SelectTrigger className="w-[300px]">
-          <SelectValue placeholder="Select a model" />
-        </SelectTrigger>
-        <SelectContent>
-          {models.map((model) => (
-            <SelectItem key={model} value={model}>
-              <div className="flex items-center gap-2">
-                <Bot className="h-4 w-4" />
-                <span>{model}</span>
-              </div>
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      
-      {modelCapabilities && (
-        <div className="flex gap-2">
-          {modelCapabilities.vision && (
-            <Badge variant="secondary" className="gap-1">
-              <Eye className="h-3 w-3" />
-              Vision
+    <div className="space-y-4">
+      <div className="flex items-center gap-4">
+        <div className="flex-1">
+          <Label htmlFor="model-select">AI Model</Label>
+          <Select value={selectedModel || ''} onValueChange={selectModel}>
+            <SelectTrigger id="model-select" className="w-full">
+              <SelectValue placeholder="Select a model" />
+            </SelectTrigger>
+            <SelectContent>
+              {models.map((model) => (
+                <SelectItem key={model} value={model}>
+                  <div className="flex items-center gap-2">
+                    <Bot className="h-4 w-4" />
+                    <span>{model}</span>
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        
+        {modelCapabilities && (
+          <div className="flex gap-2 mt-6">
+            {modelCapabilities.vision && (
+              <Badge variant="secondary" className="gap-1">
+                <Eye className="h-3 w-3" />
+                Vision
+              </Badge>
+            )}
+            {modelCapabilities.tools && (
+              <Badge variant="secondary" className="gap-1">
+                <Wrench className="h-3 w-3" />
+                Tools
+              </Badge>
+            )}
+            <Badge variant="outline" className="text-xs">
+              {modelCapabilities.contextWindow.toLocaleString()} tokens
             </Badge>
-          )}
-          {modelCapabilities.tools && (
-            <Badge variant="secondary" className="gap-1">
-              <Wrench className="h-3 w-3" />
-              Tools
-            </Badge>
-          )}
-          <Badge variant="outline" className="text-xs">
-            {modelCapabilities.contextWindow.toLocaleString()} tokens
-          </Badge>
+          </div>
+        )}
+      </div>
+
+      {hasImages && visionModels.length > 0 && (
+        <div className="flex items-center gap-4">
+          <div className="flex-1">
+            <Label htmlFor="vision-model-select">
+              Vision Model (Optional - for hybrid processing)
+            </Label>
+            <Select value={selectedVisionModel || ''} onValueChange={selectVisionModel}>
+              <SelectTrigger id="vision-model-select" className="w-full">
+                <SelectValue placeholder="Select a vision model (optional)" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">
+                  <div className="flex items-center gap-2">
+                    <span className="text-muted-foreground">Auto-detect</span>
+                  </div>
+                </SelectItem>
+                {visionModels.map((model) => (
+                  <SelectItem key={model} value={model}>
+                    <div className="flex items-center gap-2">
+                      <ImageIcon className="h-4 w-4" />
+                      <span>{model}</span>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground mt-1">
+              Select a vision model to process images separately before sending to the main model
+            </p>
+          </div>
         </div>
       )}
     </div>
