@@ -8,8 +8,21 @@ A minimalist MCP client application focused on seamless Ollama integration with 
 - **Plugs (Auto-Discovery)**: Automatic scanning for Ollama instances, MCP servers, and MongoDB databases
 - **MCP Config Panel**: Visual editor for MCP configuration and tool descriptions
 - **Divine Dialog**: Advanced chat interface with model state indicators, image support, and persistent history
+- **Chat Memory**: Intelligent conversation context management for coherent multi-turn conversations
 - **Ollama Streamliner**: Intelligent request handling based on model capabilities
 - **Automatic Nginx Configuration**: Zero-config nginx setup with environment-based routing
+
+## What's New: Chat Memory Feature 🧠
+
+The latest version includes an intelligent chat memory system that automatically maintains conversation context:
+
+- **Automatic Context Management**: Previous messages are automatically included when chatting
+- **Smart Token Management**: Optimizes context size based on model capabilities
+- **Configurable Memory**: Customize how many messages and tokens to include
+- **Auto-cleanup**: Prevents memory overflow in long conversations
+- **Memory Statistics**: Monitor token usage and conversation length
+
+[Read the full Chat Memory documentation](docs/CHAT_MEMORY.md)
 
 ## Tech Stack
 
@@ -210,6 +223,9 @@ make db-restore                   # Restore MongoDB
 3. **Configure MCP**: Use the MCP Config panel to set up your MCP servers and tools
 
 4. **Start chatting**: Select a model in Divine Dialog and start conversing
+   - Your conversation history is automatically maintained
+   - The AI has context of previous messages
+   - Monitor memory usage with the new API endpoints
 
 ## Architecture Improvements
 
@@ -237,6 +253,30 @@ Updates backend URLs dynamically
 Tests configuration
     ↓
 Starts nginx
+```
+
+### 🧠 Chat Memory System
+
+The new chat memory system provides intelligent context management:
+
+**Key Features**:
+- **Automatic History Loading**: Previous messages included in AI context
+- **Token Budget Management**: Optimizes based on model's context window
+- **Configurable Limits**: Control message count and token usage
+- **Auto-cleanup**: Prevents unbounded memory growth
+- **Real-time Monitoring**: Track memory usage via API
+
+**Architecture**:
+```
+User Message
+    ↓
+ChatMemoryService loads history
+    ↓
+OllamaStreamliner includes context
+    ↓
+AI responds with full conversation awareness
+    ↓
+Response saved to history
 ```
 
 ## Deployment Configurations
@@ -312,6 +352,17 @@ docker exec olympian-frontend curl -f http://backend:4000/api/health
 curl http://localhost:11434/api/tags
 ```
 
+### Chat Memory Issues
+```bash
+# Check memory stats for a conversation
+curl http://localhost:4000/api/chat/conversations/{conversationId}/memory-stats
+
+# Clear old messages if needed
+curl -X POST http://localhost:4000/api/chat/conversations/{conversationId}/clear-old-messages \
+  -H "Content-Type: application/json" \
+  -d '{"keepLast": 50}'
+```
+
 ## Project Structure
 
 ```
@@ -322,6 +373,8 @@ olympian-ai-lightweight/
 ├── packages/
 │   ├── client/                   # React frontend
 │   ├── server/                   # Express backend
+│   │   └── services/
+│   │       └── ChatMemoryService.ts  # 🧠 Memory management
 │   └── shared/                   # Shared types
 ├── docker/
 │   ├── frontend/                 # Frontend + nginx
@@ -330,7 +383,8 @@ olympian-ai-lightweight/
 │       ├── docker-entrypoint.sh  # 🔧 Auto-config script
 │       └── conf.d/               # Nginx configurations
 ├── docs/
-│   └── nginx-configuration.md    # Nginx documentation
+│   ├── nginx-configuration.md    # Nginx documentation
+│   └── CHAT_MEMORY.md           # Chat memory documentation
 └── scripts/                      # Helper scripts
 ```
 
@@ -347,6 +401,7 @@ olympian-ai-lightweight/
 - [Architecture Overview](docs/ARCHITECTURE.md)
 - [API Documentation](docs/API.md)
 - [Nginx Configuration Guide](docs/nginx-configuration.md)
+- [Chat Memory Feature](docs/CHAT_MEMORY.md) - NEW!
 - [Docker Deployment Guide](docker/README.md)
 - [Contributing Guide](CONTRIBUTING.md)
 
