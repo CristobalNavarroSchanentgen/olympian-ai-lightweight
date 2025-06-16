@@ -250,18 +250,52 @@ setup:
 	@chmod +x scripts/*.sh
 	@./scripts/setup.sh
 
-# Validation helper function for IP addresses
+# Validation helper functions for IP addresses and DNS names
 validate-ip:
-	@if echo "$(IP)" | grep -E '^([0-9]{1,3}\.){3}[0-9]{1,3}$$' >/dev/null; then \
-		for octet in $$(echo "$(IP)" | tr '.' ' '); do \
+	@if echo "$(HOST)" | grep -E '^([0-9]{1,3}\.){3}[0-9]{1,3}$$' >/dev/null; then \
+		for octet in $$(echo "$(HOST)" | tr '.' ' '); do \
 			if [ $$octet -gt 255 ]; then \
-				echo "❌ Invalid IP address: $(IP)"; \
+				echo "❌ Invalid IP address: $(HOST)"; \
 				exit 1; \
 			fi; \
 		done; \
-		echo "✅ Valid IP address: $(IP)"; \
+		echo "✅ Valid IP address: $(HOST)"; \
 	else \
-		echo "❌ Invalid IP address format: $(IP)"; \
+		echo "❌ Invalid IP address format: $(HOST)"; \
+		exit 1; \
+	fi
+
+validate-dns:
+	@if echo "$(HOST)" | grep -E '^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$$' >/dev/null; then \
+		if [ $$(echo "$(HOST)" | wc -c) -le 254 ]; then \
+			echo "✅ Valid DNS name: $(HOST)"; \
+		else \
+			echo "❌ DNS name too long: $(HOST)"; \
+			exit 1; \
+		fi; \
+	else \
+		echo "❌ Invalid DNS name format: $(HOST)"; \
+		exit 1; \
+	fi
+
+validate-host:
+	@if echo "$(HOST)" | grep -E '^([0-9]{1,3}\.){3}[0-9]{1,3}$$' >/dev/null; then \
+		for octet in $$(echo "$(HOST)" | tr '.' ' '); do \
+			if [ $$octet -gt 255 ]; then \
+				echo "❌ Invalid IP address: $(HOST)"; \
+				exit 1; \
+			fi; \
+		done; \
+		echo "✅ Valid IP address: $(HOST)"; \
+	elif echo "$(HOST)" | grep -E '^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$$' >/dev/null; then \
+		if [ $$(echo "$(HOST)" | wc -c) -le 254 ]; then \
+			echo "✅ Valid hostname/DNS: $(HOST)"; \
+		else \
+			echo "❌ Hostname too long: $(HOST)"; \
+			exit 1; \
+		fi; \
+	else \
+		echo "❌ Invalid host format (must be IP address or DNS name): $(HOST)"; \
 		exit 1; \
 	fi
 
@@ -341,26 +375,33 @@ env-docker-multi-interactive:
 	@echo "📋 Setting up multi-host deployment configuration"
 	@echo ""
 	@echo "🔌 Ollama Configuration:"
-	@printf "Enter Ollama host IP address (e.g., 192.168.1.11): "; \
-	read ollama_ip; \
-	if [ -z "$$ollama_ip" ]; then \
-		echo "❌ Ollama IP is required for multi-host deployment!"; \
+	@printf "Enter Ollama host (IP address or DNS name, e.g., 192.168.1.11 or ollama-server.local): "; \
+	read ollama_host; \
+	if [ -z "$$ollama_host" ]; then \
+		echo "❌ Ollama host is required for multi-host deployment!"; \
 		exit 1; \
 	fi; \
-	if echo "$$ollama_ip" | grep -E '^([0-9]{1,3}\.){3}[0-9]{1,3}$$' >/dev/null; then \
-		for octet in $$(echo "$$ollama_ip" | tr '.' ' '); do \
+	if echo "$$ollama_host" | grep -E '^([0-9]{1,3}\.){3}[0-9]{1,3}$$' >/dev/null; then \
+		for octet in $$(echo "$$ollama_host" | tr '.' ' '); do \
 			if [ $$octet -gt 255 ]; then \
-				echo "❌ Invalid IP address: $$ollama_ip"; \
+				echo "❌ Invalid IP address: $$ollama_host"; \
 				exit 1; \
 			fi; \
 		done; \
-		echo "✅ Ollama IP validated: $$ollama_ip"; \
-		sed -i.bak "s|^OLLAMA_HOST=.*|# OLLAMA_HOST=http://localhost:11434|" .env; \
-		sed -i.bak "s|^# OLLAMA_HOST=http://192.168.1.11|OLLAMA_HOST=http://$$ollama_ip:11434|" .env; \
+		echo "✅ Ollama IP validated: $$ollama_host"; \
+	elif echo "$$ollama_host" | grep -E '^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$$' >/dev/null; then \
+		if [ $$(echo "$$ollama_host" | wc -c) -le 254 ]; then \
+			echo "✅ Ollama hostname validated: $$ollama_host"; \
+		else \
+			echo "❌ Hostname too long: $$ollama_host"; \
+			exit 1; \
+		fi; \
 	else \
-		echo "❌ Invalid IP address format: $$ollama_ip"; \
+		echo "❌ Invalid host format (must be IP address or DNS name): $$ollama_host"; \
 		exit 1; \
-	fi
+	fi; \
+	sed -i.bak "s|^OLLAMA_HOST=.*|# OLLAMA_HOST=http://localhost:11434|" .env; \
+	sed -i.bak "s|^# OLLAMA_HOST=http://192.168.1.11|OLLAMA_HOST=http://$$ollama_host:11434|" .env
 	@echo ""
 	@echo "🗄️  MongoDB Configuration:"
 	@printf "Use default MongoDB setup? (y/N): "; \
@@ -370,21 +411,21 @@ env-docker-multi-interactive:
 		sed -i.bak 's|^# MONGODB_URI=mongodb://olympian-mongodb|MONGODB_URI=mongodb://olympian-mongodb|' .env; \
 		echo "✅ Using containerized MongoDB"; \
 	else \
-		printf "Enter MongoDB host IP address (or press Enter to use containerized MongoDB): "; \
-		read mongo_ip; \
-		if [ -n "$$mongo_ip" ]; then \
+		printf "Enter MongoDB host (IP address or DNS name, or press Enter to use containerized MongoDB): "; \
+		read mongo_host; \
+		if [ -n "$$mongo_host" ]; then \
 			printf "Enter MongoDB username (or press Enter for no auth): "; \
 			read mongo_user; \
 			if [ -n "$$mongo_user" ]; then \
 				printf "Enter MongoDB password: "; \
 				read -s mongo_pass; echo; \
-				mongo_uri="mongodb://$$mongo_user:$$mongo_pass@$$mongo_ip:27017/olympian_ai_lite?authSource=admin"; \
+				mongo_uri="mongodb://$$mongo_user:$$mongo_pass@$$mongo_host:27017/olympian_ai_lite?authSource=admin"; \
 			else \
-				mongo_uri="mongodb://$$mongo_ip:27017/olympian_ai_lite"; \
+				mongo_uri="mongodb://$$mongo_host:27017/olympian_ai_lite"; \
 			fi; \
 			sed -i.bak "s|^MONGODB_URI=.*|# MONGODB_URI=mongodb://localhost:27017/olympian_ai_lite|" .env; \
 			sed -i.bak "s|^# MONGODB_URI=mongodb://username:password@192.168.1.10|MONGODB_URI=$$mongo_uri|" .env; \
-			echo "✅ MongoDB configured for external host: $$mongo_ip"; \
+			echo "✅ MongoDB configured for external host: $$mongo_host"; \
 		else \
 			sed -i.bak 's|^MONGODB_URI=.*|# MONGODB_URI=mongodb://localhost:27017/olympian_ai_lite|' .env; \
 			sed -i.bak 's|^# MONGODB_URI=mongodb://olympian-mongodb|MONGODB_URI=mongodb://olympian-mongodb|' .env; \
@@ -413,25 +454,44 @@ env-docker-multi-advanced:
 	@echo "📋 Setting up advanced multi-host deployment configuration"
 	@echo ""
 	@echo "🔌 Ollama Configuration:"
-	@printf "Enter Ollama host IP address (e.g., 192.168.1.11): "; \
-	read ollama_ip; \
-	if [ -z "$$ollama_ip" ]; then \
-		echo "❌ Ollama IP is required for multi-host deployment!"; \
+	@printf "Enter Ollama host (IP address or DNS name, e.g., 192.168.1.11 or ollama-server.local): "; \
+	read ollama_host; \
+	if [ -z "$$ollama_host" ]; then \
+		echo "❌ Ollama host is required for multi-host deployment!"; \
+		exit 1; \
+	fi; \
+	if echo "$$ollama_host" | grep -E '^([0-9]{1,3}\.){3}[0-9]{1,3}$$' >/dev/null; then \
+		for octet in $$(echo "$$ollama_host" | tr '.' ' '); do \
+			if [ $$octet -gt 255 ]; then \
+				echo "❌ Invalid IP address: $$ollama_host"; \
+				exit 1; \
+			fi; \
+		done; \
+		echo "✅ Ollama IP validated: $$ollama_host"; \
+	elif echo "$$ollama_host" | grep -E '^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$$' >/dev/null; then \
+		if [ $$(echo "$$ollama_host" | wc -c) -le 254 ]; then \
+			echo "✅ Ollama hostname validated: $$ollama_host"; \
+		else \
+			echo "❌ Hostname too long: $$ollama_host"; \
+			exit 1; \
+		fi; \
+	else \
+		echo "❌ Invalid host format (must be IP address or DNS name): $$ollama_host"; \
 		exit 1; \
 	fi; \
 	printf "Enter Ollama port (default: 11434): "; \
 	read ollama_port; \
 	if [ -z "$$ollama_port" ]; then ollama_port=11434; fi; \
 	sed -i.bak "s|^OLLAMA_HOST=.*|# OLLAMA_HOST=http://localhost:11434|" .env; \
-	sed -i.bak "s|^# OLLAMA_HOST=http://192.168.1.11|OLLAMA_HOST=http://$$ollama_ip:$$ollama_port|" .env; \
-	echo "✅ Ollama configured: $$ollama_ip:$$ollama_port"
+	sed -i.bak "s|^# OLLAMA_HOST=http://192.168.1.11|OLLAMA_HOST=http://$$ollama_host:$$ollama_port|" .env; \
+	echo "✅ Ollama configured: $$ollama_host:$$ollama_port"
 	@echo ""
 	@echo "🗄️  MongoDB Configuration:"
 	@printf "Use containerized MongoDB? (Y/n): "; \
 	read use_container_mongo; \
 	if [ "$$use_container_mongo" = "n" ] || [ "$$use_container_mongo" = "N" ]; then \
-		printf "Enter MongoDB host IP address: "; \
-		read mongo_ip; \
+		printf "Enter MongoDB host (IP address or DNS name): "; \
+		read mongo_host; \
 		printf "Enter MongoDB port (default: 27017): "; \
 		read mongo_port; \
 		if [ -z "$$mongo_port" ]; then mongo_port=27017; fi; \
@@ -443,13 +503,13 @@ env-docker-multi-advanced:
 		if [ -n "$$mongo_user" ]; then \
 			printf "Enter MongoDB password: "; \
 			read -s mongo_pass; echo; \
-			mongo_uri="mongodb://$$mongo_user:$$mongo_pass@$$mongo_ip:$$mongo_port/$$mongo_db?authSource=admin"; \
+			mongo_uri="mongodb://$$mongo_user:$$mongo_pass@$$mongo_host:$$mongo_port/$$mongo_db?authSource=admin"; \
 		else \
-			mongo_uri="mongodb://$$mongo_ip:$$mongo_port/$$mongo_db"; \
+			mongo_uri="mongodb://$$mongo_host:$$mongo_port/$$mongo_db"; \
 		fi; \
 		sed -i.bak "s|^MONGODB_URI=.*|# MONGODB_URI=mongodb://localhost:27017/olympian_ai_lite|" .env; \
 		sed -i.bak "s|^# MONGODB_URI=mongodb://username:password@192.168.1.10|MONGODB_URI=$$mongo_uri|" .env; \
-		echo "✅ MongoDB configured for external host: $$mongo_ip:$$mongo_port"; \
+		echo "✅ MongoDB configured for external host: $$mongo_host:$$mongo_port"; \
 	else \
 		sed -i.bak 's|^MONGODB_URI=.*|# MONGODB_URI=mongodb://localhost:27017/olympian_ai_lite|' .env; \
 		sed -i.bak 's|^# MONGODB_URI=mongodb://olympian-mongodb|MONGODB_URI=mongodb://olympian-mongodb|' .env; \
@@ -644,7 +704,8 @@ quick-docker-multi:
 	@echo "🚀 Quick Docker multi-host deployment with automated setup..."
 	@echo ""
 	@echo "📋 This will configure and deploy Olympian AI for multi-host setup"
-	@echo "💡 You'll be prompted for your Ollama host IP address"
+	@echo "💡 You can specify either IP addresses or DNS names for your Ollama host"
+	@echo "   Examples: 192.168.1.11, ollama-server.local, my-ai-box"
 	@echo ""
 	@make env-docker-multi-interactive
 	@echo ""
