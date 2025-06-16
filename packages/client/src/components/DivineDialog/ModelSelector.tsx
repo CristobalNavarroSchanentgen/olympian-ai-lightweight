@@ -32,6 +32,12 @@ export function ModelSelector({ hasImages }: ModelSelectorProps) {
     fetchVisionModels();
   }, [fetchVisionModels]);
 
+  // Handle vision model selection with "auto" as the default
+  const handleVisionModelChange = (value: string) => {
+    // If "auto" is selected, set to empty string (no specific vision model)
+    selectVisionModel(value === 'auto' ? '' : value);
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-4">
@@ -81,12 +87,15 @@ export function ModelSelector({ hasImages }: ModelSelectorProps) {
             <Label htmlFor="vision-model-select">
               Vision Model {hasImages ? '(For image processing)' : '(Optional - for when you upload images)'}
             </Label>
-            <Select value={selectedVisionModel || ''} onValueChange={selectVisionModel}>
+            <Select 
+              value={selectedVisionModel || 'auto'} 
+              onValueChange={handleVisionModelChange}
+            >
               <SelectTrigger id="vision-model-select" className="w-full">
                 <SelectValue placeholder="Select a vision model (optional)" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">
+                <SelectItem value="auto">
                   <div className="flex items-center gap-2">
                     <span className="text-muted-foreground">Auto-detect</span>
                   </div>
