@@ -4,7 +4,6 @@ import { useChatStore } from '@/stores/useChatStore';
 import { api } from '@/services/api';
 import { ChatInput } from './ChatInput';
 import { MessageList } from './MessageList';
-import { ConversationSidebar } from './ConversationSidebar';
 import { ModelSelector } from './ModelSelector';
 import { Message } from '@olympian/shared';
 import { toast } from '@/hooks/useToast';
@@ -138,16 +137,10 @@ export function DivineDialog() {
   };
 
   return (
-    <div className="flex h-[calc(100vh-12rem)] gap-4">
-      {/* Sidebar */}
-      <div className="w-80 flex-shrink-0">
-        <ConversationSidebar />
-      </div>
-
-      {/* Main Chat Area */}
-      <Card className="flex-1 flex flex-col">
+    <div className="h-full flex flex-col p-4">
+      <Card className="flex-1 flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="border-b p-4">
+        <div className="border-b p-4 flex-shrink-0">
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-semibold">
               {currentConversation ? currentConversation.title : 'New Conversation'}
@@ -168,7 +161,7 @@ export function DivineDialog() {
         </div>
 
         {/* Input */}
-        <div className="border-t p-4">
+        <div className="border-t p-4 flex-shrink-0">
           <ChatInput
             onSendMessage={handleSendMessage}
             onCancel={handleCancelGeneration}
