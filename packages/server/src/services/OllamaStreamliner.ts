@@ -664,21 +664,73 @@ export class OllamaStreamliner {
     const ollamaHost = this.getOllamaHost();
     
     try {
-      logger.debug(`Fetching models from ${ollamaHost}/api/tags`);
-      const response = await fetch(`${ollamaHost}/api/tags`);
+      logger.debug(`Attempting to fetch models from ${ollamaHost}/api/tags`);
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+      
+      const response = await fetch(`${ollamaHost}/api/tags`, {
+        signal: controller.signal,
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': 'Olympian-AI-Lightweight/1.0'
+        }
+      });
+      
+      clearTimeout(timeoutId);
+
       if (!response.ok) {
-        throw new Error(`Failed to list models: ${response.statusText}`);
+        const errorText = await response.text().catch(() => 'Unable to read error response');
+        throw new Error(`HTTP ${response.status} ${response.statusText}: ${errorText}`);
       }
 
       const data = await response.json() as OllamaModelListResponse;
       const models = data.models?.map((m) => m.name) || [];
-      logger.debug(`Found ${models.length} models: ${models.join(', ')}`);
+      
+      logger.info(`Successfully connected to Ollama at ${ollamaHost}`);
+      logger.info(`Found ${models.length} models: ${models.join(', ')}`);
+      
       return models;
     } catch (error) {
-      logger.error('Failed to list Ollama models:', {
-        error: error instanceof Error ? error.message : error,
-        host: ollamaHost
-      });
+      // Enhanced error logging with more details
+      const errorDetails = {
+        host: ollamaHost,
+        errorType: error instanceof Error ? error.constructor.name : typeof error,
+        errorMessage: error instanceof Error ? error.message : String(error),
+        isNetworkError: error instanceof TypeError && error.message.includes('fetch'),
+        isTimeoutError: error instanceof Error && error.name === 'AbortError',
+        timestamp: new Date().toISOString()
+      };
+
+      if (errorDetails.isNetworkError) {
+        logger.error('🔗 Network connection failed to Ollama server:', {
+          ...errorDetails,
+          possibleCauses: [
+            'Ollama server is not running',
+            'Network connectivity issues',
+            'DNS resolution failure',
+            'Firewall blocking the connection',
+            'Incorrect hostname/IP address'
+          ],
+          troubleshooting: [
+            `Try: curl -v ${ollamaHost}/api/tags`,
+            'Check if Ollama is running on the target host',
+            'Verify network connectivity between containers',
+            'Check firewall rules and security groups'
+          ]
+        });
+      } else if (errorDetails.isTimeoutError) {
+        logger.error('⏱️ Connection timeout to Ollama server:', {
+          ...errorDetails,
+          possibleCauses: [
+            'Ollama server is overloaded',
+            'Network latency too high',
+            'Server is starting up'
+          ]
+        });
+      } else {
+        logger.error('❌ Failed to list Ollama models:', errorDetails);
+      }
       
       if (this.loadBalancer) {
         this.loadBalancer.reportFailure(ollamaHost);
