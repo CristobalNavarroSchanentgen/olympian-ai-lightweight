@@ -129,12 +129,20 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   fetchModels: async () => {
     set({ isLoadingModels: true });
     try {
-      const models = await api.getModels();
-      set({ models });
+      // Fetch both regular models and vision models to filter properly
+      const [allModels, visionModels] = await Promise.all([
+        api.getModels(),
+        api.getVisionModels()
+      ]);
+      
+      // Filter out vision models from the regular models list
+      const filteredModels = allModels.filter(model => !visionModels.includes(model));
+      
+      set({ models: filteredModels, visionModels });
       
       // Auto-select first model if none selected
-      if (models.length > 0 && !get().selectedModel) {
-        await get().selectModel(models[0]);
+      if (filteredModels.length > 0 && !get().selectedModel) {
+        await get().selectModel(filteredModels[0]);
       }
     } catch (error) {
       toast({
