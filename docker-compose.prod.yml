@@ -1,22 +1,30 @@
-# Production docker-compose configuration
-# Supports both same-host and multi-host deployments
+# Production docker-compose configuration for multi-host deployment
+# Uses external MongoDB and Ollama services configured in .env
 
 services:
+  # Frontend with integrated nginx (serves both static files and proxies backend)
   frontend:
     build:
       context: .
       dockerfile: docker/frontend/Dockerfile
     container_name: olympian-frontend
     restart: unless-stopped
+    ports:
+      - "${APP_PORT:-8080}:80"
     environment:
-      # Pass nginx configuration to frontend
+      DEPLOYMENT_MODE: ${DEPLOYMENT_MODE:-multi-host}
       BACKEND_HOST: backend
       BACKEND_PORT: 4000
-      DEPLOYMENT_MODE: ${DEPLOYMENT_MODE:-multi-host}
     depends_on:
       - backend
     networks:
       - olympian-network
+    healthcheck:
+      test: ["CMD", "/healthcheck.sh"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   backend:
     build:
@@ -25,18 +33,18 @@ services:
     container_name: olympian-backend
     restart: unless-stopped
     environment:
-      # Deployment mode: 'same-host' or 'multi-host'
+      # Deployment mode
       DEPLOYMENT_MODE: ${DEPLOYMENT_MODE:-multi-host}
       
-      # Multi-host configuration (default)
-      MONGODB_URI: ${MONGODB_URI:-mongodb://mongo-host:27017/olympian_ai_lite}
-      OLLAMA_HOST: ${OLLAMA_HOST:-http://ollama-host:11434}
+      # External services (configured in .env)
+      MONGODB_URI: ${MONGODB_URI}
+      OLLAMA_HOST: ${OLLAMA_HOST}
       
-      # Service discovery for multiple hosts
+      # Optional: Multiple hosts for load balancing
       OLLAMA_HOSTS: ${OLLAMA_HOSTS:-}
       MCP_HOSTS: ${MCP_HOSTS:-}
       
-      # Network settings
+      # Service discovery settings
       SERVICE_DISCOVERY_ENABLED: ${SERVICE_DISCOVERY_ENABLED:-true}
       SERVICE_DISCOVERY_SUBNET: ${SERVICE_DISCOVERY_SUBNET:-192.168.1.0/24}
       
@@ -48,37 +56,63 @@ services:
       # Security
       JWT_SECRET: ${JWT_SECRET}
       SESSION_SECRET: ${SESSION_SECRET}
+      
+      # CORS settings
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:8080}
     volumes:
       - config-data:/config/.olympian-ai-lite
       - logs:/app/logs
     networks:
       - olympian-network
-    # Optional: Add extra_hosts for multi-host deployment
-    # extra_hosts:
-    #   - "mongo-host:192.168.1.10"
-    #   - "ollama-host:192.168.1.11"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
-  nginx:
-    build:
-      context: .
-      dockerfile: docker/nginx/Dockerfile
-    container_name: olympian-nginx
+  # Optional: MongoDB service (only used if MONGODB_URI points to local)
+  # Uncomment if you want to run MongoDB in a container instead of external
+  # mongodb:
+  #   image: mongo:7
+  #   container_name: olympian-mongodb
+  #   restart: unless-stopped
+  #   volumes:
+  #     - mongodb-data:/data/db
+  #   environment:
+  #     MONGO_INITDB_DATABASE: olympian_ai_lite
+  #   networks:
+  #     - olympian-network
+  #   healthcheck:
+  #     test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+  #     interval: 30s
+  #     timeout: 5s
+  #     retries: 3
+  #     start_period: 10s
+
+  # Example MCP server (optional)
+  mcp-filesystem:
+    image: node:20-alpine
+    container_name: olympian-mcp-filesystem
     restart: unless-stopped
-    environment:
-      DEPLOYMENT_MODE: ${DEPLOYMENT_MODE:-multi-host}
-      BACKEND_HOST: backend
-      BACKEND_PORT: 4000
-    ports:
-      - "${APP_PORT:-8080}:80"
-    depends_on:
-      - frontend
-      - backend
+    working_dir: /app
+    command: npx -y @modelcontextprotocol/server-filesystem /data
+    volumes:
+      - mcp-data:/data
     networks:
       - olympian-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000", "||", "exit", "1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
 volumes:
   config-data:
   logs:
+  # mongodb-data:  # Uncomment if using local MongoDB
+  mcp-data:
 
 networks:
   olympian-network:
