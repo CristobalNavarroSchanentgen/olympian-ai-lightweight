@@ -27,6 +27,7 @@ services:
       NODE_ENV: development
       PORT: 4000
       DEPLOYMENT_MODE: same-host
+      RUNNING_IN_DOCKER: "true"
       MONGODB_URI: mongodb://mongodb:27017/olympian_ai_lite
       OLLAMA_HOST: http://ollama:11434
       LOG_LEVEL: debug
