@@ -25,10 +25,10 @@ function App() {
 
   return (
     <ThemeProvider defaultTheme="dark" storageKey="olympian-theme">
-      <div className="min-h-screen bg-background flex flex-col">
+      <div className="h-screen bg-background flex flex-col overflow-hidden">
         <header className="border-b flex-shrink-0">
-          <div className="container flex h-16 items-center justify-between px-4">
-            <h1 className="text-2xl font-bold">Olympian AI</h1>
+          <div className="container flex h-14 items-center justify-between px-4">
+            <h1 className="text-xl font-bold">Olympian AI</h1>
             <div className="flex items-center gap-2">
               <Button
                 variant="ghost"
