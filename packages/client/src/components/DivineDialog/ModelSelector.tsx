@@ -28,10 +28,9 @@ export function ModelSelector({ hasImages }: ModelSelectorProps) {
   } = useChatStore();
 
   useEffect(() => {
-    if (hasImages) {
-      fetchVisionModels();
-    }
-  }, [hasImages, fetchVisionModels]);
+    // Always fetch vision models on mount to show available options
+    fetchVisionModels();
+  }, [fetchVisionModels]);
 
   return (
     <div className="space-y-4">
@@ -76,11 +75,11 @@ export function ModelSelector({ hasImages }: ModelSelectorProps) {
         )}
       </div>
 
-      {hasImages && visionModels.length > 0 && (
+      {visionModels.length > 0 && (
         <div className="flex items-center gap-4">
           <div className="flex-1">
             <Label htmlFor="vision-model-select">
-              Vision Model (Optional - for hybrid processing)
+              Vision Model {hasImages ? '(For image processing)' : '(Optional - for when you upload images)'}
             </Label>
             <Select value={selectedVisionModel || ''} onValueChange={selectVisionModel}>
               <SelectTrigger id="vision-model-select" className="w-full">
@@ -103,7 +102,9 @@ export function ModelSelector({ hasImages }: ModelSelectorProps) {
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground mt-1">
-              Select a vision model to process images separately before sending to the main model
+              {hasImages 
+                ? 'Selected vision model will process your images before sending to the main model'
+                : 'When you upload images, this model will process them if your main model doesn\'t support vision'}
             </p>
           </div>
         </div>
