@@ -62,6 +62,8 @@ services:
     volumes:
       - config-data:/config/.olympian-ai-lite
       - logs:/app/logs
+    depends_on:
+      - mongodb
     networks:
       - olympian-network
     healthcheck:
@@ -71,24 +73,23 @@ services:
       retries: 3
       start_period: 15s
 
-  # Optional: MongoDB service (only used if MONGODB_URI points to local)
-  # Uncomment if you want to run MongoDB in a container instead of external
-  # mongodb:
-  #   image: mongo:7
-  #   container_name: olympian-mongodb
-  #   restart: unless-stopped
-  #   volumes:
-  #     - mongodb-data:/data/db
-  #   environment:
-  #     MONGO_INITDB_DATABASE: olympian_ai_lite
-  #   networks:
-  #     - olympian-network
-  #   healthcheck:
-  #     test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
-  #     interval: 30s
-  #     timeout: 5s
-  #     retries: 3
-  #     start_period: 10s
+  # MongoDB service - enabled for multi-host when using containerized option
+  mongodb:
+    image: mongo:7
+    container_name: olympian-mongodb
+    restart: unless-stopped
+    volumes:
+      - mongodb-data:/data/db
+    environment:
+      MONGO_INITDB_DATABASE: olympian_ai_lite
+    networks:
+      - olympian-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   # Example MCP server (optional)
   mcp-filesystem:
@@ -111,7 +112,7 @@ services:
 volumes:
   config-data:
   logs:
-  # mongodb-data:  # Uncomment if using local MongoDB
+  mongodb-data:
   mcp-data:
 
 networks:
