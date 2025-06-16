@@ -46,9 +46,13 @@ export function getDeploymentConfig(): DeploymentConfig {
   if (mode === 'development') {
     // Development mode configuration
     // When running in Docker, use Docker service names
-    const mongoUri = isDocker 
-      ? (process.env.MONGODB_URI || 'mongodb://mongodb:27017/olympian_ai_lite')
-      : (process.env.MONGODB_URI || 'mongodb://localhost:27017/olympian_ai_lite');
+    let mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/olympian_ai_lite';
+    
+    // Override localhost MongoDB URI when in Docker
+    if (isDocker && (mongoUri.includes('localhost') || mongoUri.includes('127.0.0.1'))) {
+      logger.info('Detected localhost MongoDB URI in Docker environment, overriding to use Docker service name');
+      mongoUri = 'mongodb://mongodb:27017/olympian_ai_lite';
+    }
     
     const ollamaHost = isDocker
       ? (process.env.OLLAMA_HOST || 'http://host.docker.internal:11434')
@@ -141,10 +145,17 @@ export function getDeploymentConfig(): DeploymentConfig {
     const ollamaHosts = process.env.OLLAMA_HOSTS?.split(',').filter(Boolean) || [];
     const ollamaHost = process.env.OLLAMA_HOST || ollamaHosts[0] || 'http://host.docker.internal:11434';
     
+    // Override localhost MongoDB URI when in Docker modes
+    let mongoUri = process.env.MONGODB_URI || 'mongodb://mongodb:27017/olympian_ai_lite';
+    if (mongoUri.includes('localhost') || mongoUri.includes('127.0.0.1')) {
+      logger.info('Detected localhost MongoDB URI in Docker mode, overriding to use Docker service name');
+      mongoUri = 'mongodb://mongodb:27017/olympian_ai_lite';
+    }
+    
     return {
       mode,
       mongodb: {
-        uri: process.env.MONGODB_URI || 'mongodb://mongodb:27017/olympian_ai_lite',
+        uri: mongoUri,
         options: {
           maxPoolSize: 10,
           minPoolSize: 2,
@@ -184,6 +195,10 @@ export function getDeploymentConfig(): DeploymentConfig {
       // even in multi-host mode (for quick setup scenarios)
       mongoUri = 'mongodb://mongodb:27017/olympian_ai_lite';
       logger.info('No MONGODB_URI specified, using containerized MongoDB: mongodb');
+    } else if ((mongoUri.includes('localhost') || mongoUri.includes('127.0.0.1')) && isDocker) {
+      // Override localhost when running in Docker
+      logger.info('Detected localhost MongoDB URI in multi-host Docker mode, overriding to use Docker service name');
+      mongoUri = 'mongodb://mongodb:27017/olympian_ai_lite';
     }
     
     return {
