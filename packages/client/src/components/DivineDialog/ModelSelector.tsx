@@ -84,6 +84,12 @@ export function ModelSelector({ hasImages }: ModelSelectorProps) {
               ))}
             </SelectContent>
           </Select>
+          {hasImages && (
+            <Badge variant="secondary" className="gap-1">
+              <ImageIcon className="h-3 w-3" />
+              Active
+            </Badge>
+          )}
         </div>
       )}
       
