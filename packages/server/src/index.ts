@@ -7,6 +7,7 @@ import { Server } from 'socket.io';
 import { logger } from './utils/logger';
 import { DatabaseService } from './services/DatabaseService';
 import { WebSocketService } from './services/WebSocketService';
+import { OllamaHealthCheck } from './services/OllamaHealthCheck';
 import { setupRoutes } from './api/routes';
 import { errorHandler } from './middleware/errorHandler';
 import { rateLimiter } from './middleware/rateLimiter';
@@ -44,6 +45,7 @@ app.use(rateLimiter);
 // Initialize services
 const dbService = DatabaseService.getInstance();
 const wsService = new WebSocketService(io);
+const ollamaHealthCheck = new OllamaHealthCheck();
 
 // Setup routes
 setupRoutes(app);
@@ -64,9 +66,25 @@ async function start(): Promise<void> {
     wsService.initialize();
     logger.info('WebSocket service initialized');
 
+    // Check Ollama health and vision models availability
+    logger.info('Checking Ollama connectivity and vision models...');
+    await ollamaHealthCheck.ensureVisionModelsAvailable();
+
     // Start HTTP server
     httpServer.listen(PORT, () => {
       logger.info(`Server running on port ${PORT}`);
+      logger.info(`Deployment mode: ${deploymentConfig.mode}`);
+      logger.info(`Ollama host: ${deploymentConfig.ollama.host}`);
+      
+      if (deploymentConfig.mode === 'multi-host') {
+        logger.info('=== MULTI-HOST VISION TROUBLESHOOTING ===');
+        logger.info('If vision models are not appearing:');
+        logger.info('1. Check Ollama connectivity: curl http://localhost:4000/api/health/vision');
+        logger.info('2. Install vision models on Ollama host: ollama pull llava:13b');
+        logger.info('3. Verify models: curl http://your-ollama-host:11434/api/tags');
+        logger.info('4. Restart this backend container after installing models');
+        logger.info('=========================================');
+      }
     });
   } catch (error) {
     logger.error('Failed to start server:', error);
