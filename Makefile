@@ -51,6 +51,13 @@ build-prod-clean: ## Build the application for production (no cache)
 	@echo "$(CYAN)🏗️  Building application for production (clean build)...$(RESET)"
 	@docker-compose -f docker-compose.prod.yml build --no-cache
 
+rebuild-backend: ## Rebuild only the backend container (no cache)
+	@echo "$(CYAN)🔄 Rebuilding backend container...$(RESET)"
+	@docker-compose -f docker-compose.prod.yml stop backend
+	@docker-compose -f docker-compose.prod.yml build --no-cache backend
+	@docker-compose -f docker-compose.prod.yml up -d backend
+	@echo "$(GREEN)✅ Backend rebuilt and restarted!$(RESET)"
+
 ##@ 🐳 Docker Commands
 
 up: ## Start development environment with Docker
