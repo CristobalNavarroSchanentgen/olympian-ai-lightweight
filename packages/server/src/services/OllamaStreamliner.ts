@@ -21,6 +21,7 @@ interface OllamaStreamResponse {
 
 interface OllamaGenerateResponse {
   response?: string;
+  error?: string;
 }
 
 export class OllamaStreamliner {
@@ -42,6 +43,13 @@ export class OllamaStreamliner {
     
     // Initialize memory service
     this.memoryService = ChatMemoryService.getInstance();
+    
+    // Log Ollama configuration for debugging
+    logger.info(`Ollama configuration: ${JSON.stringify({
+      host: this.deploymentConfig.ollama.host,
+      deploymentMode: this.deploymentConfig.mode,
+      hosts: this.deploymentConfig.ollama.hosts
+    })}`);
   }
 
   private getOllamaHost(clientIp?: string): string {
@@ -148,36 +156,77 @@ export class OllamaStreamliner {
   ): Promise<string> {
     const ollamaHost = this.getOllamaHost(clientIp);
     
+    logger.info(`Processing ${images.length} image(s) with vision model '${visionModel}' at ${ollamaHost}`);
+    
     try {
+      // Encode images
+      const encodedImages = await Promise.all(images.map(img => this.encodeImage(img)));
+      logger.debug(`Encoded ${encodedImages.length} images for vision processing`);
+
       // Use the vision model to describe the images
+      const requestBody = {
+        model: visionModel,
+        prompt: `Describe the following image(s) in detail: ${content}`,
+        images: encodedImages,
+        stream: false,
+      };
+
+      logger.debug(`Sending vision request to ${ollamaHost}/api/generate with model: ${visionModel}`);
+
       const response = await fetch(`${ollamaHost}/api/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: visionModel,
-          prompt: `Describe the following image(s) in detail: ${content}`,
-          images: await Promise.all(images.map(img => this.encodeImage(img))),
-          stream: false,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
-        throw new Error(`Vision model request failed: ${response.statusText}`);
+        const errorText = await response.text();
+        logger.error(`Vision model request failed: ${response.status} ${response.statusText}`, {
+          host: ollamaHost,
+          model: visionModel,
+          error: errorText
+        });
+        throw new Error(`Vision model request failed: ${response.statusText} - ${errorText}`);
       }
 
       const result = await response.json() as OllamaGenerateResponse;
-      return result.response || 'Unable to process image';
+      
+      if (result.error) {
+        logger.error(`Ollama returned error for vision processing:`, result.error);
+        throw new Error(`Ollama error: ${result.error}`);
+      }
+
+      if (!result.response) {
+        logger.warn('Vision model returned empty response');
+        return 'Unable to process image - no response from vision model';
+      }
+
+      logger.info(`Successfully processed images with vision model, response length: ${result.response.length}`);
+      return result.response;
     } catch (error) {
-      logger.error('Failed to process image with vision model:', error);
+      logger.error('Failed to process image with vision model:', {
+        error: error instanceof Error ? error.message : error,
+        host: ollamaHost,
+        model: visionModel,
+        imageCount: images.length
+      });
+      
+      if (this.loadBalancer) {
+        this.loadBalancer.reportFailure(ollamaHost);
+      }
+      
       throw error;
     }
   }
 
   async getAvailableVisionModels(): Promise<string[]> {
     const models = await this.listModels();
-    return models.filter(model => 
+    const visionModels = models.filter(model => 
       this.visionModels.some(vm => model.toLowerCase().includes(vm.toLowerCase()))
     );
+    
+    logger.debug(`Found ${visionModels.length} vision models: ${visionModels.join(', ')}`);
+    return visionModels;
   }
 
   async processRequest(
@@ -213,8 +262,11 @@ export class OllamaStreamliner {
 
     // Vision handling
     if (request.images && request.images.length > 0) {
+      logger.info(`Processing request with ${request.images.length} images`);
+      
       // If a vision model is specified, use hybrid processing
       if (request.visionModel) {
+        logger.info(`Using hybrid processing with vision model: ${request.visionModel}`);
         return await this.formatHybridVisionRequest(request, messages);
       }
       
@@ -226,6 +278,7 @@ export class OllamaStreamliner {
           message: `The selected model '${request.model}' doesn't support images. Please choose a vision-capable model or enable hybrid processing with a vision model.`,
           available_vision_models: availableVisionModels,
         };
+        logger.warn(`Vision not supported for model ${request.model}`, { availableVisionModels });
         throw new AppError(400, JSON.stringify(error), 'MODEL_CAPABILITY_ERROR');
       }
       return this.formatVisionRequest(request, messages);
@@ -372,15 +425,21 @@ export class OllamaStreamliner {
     const ollamaHost = this.getOllamaHost();
     
     try {
+      logger.debug(`Fetching models from ${ollamaHost}/api/tags`);
       const response = await fetch(`${ollamaHost}/api/tags`);
       if (!response.ok) {
         throw new Error(`Failed to list models: ${response.statusText}`);
       }
 
       const data = await response.json() as OllamaModelListResponse;
-      return data.models?.map((m) => m.name) || [];
+      const models = data.models?.map((m) => m.name) || [];
+      logger.debug(`Found ${models.length} models: ${models.join(', ')}`);
+      return models;
     } catch (error) {
-      logger.error('Failed to list Ollama models:', error);
+      logger.error('Failed to list Ollama models:', {
+        error: error instanceof Error ? error.message : error,
+        host: ollamaHost
+      });
       
       if (this.loadBalancer) {
         this.loadBalancer.reportFailure(ollamaHost);
