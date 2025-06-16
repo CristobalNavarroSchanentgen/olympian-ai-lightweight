@@ -145,37 +145,63 @@ env-docker-multi-interactive: ## Interactive multi-host environment configuratio
 	@echo "$(CYAN)📋 Setting up multi-host deployment configuration$(RESET)"
 	@echo ""
 	@echo "$(CYAN)🔌 Ollama Configuration:$(RESET)"
-	@printf "Enter Ollama host (IP address or DNS name, e.g., 192.168.1.11 or ollama-server.local): "; \
-	read ollama_host; \
-	if [ -z "$$ollama_host" ]; then \
+	@echo "$(YELLOW)Note: If your Ollama service is behind a reverse proxy (e.g., using HTTPS or standard ports),$(RESET)"
+	@echo "$(YELLOW)enter the full URL including protocol (e.g., http://ollama.example.com or https://ollama.example.com)$(RESET)"
+	@echo ""
+	@printf "Enter Ollama URL or host (e.g., http://ollama.example.com, 192.168.1.11, ollama-server.local): "; \
+	read ollama_input; \
+	if [ -z "$$ollama_input" ]; then \
 		echo "$(RED)❌ Ollama host is required for multi-host deployment!$(RESET)"; \
 		exit 1; \
 	fi; \
-	if echo "$$ollama_host" | grep -E '^([0-9]{1,3}\.){3}[0-9]{1,3}$$' >/dev/null; then \
-		for octet in $$(echo "$$ollama_host" | tr '.' ' '); do \
+	if echo "$$ollama_input" | grep -E '^https?://' >/dev/null; then \
+		ollama_url="$$ollama_input"; \
+		echo "$(GREEN)✅ Using full URL: $$ollama_url$(RESET)"; \
+	elif echo "$$ollama_input" | grep -E '^([0-9]{1,3}\.){3}[0-9]{1,3}(:[0-9]+)?$$' >/dev/null; then \
+		ip_part=$$(echo "$$ollama_input" | cut -d':' -f1); \
+		for octet in $$(echo "$$ip_part" | tr '.' ' '); do \
 			if [ $$octet -gt 255 ]; then \
-				echo "$(RED)❌ Invalid IP address: $$ollama_host$(RESET)"; \
+				echo "$(RED)❌ Invalid IP address: $$ip_part$(RESET)"; \
 				exit 1; \
 			fi; \
 		done; \
-		echo "$(GREEN)✅ Ollama IP validated: $$ollama_host$(RESET)"; \
-	elif echo "$$ollama_host" | grep -E '^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$$' >/dev/null; then \
-		if [ $$(echo "$$ollama_host" | wc -c) -le 254 ]; then \
-			echo "$(GREEN)✅ Ollama hostname validated: $$ollama_host$(RESET)"; \
+		if echo "$$ollama_input" | grep -q ":"; then \
+			ollama_url="http://$$ollama_input"; \
+			echo "$(GREEN)✅ IP with port detected, using: $$ollama_url$(RESET)"; \
 		else \
-			echo "$(RED)❌ Hostname too long: $$ollama_host$(RESET)"; \
+			printf "Add default Ollama port 11434? (Y/n): "; \
+			read add_port; \
+			if [ "$$add_port" = "n" ] || [ "$$add_port" = "N" ]; then \
+				ollama_url="http://$$ollama_input"; \
+				echo "$(GREEN)✅ Using IP without port: $$ollama_url$(RESET)"; \
+			else \
+				ollama_url="http://$$ollama_input:11434"; \
+				echo "$(GREEN)✅ Using IP with default port: $$ollama_url$(RESET)"; \
+			fi; \
+		fi; \
+	elif echo "$$ollama_input" | grep -E '^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*(:[0-9]+)?$$' >/dev/null; then \
+		if [ $$(echo "$$ollama_input" | cut -d':' -f1 | wc -c) -le 254 ]; then \
+			if echo "$$ollama_input" | grep -q ":"; then \
+				ollama_url="http://$$ollama_input"; \
+				echo "$(GREEN)✅ Hostname with port detected, using: $$ollama_url$(RESET)"; \
+			else \
+				printf "Add default Ollama port 11434? (Y/n): "; \
+				read add_port; \
+				if [ "$$add_port" = "n" ] || [ "$$add_port" = "N" ]; then \
+					ollama_url="http://$$ollama_input"; \
+					echo "$(GREEN)✅ Using hostname without port: $$ollama_url$(RESET)"; \
+				else \
+					ollama_url="http://$$ollama_input:11434"; \
+					echo "$(GREEN)✅ Using hostname with default port: $$ollama_url$(RESET)"; \
+				fi; \
+			fi; \
+		else \
+			echo "$(RED)❌ Hostname too long: $$ollama_input$(RESET)"; \
 			exit 1; \
 		fi; \
 	else \
-		echo "$(RED)❌ Invalid host format (must be IP address or DNS name): $$ollama_host$(RESET)"; \
+		echo "$(RED)❌ Invalid format. Please enter a valid URL, IP address, or hostname: $$ollama_input$(RESET)"; \
 		exit 1; \
-	fi; \
-	if echo "$$ollama_host" | grep -q ":"; then \
-		ollama_url="http://$$ollama_host"; \
-		echo "$(GREEN)✅ Port detected in hostname, using as-is$(RESET)"; \
-	else \
-		ollama_url="http://$$ollama_host:11434"; \
-		echo "$(GREEN)✅ Added default Ollama port 11434$(RESET)"; \
 	fi; \
 	sed -i.bak 's|^OLLAMA_HOST=.*|OLLAMA_HOST='"$$ollama_url"'|' .env
 	@echo ""
