@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { ObjectId, WithId } from 'mongodb';
 import { DatabaseService } from '../services/DatabaseService';
 import { OllamaStreamliner } from '../services/OllamaStreamliner';
+import { ChatMemoryService } from '../services/ChatMemoryService';
 import { AppError } from '../middleware/errorHandler';
 import { chatRateLimiter } from '../middleware/rateLimiter';
 import { z } from 'zod';
@@ -10,6 +11,7 @@ import { Message, Conversation } from '@olympian/shared';
 const router = Router();
 const db = DatabaseService.getInstance();
 const streamliner = new OllamaStreamliner();
+const memoryService = ChatMemoryService.getInstance();
 
 // Apply rate limiting to chat endpoints
 router.use(chatRateLimiter);
@@ -20,6 +22,13 @@ const sendMessageSchema = z.object({
   conversationId: z.string().optional(),
   model: z.string().min(1),
   images: z.array(z.string()).optional(),
+});
+
+const memoryConfigSchema = z.object({
+  maxMessages: z.number().min(1).max(100).optional(),
+  maxTokens: z.number().min(100).max(10000).optional(),
+  includeSystemPrompt: z.boolean().optional(),
+  systemPrompt: z.string().max(500).optional(),
 });
 
 // Database document types (with ObjectId)
@@ -86,7 +95,7 @@ router.post('/send', async (req, res, next) => {
       });
     }
 
-    // Save user message
+    // Save user message BEFORE processing to ensure it's in history
     const userMessage: MessageDoc = {
       conversationId: convId,
       role: 'user' as const,
@@ -96,7 +105,7 @@ router.post('/send', async (req, res, next) => {
     };
     await db.messages.insertOne(userMessage as any);
 
-    // Process the request
+    // Process the request with conversation history
     const processedRequest = await streamliner.processRequest({
       content: message,
       model,
@@ -228,6 +237,77 @@ router.get('/conversations/:id/messages', async (req, res, next) => {
       pageSize: Number(limit),
       total,
       hasMore: skip + messages.length < total,
+      timestamp: new Date(),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Get conversation memory stats
+router.get('/conversations/:id/memory-stats', async (req, res, next) => {
+  try {
+    const conversationId = req.params.id;
+    
+    // Verify conversation exists
+    const conversation = await db.conversations.findOne({
+      _id: new ObjectId(conversationId),
+    } as any);
+    
+    if (!conversation) {
+      throw new AppError(404, 'Conversation not found');
+    }
+
+    const stats = await memoryService.getMemoryStats(conversationId);
+    
+    res.json({
+      success: true,
+      data: stats,
+      timestamp: new Date(),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Update conversation memory configuration
+router.put('/conversations/:id/memory-config', async (req, res, next) => {
+  try {
+    const conversationId = req.params.id;
+    
+    // Validate input
+    const validation = memoryConfigSchema.safeParse(req.body);
+    if (!validation.success) {
+      throw new AppError(400, 'Invalid memory configuration');
+    }
+
+    await memoryService.updateConversationMemoryConfig(conversationId, validation.data);
+    
+    res.json({
+      success: true,
+      message: 'Memory configuration updated',
+      timestamp: new Date(),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Clear old messages from a conversation
+router.post('/conversations/:id/clear-old-messages', async (req, res, next) => {
+  try {
+    const conversationId = req.params.id;
+    const { keepLast = 100 } = req.body;
+    
+    if (typeof keepLast !== 'number' || keepLast < 1 || keepLast > 1000) {
+      throw new AppError(400, 'keepLast must be a number between 1 and 1000');
+    }
+
+    await memoryService.clearOldMessages(conversationId, keepLast);
+    
+    res.json({
+      success: true,
+      message: `Old messages cleared, keeping last ${keepLast} messages`,
       timestamp: new Date(),
     });
   } catch (error) {

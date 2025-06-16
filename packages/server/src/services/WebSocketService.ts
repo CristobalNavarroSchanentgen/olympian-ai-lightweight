@@ -4,12 +4,14 @@ import { ClientEvents, ServerEvents, Message, ScanProgress } from '@olympian/sha
 import { DatabaseService } from './DatabaseService';
 import { ConnectionScanner } from './ConnectionScanner';
 import { OllamaStreamliner } from './OllamaStreamliner';
+import { ChatMemoryService } from './ChatMemoryService';
 
 export class WebSocketService {
   private io: Server;
   private db: DatabaseService;
   private scanner: ConnectionScanner;
   private streamliner: OllamaStreamliner;
+  private memoryService: ChatMemoryService;
   private activeChats: Map<string, AbortController> = new Map();
 
   constructor(io: Server) {
@@ -17,6 +19,7 @@ export class WebSocketService {
     this.db = DatabaseService.getInstance();
     this.scanner = new ConnectionScanner();
     this.streamliner = new OllamaStreamliner();
+    this.memoryService = ChatMemoryService.getInstance();
   }
 
   initialize(): void {
@@ -34,6 +37,15 @@ export class WebSocketService {
 
       socket.on('model:select', async (data: ClientEvents['model:select']) => {
         await this.handleModelSelect(socket, data);
+      });
+
+      // Memory management events
+      socket.on('memory:stats', async (data: { conversationId: string }) => {
+        await this.handleMemoryStats(socket, data);
+      });
+
+      socket.on('memory:clear', async (data: { conversationId: string; keepLast?: number }) => {
+        await this.handleMemoryClear(socket, data);
       });
 
       // Connection scanning events
@@ -68,9 +80,6 @@ export class WebSocketService {
       // Emit thinking state
       socket.emit('chat:thinking', { messageId });
 
-      // Process the request
-      const processedRequest = await this.streamliner.processRequest(data);
-
       // Get or create conversation
       let conversationId: string;
       if (data.conversationId) {
@@ -84,15 +93,24 @@ export class WebSocketService {
           messageCount: 0,
         });
         conversationId = conversation.insertedId.toString();
+        
+        // Emit new conversation created
+        socket.emit('conversation:created', { conversationId });
       }
 
-      // Save user message
+      // Save user message BEFORE processing to ensure it's in history
       await this.db.messages.insertOne({
         conversationId,
         role: 'user',
         content: data.content,
         images: data.images,
         createdAt: new Date(),
+      });
+
+      // Process the request with conversation history
+      const processedRequest = await this.streamliner.processRequest({
+        ...data,
+        conversationId,
       });
 
       // Emit generating state
@@ -135,9 +153,17 @@ export class WebSocketService {
         }
       );
 
+      // Check if we should clear old messages (auto-cleanup)
+      const stats = await this.memoryService.getMemoryStats(conversationId);
+      if (stats.messageCount > 200) {
+        logger.info(`Auto-clearing old messages for conversation ${conversationId}`);
+        await this.memoryService.clearOldMessages(conversationId, 100);
+      }
+
       // Emit completion
       socket.emit('chat:complete', {
         messageId,
+        conversationId,
         metadata: assistantMessage.metadata!,
       });
     } catch (error) {
@@ -168,6 +194,40 @@ export class WebSocketService {
       socket.emit('model:capabilities', capabilities);
     } catch (error) {
       logger.error('Model select error:', error);
+    }
+  }
+
+  private async handleMemoryStats(
+    socket: Socket,
+    data: { conversationId: string }
+  ): Promise<void> {
+    try {
+      const stats = await this.memoryService.getMemoryStats(data.conversationId);
+      socket.emit('memory:stats', { conversationId: data.conversationId, stats });
+    } catch (error) {
+      logger.error('Memory stats error:', error);
+      socket.emit('memory:error', {
+        error: error instanceof Error ? error.message : 'Failed to get memory stats',
+      });
+    }
+  }
+
+  private async handleMemoryClear(
+    socket: Socket,
+    data: { conversationId: string; keepLast?: number }
+  ): Promise<void> {
+    try {
+      const keepLast = data.keepLast || 100;
+      await this.memoryService.clearOldMessages(data.conversationId, keepLast);
+      socket.emit('memory:cleared', {
+        conversationId: data.conversationId,
+        message: `Old messages cleared, keeping last ${keepLast} messages`,
+      });
+    } catch (error) {
+      logger.error('Memory clear error:', error);
+      socket.emit('memory:error', {
+        error: error instanceof Error ? error.message : 'Failed to clear messages',
+      });
     }
   }
 
