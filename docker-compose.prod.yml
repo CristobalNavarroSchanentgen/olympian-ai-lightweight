@@ -13,8 +13,8 @@ services:
       - "${APP_PORT:-8080}:80"
     environment:
       DEPLOYMENT_MODE: ${DEPLOYMENT_MODE:-multi-host}
-      # When backend uses host networking, connect via localhost
-      BACKEND_HOST: ${BACKEND_HOST:-localhost}
+      # Use Docker service name when backend is on Docker network
+      BACKEND_HOST: backend
       BACKEND_PORT: 4000
     depends_on:
       - backend
@@ -33,14 +33,18 @@ services:
       dockerfile: docker/backend/Dockerfile
     container_name: olympian-backend
     restart: unless-stopped
-    # Use host networking to access internal network resources like Ollama
-    network_mode: host
+    # Remove host networking to enable Docker service discovery
+    ports:
+      - "4000:4000"  # Expose backend port to host if needed
+    networks:
+      - olympian-network
     environment:
       # Deployment mode
       DEPLOYMENT_MODE: ${DEPLOYMENT_MODE:-multi-host}
       
       # External services (configured in .env)
-      MONGODB_URI: ${MONGODB_URI:-mongodb://localhost:27017/olympian_ai_lite}
+      # Use Docker service name for MongoDB when containerized
+      MONGODB_URI: ${MONGODB_URI:-mongodb://mongodb:27017/olympian_ai_lite}
       OLLAMA_HOST: ${OLLAMA_HOST}
       
       # Optional: Multiple hosts for load balancing
@@ -73,14 +77,16 @@ services:
       timeout: 5s
       retries: 3
       start_period: 15s
+    # Add extra_hosts to allow backend to access host services
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   # MongoDB service - enabled for multi-host when using containerized option
   mongodb:
     image: mongo:7
     container_name: olympian-mongodb
     restart: unless-stopped
-    ports:
-      - "27017:27017"  # Expose to host so backend can access via host networking
+    # Remove port exposure as it's not needed when using Docker networking
     volumes:
       - mongodb-data:/data/db
     environment:
