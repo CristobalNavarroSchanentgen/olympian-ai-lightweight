@@ -35,6 +35,8 @@ setup: ## Install dependencies and create .env from template
 
 quick-docker-multi: env-docker-multi-interactive build-prod up-prod ## Quick setup for multi-host Docker deployment
 
+quick-docker-same-existing: build-prod up-prod ## Quick setup for same-host Docker deployment with existing config
+
 ##@ 🏗️  Building
 
 build: ## Build the application for development
