@@ -7,6 +7,17 @@ import { ChatMemoryService, MemoryConfig } from './ChatMemoryService';
 interface OllamaModelInfo {
   modelfile?: string;
   description?: string;
+  modalities?: string[]; // Key field for vision detection
+  model_info?: {
+    architecture?: string;
+    parameters?: Record<string, any>;
+  };
+  details?: {
+    families?: string[];
+    format?: string;
+    parameter_size?: string;
+    quantization_level?: string;
+  };
 }
 
 interface OllamaModelListResponse {
@@ -29,7 +40,6 @@ export class OllamaStreamliner {
   private deploymentConfig = getDeploymentConfig();
   private loadBalancer?: OllamaLoadBalancer;
   private memoryService: ChatMemoryService;
-  private visionModels = ['llava:13b', 'llava:7b', 'llama3.2-vision:11b', 'bakllava', 'llava-llama3', 'llava-phi3'];
 
   constructor() {
     // Initialize load balancer if multiple hosts are configured
@@ -82,15 +92,24 @@ export class OllamaStreamliner {
       const modelInfo = await response.json() as OllamaModelInfo;
       const modelfile = modelInfo.modelfile || '';
       
-      // Parse capabilities from modelfile
+      // Parse capabilities from modelfile and metadata
       const capability: ModelCapability = {
         name: model,
-        vision: this.hasVisionSupport(model, modelfile),
+        vision: this.hasVisionSupport(model, modelInfo),
         tools: this.hasToolSupport(model, modelfile),
         maxTokens: this.parseMaxTokens(modelfile) || 4096,
         contextWindow: this.parseContextWindow(modelfile) || 128000,
         description: modelInfo.description,
       };
+
+      // Log vision detection details for debugging
+      logger.debug(`Vision detection for model ${model}:`, {
+        modalities: modelInfo.modalities,
+        architecture: modelInfo.model_info?.architecture,
+        families: modelInfo.details?.families,
+        hasVision: capability.vision,
+        modelfile: modelfile.substring(0, 200) + '...' // Truncate for logging
+      });
 
       // Cache the result
       this.modelCapabilities.set(model, capability);
@@ -114,12 +133,68 @@ export class OllamaStreamliner {
     }
   }
 
-  private hasVisionSupport(model: string, modelfile: string): boolean {
-    // Known vision models
-    const visionModels = ['llava', 'bakllava', 'llava-llama3', 'llava-phi3', 'llama3.2-vision'];
-    return visionModels.some(vm => model.toLowerCase().includes(vm)) ||
-           modelfile.toLowerCase().includes('vision') ||
-           modelfile.toLowerCase().includes('image');
+  private hasVisionSupport(model: string, modelInfo: OllamaModelInfo): boolean {
+    // Method 1: Check modalities field (most reliable)
+    if (modelInfo.modalities && Array.isArray(modelInfo.modalities)) {
+      const hasVisionModality = modelInfo.modalities.some(modality => 
+        ['vision', 'multimodal'].includes(modality.toLowerCase())
+      );
+      if (hasVisionModality) {
+        logger.debug(`Vision detected via modalities for ${model}: ${modelInfo.modalities.join(', ')}`);
+        return true;
+      }
+    }
+
+    // Method 2: Check architecture for vision components
+    if (modelInfo.model_info?.architecture) {
+      const architecture = modelInfo.model_info.architecture.toLowerCase();
+      if (architecture.includes('vision') || 
+          architecture.includes('clip') ||
+          architecture.includes('vit') ||
+          architecture.includes('llava')) {
+        logger.debug(`Vision detected via architecture for ${model}: ${architecture}`);
+        return true;
+      }
+    }
+
+    // Method 3: Check model families
+    if (modelInfo.details?.families && Array.isArray(modelInfo.details.families)) {
+      const hasVisionFamily = modelInfo.details.families.some(family =>
+        ['llava', 'bakllava', 'llava-llama3', 'llava-phi3', 'moondream', 'vision'].includes(family.toLowerCase())
+      );
+      if (hasVisionFamily) {
+        logger.debug(`Vision detected via families for ${model}: ${modelInfo.details.families.join(', ')}`);
+        return true;
+      }
+    }
+
+    // Method 4: Check modelfile for vision-related configurations
+    const modelfile = modelInfo.modelfile || '';
+    if (modelfile.toLowerCase().includes('vision') ||
+        modelfile.toLowerCase().includes('image') ||
+        modelfile.toLowerCase().includes('clip') ||
+        modelfile.includes('vision_encoder') ||
+        modelfile.includes('image_processor')) {
+      logger.debug(`Vision detected via modelfile for ${model}`);
+      return true;
+    }
+
+    // Method 5: Fallback to name pattern matching (least reliable)
+    const visionPatterns = [
+      'llava', 'bakllava', 'llava-llama3', 'llava-phi3', 
+      'llama3.2-vision', 'moondream', 'vision', 'multimodal'
+    ];
+    const hasVisionPattern = visionPatterns.some(pattern => 
+      model.toLowerCase().includes(pattern.toLowerCase())
+    );
+    
+    if (hasVisionPattern) {
+      logger.debug(`Vision detected via name pattern for ${model}`);
+      return true;
+    }
+
+    logger.debug(`No vision capability detected for ${model}`);
+    return false;
   }
 
   private hasToolSupport(model: string, modelfile: string): boolean {
@@ -220,13 +295,29 @@ export class OllamaStreamliner {
   }
 
   async getAvailableVisionModels(): Promise<string[]> {
-    const models = await this.listModels();
-    const visionModels = models.filter(model => 
-      this.visionModels.some(vm => model.toLowerCase().includes(vm.toLowerCase()))
-    );
-    
-    logger.debug(`Found ${visionModels.length} vision models: ${visionModels.join(', ')}`);
-    return visionModels;
+    try {
+      const models = await this.listModels();
+      const visionModels: string[] = [];
+      
+      // Check each model for vision capabilities using our robust detection
+      for (const model of models) {
+        try {
+          const capabilities = await this.detectCapabilities(model);
+          if (capabilities.vision) {
+            visionModels.push(model);
+          }
+        } catch (error) {
+          logger.debug(`Failed to check vision capability for model ${model}:`, error);
+          // Continue checking other models
+        }
+      }
+      
+      logger.info(`Found ${visionModels.length} vision-capable models: ${visionModels.join(', ')}`);
+      return visionModels;
+    } catch (error) {
+      logger.error('Failed to get available vision models:', error);
+      return [];
+    }
   }
 
   async processRequest(
