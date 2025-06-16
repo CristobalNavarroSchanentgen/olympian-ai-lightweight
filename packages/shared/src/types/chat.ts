@@ -22,6 +22,7 @@ export interface MessageMetadata {
   generationTime?: number;
   model?: string;
   error?: string;
+  visionModel?: string; // Vision model used for image processing
 }
 
 export interface ChatRequest {
@@ -29,6 +30,7 @@ export interface ChatRequest {
   content: string;
   images?: string[];
   model: string;
+  visionModel?: string; // Optional vision model for hybrid processing
 }
 
 export interface ProcessedRequest {
@@ -49,4 +51,10 @@ export interface ModelCapability {
   maxTokens: number;
   contextWindow: number;
   description?: string;
+}
+
+export interface VisionError {
+  error: 'VISION_UNSUPPORTED';
+  message: string;
+  available_vision_models: string[];
 }
