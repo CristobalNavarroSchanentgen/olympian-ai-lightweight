@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { DatabaseService } from '../services/DatabaseService';
 import { getDeploymentConfig } from '../config/deployment';
+import { OllamaHealthCheck } from '../services/OllamaHealthCheck';
 import { MongoClient } from 'mongodb';
 
 interface OllamaVersionResponse {
@@ -9,6 +10,7 @@ interface OllamaVersionResponse {
 
 const router = Router();
 const db = DatabaseService.getInstance();
+const ollamaHealthCheck = new OllamaHealthCheck();
 
 // Basic health check
 router.get('/', (_req, res) => {
@@ -121,6 +123,37 @@ router.get('/config', (_req, res) => {
     },
     timestamp: new Date(),
   });
+});
+
+// Vision-specific health check endpoint
+router.get('/vision', async (_req, res) => {
+  try {
+    const health = await ollamaHealthCheck.checkHealth();
+    
+    const diagnostics = {
+      ...health,
+      deploymentMode: process.env.DEPLOYMENT_MODE || 'multi-host',
+      timestamp: new Date(),
+      troubleshooting: health.visionModelCount === 0 ? {
+        message: 'No vision models detected',
+        steps: [
+          '1. Check if Ollama is running and accessible',
+          '2. Install a vision model: ollama pull llava:13b',
+          '3. Verify with: curl http://your-ollama-host:11434/api/tags',
+          '4. Restart the backend service after installing models'
+        ]
+      } : null
+    };
+
+    res.status(health.connected ? 200 : 503).json(diagnostics);
+  } catch (error) {
+    res.status(500).json({
+      connected: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+      deploymentMode: process.env.DEPLOYMENT_MODE || 'multi-host',
+      timestamp: new Date()
+    });
+  }
 });
 
 export { router as healthRouter };
