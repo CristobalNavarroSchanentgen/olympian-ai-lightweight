@@ -10,6 +10,7 @@ import { WebSocketService } from './services/WebSocketService';
 import { setupRoutes } from './api/routes';
 import { errorHandler } from './middleware/errorHandler';
 import { rateLimiter } from './middleware/rateLimiter';
+import { getDeploymentConfig } from './config/deployment';
 
 const app = express();
 const httpServer = createServer(app);
@@ -19,6 +20,16 @@ const io = new Server(httpServer, {
     credentials: true,
   },
 });
+
+// Get deployment configuration
+const deploymentConfig = getDeploymentConfig();
+
+// Configure Express trust proxy for multi-host deployments
+// This is crucial for rate limiting and client IP detection when behind reverse proxies
+if (deploymentConfig.mode === 'multi-host') {
+  logger.info('Configuring Express to trust proxy headers for multi-host deployment');
+  app.set('trust proxy', true);
+}
 
 // Middleware
 app.use(helmet());
