@@ -21,6 +21,7 @@ const sendMessageSchema = z.object({
   message: z.string().min(1).max(10000),
   conversationId: z.string().optional(),
   model: z.string().min(1),
+  visionModel: z.string().optional(),
   images: z.array(z.string()).optional(),
 });
 
@@ -62,7 +63,7 @@ router.post('/send', async (req, res, next) => {
       throw new AppError(400, 'Invalid request body');
     }
 
-    const { message, conversationId, model, images } = validation.data;
+    const { message, conversationId, model, visionModel, images } = validation.data;
 
     // Get or create conversation
     let convId: string;
@@ -109,6 +110,7 @@ router.post('/send', async (req, res, next) => {
     const processedRequest = await streamliner.processRequest({
       content: message,
       model,
+      visionModel,
       images,
       conversationId: convId,
     });
@@ -130,6 +132,7 @@ router.post('/send', async (req, res, next) => {
       content: assistantContent,
       metadata: {
         model,
+        visionModel,
         tokens: tokenCount,
         generationTime: Date.now() - startTime,
       },
@@ -383,6 +386,20 @@ router.get('/models', async (_req, res, next) => {
     res.json({
       success: true,
       data: models,
+      timestamp: new Date(),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Get available vision models
+router.get('/vision-models', async (_req, res, next) => {
+  try {
+    const visionModels = await streamliner.getAvailableVisionModels();
+    res.json({
+      success: true,
+      data: visionModels,
       timestamp: new Date(),
     });
   } catch (error) {
