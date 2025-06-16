@@ -1,6 +1,6 @@
 import { logger } from '../utils/logger';
 
-export type DeploymentMode = 'same-host' | 'multi-host';
+export type DeploymentMode = 'same-host' | 'same-host-existing-ollama' | 'multi-host';
 
 export interface DeploymentConfig {
   mode: DeploymentMode;
@@ -26,7 +26,7 @@ export interface DeploymentConfig {
 
 /**
  * Get deployment configuration based on environment variables
- * Supports both same-host and multi-host deployments
+ * Supports same-host, same-host-existing-ollama, and multi-host deployments
  */
 export function getDeploymentConfig(): DeploymentConfig {
   const mode = (process.env.DEPLOYMENT_MODE as DeploymentMode) || 'multi-host';
@@ -56,6 +56,34 @@ export function getDeploymentConfig(): DeploymentConfig {
       },
       network: {
         serviceDiscoveryEnabled: false, // Docker handles service discovery
+        subnet: 'bridge',
+        discoveryInterval: 300000,
+      },
+    };
+  } else if (mode === 'same-host-existing-ollama') {
+    // Same-host with existing Ollama: backend connects to host's Ollama instance
+    return {
+      mode,
+      mongodb: {
+        uri: process.env.MONGODB_URI || 'mongodb://olympian-mongodb:27017/olympian_ai_lite',
+        options: {
+          maxPoolSize: 10,
+          minPoolSize: 2,
+          serverSelectionTimeoutMS: 5000,
+        },
+      },
+      ollama: {
+        // Connect to host's Ollama instance from Docker container
+        host: process.env.OLLAMA_HOST || 'http://host.docker.internal:11434',
+        hosts: [], // Not used in same-host mode
+        loadBalancer: 'round-robin',
+      },
+      mcp: {
+        discoveryEnabled: false,
+        hosts: process.env.MCP_HOSTS?.split(',') || [],
+      },
+      network: {
+        serviceDiscoveryEnabled: false,
         subnet: 'bridge',
         discoveryInterval: 300000,
       },
