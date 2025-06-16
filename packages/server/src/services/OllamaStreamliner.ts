@@ -18,6 +18,17 @@ interface OllamaModelInfo {
     parameter_size?: string;
     quantization_level?: string;
   };
+  // Additional fields that might contain vision info
+  capabilities?: {
+    image_processing?: boolean;
+    max_image_resolution?: number;
+  };
+  config?: {
+    vision_encoder?: any;
+    image_processor?: any;
+    modalities?: string[];
+  };
+  parameters?: Record<string, any>;
 }
 
 interface OllamaModelListResponse {
@@ -95,20 +106,22 @@ export class OllamaStreamliner {
       // Parse capabilities from modelfile and metadata
       const capability: ModelCapability = {
         name: model,
-        vision: this.hasVisionSupport(model, modelInfo),
+        vision: await this.hasVisionSupport(model, modelInfo),
         tools: this.hasToolSupport(model, modelfile),
         maxTokens: this.parseMaxTokens(modelfile) || 4096,
         contextWindow: this.parseContextWindow(modelfile) || 128000,
         description: modelInfo.description,
       };
 
-      // Log vision detection details for debugging
-      logger.debug(`Vision detection for model ${model}:`, {
+      // Enhanced logging for vision detection debugging
+      logger.info(`Vision detection results for model '${model}':`, {
+        hasVision: capability.vision,
         modalities: modelInfo.modalities,
         architecture: modelInfo.model_info?.architecture,
         families: modelInfo.details?.families,
-        hasVision: capability.vision,
-        modelfile: modelfile.substring(0, 200) + '...' // Truncate for logging
+        capabilities: modelInfo.capabilities,
+        config: modelInfo.config,
+        modelfilePreview: modelfile.substring(0, 300) + (modelfile.length > 300 ? '...' : '')
       });
 
       // Cache the result
@@ -133,67 +146,149 @@ export class OllamaStreamliner {
     }
   }
 
-  private hasVisionSupport(model: string, modelInfo: OllamaModelInfo): boolean {
-    // Method 1: Check modalities field (most reliable)
-    if (modelInfo.modalities && Array.isArray(modelInfo.modalities)) {
-      const hasVisionModality = modelInfo.modalities.some(modality => 
-        ['vision', 'multimodal'].includes(modality.toLowerCase())
-      );
-      if (hasVisionModality) {
-        logger.debug(`Vision detected via modalities for ${model}: ${modelInfo.modalities.join(', ')}`);
-        return true;
-      }
-    }
-
-    // Method 2: Check architecture for vision components
-    if (modelInfo.model_info?.architecture) {
-      const architecture = modelInfo.model_info.architecture.toLowerCase();
-      if (architecture.includes('vision') || 
-          architecture.includes('clip') ||
-          architecture.includes('vit') ||
-          architecture.includes('llava')) {
-        logger.debug(`Vision detected via architecture for ${model}: ${architecture}`);
-        return true;
-      }
-    }
-
-    // Method 3: Check model families
-    if (modelInfo.details?.families && Array.isArray(modelInfo.details.families)) {
-      const hasVisionFamily = modelInfo.details.families.some(family =>
-        ['llava', 'bakllava', 'llava-llama3', 'llava-phi3', 'moondream', 'vision'].includes(family.toLowerCase())
-      );
-      if (hasVisionFamily) {
-        logger.debug(`Vision detected via families for ${model}: ${modelInfo.details.families.join(', ')}`);
-        return true;
-      }
-    }
-
-    // Method 4: Check modelfile for vision-related configurations
-    const modelfile = modelInfo.modelfile || '';
-    if (modelfile.toLowerCase().includes('vision') ||
-        modelfile.toLowerCase().includes('image') ||
-        modelfile.toLowerCase().includes('clip') ||
-        modelfile.includes('vision_encoder') ||
-        modelfile.includes('image_processor')) {
-      logger.debug(`Vision detected via modelfile for ${model}`);
-      return true;
-    }
-
-    // Method 5: Fallback to name pattern matching (least reliable)
-    const visionPatterns = [
-      'llava', 'bakllava', 'llava-llama3', 'llava-phi3', 
-      'llama3.2-vision', 'moondream', 'vision', 'multimodal'
-    ];
-    const hasVisionPattern = visionPatterns.some(pattern => 
-      model.toLowerCase().includes(pattern.toLowerCase())
-    );
+  private async hasVisionSupport(model: string, modelInfo: OllamaModelInfo): Promise<boolean> {
+    logger.debug(`Starting vision detection for model: ${model}`);
     
-    if (hasVisionPattern) {
-      logger.debug(`Vision detected via name pattern for ${model}`);
-      return true;
+    const detectionResults = {
+      modalities: false,
+      architecture: false,
+      families: false,
+      modelfile: false,
+      capabilities: false,
+      config: false,
+      namePattern: false
+    };
+
+    try {
+      // Method 1: Check modalities field (most reliable according to the document)
+      if (modelInfo.modalities && Array.isArray(modelInfo.modalities)) {
+        const visionModalityPatterns = ['vision', 'multimodal', 'image', 'visual'];
+        detectionResults.modalities = modelInfo.modalities.some(modality => 
+          visionModalityPatterns.some(pattern => 
+            modality.toLowerCase().includes(pattern.toLowerCase())
+          )
+        );
+        if (detectionResults.modalities) {
+          logger.info(`✓ Vision detected via modalities for '${model}': [${modelInfo.modalities.join(', ')}]`);
+          return true;
+        }
+      }
+
+      // Method 2: Check config modalities (alternative location)
+      if (modelInfo.config?.modalities && Array.isArray(modelInfo.config.modalities)) {
+        const visionModalityPatterns = ['vision', 'multimodal', 'image', 'visual'];
+        detectionResults.config = modelInfo.config.modalities.some(modality => 
+          visionModalityPatterns.some(pattern => 
+            modality.toLowerCase().includes(pattern.toLowerCase())
+          )
+        );
+        if (detectionResults.config) {
+          logger.info(`✓ Vision detected via config modalities for '${model}': [${modelInfo.config.modalities.join(', ')}]`);
+          return true;
+        }
+      }
+
+      // Method 3: Check capabilities field
+      if (modelInfo.capabilities?.image_processing === true) {
+        detectionResults.capabilities = true;
+        logger.info(`✓ Vision detected via capabilities.image_processing for '${model}'`);
+        return true;
+      }
+
+      // Method 4: Check for vision encoder and image processor in config
+      if (modelInfo.config?.vision_encoder || modelInfo.config?.image_processor) {
+        detectionResults.config = true;
+        logger.info(`✓ Vision detected via config vision components for '${model}'`);
+        return true;
+      }
+
+      // Method 5: Enhanced architecture detection
+      if (modelInfo.model_info?.architecture) {
+        const architecture = modelInfo.model_info.architecture.toLowerCase();
+        const visionArchPatterns = [
+          'vision', 'clip', 'vit', 'llava', 'bakllava', 'moondream', 
+          'multimodal', 'image', 'visual', 'cogvlm', 'instructblip',
+          'blip', 'flamingo', 'kosmos', 'gpt4v', 'dalle'
+        ];
+        detectionResults.architecture = visionArchPatterns.some(pattern => 
+          architecture.includes(pattern)
+        );
+        if (detectionResults.architecture) {
+          logger.info(`✓ Vision detected via architecture for '${model}': ${architecture}`);
+          return true;
+        }
+      }
+
+      // Method 6: Enhanced model families detection
+      if (modelInfo.details?.families && Array.isArray(modelInfo.details.families)) {
+        const visionFamilyPatterns = [
+          'llava', 'bakllava', 'llava-llama3', 'llava-phi3', 'moondream', 
+          'vision', 'multimodal', 'cogvlm', 'instructblip', 'blip',
+          'minicpm-v', 'qwen-vl', 'internvl', 'deepseek-vl'
+        ];
+        detectionResults.families = modelInfo.details.families.some(family =>
+          visionFamilyPatterns.some(pattern => 
+            family.toLowerCase().includes(pattern.toLowerCase())
+          )
+        );
+        if (detectionResults.families) {
+          logger.info(`✓ Vision detected via families for '${model}': [${modelInfo.details.families.join(', ')}]`);
+          return true;
+        }
+      }
+
+      // Method 7: Enhanced modelfile inspection
+      const modelfile = modelInfo.modelfile || '';
+      if (modelfile) {
+        const visionModelfilePatterns = [
+          'vision_encoder', 'image_processor', 'clip', 'vit',
+          'PARAMETER vision', 'vision true', 'multimodal',
+          'image_size', 'patch_size', 'vision_config',
+          'image_token', 'visual', 'img_', 'image_'
+        ];
+        detectionResults.modelfile = visionModelfilePatterns.some(pattern => 
+          modelfile.toLowerCase().includes(pattern.toLowerCase())
+        );
+        if (detectionResults.modelfile) {
+          logger.info(`✓ Vision detected via modelfile patterns for '${model}'`);
+          return true;
+        }
+      }
+
+      // Method 8: Enhanced name pattern matching (fallback)
+      const visionNamePatterns = [
+        'llava', 'bakllava', 'llava-llama3', 'llava-phi3', 'llava-v1.6',
+        'llama3.2-vision', 'moondream', 'vision', 'multimodal',
+        'cogvlm', 'instructblip', 'blip', 'minicpm-v', 'qwen-vl',
+        'internvl', 'deepseek-vl', 'yi-vl', 'phi-3-vision'
+      ];
+      detectionResults.namePattern = visionNamePatterns.some(pattern => 
+        model.toLowerCase().includes(pattern.toLowerCase())
+      );
+      
+      if (detectionResults.namePattern) {
+        logger.info(`✓ Vision detected via name pattern for '${model}'`);
+        return true;
+      }
+
+    } catch (error) {
+      logger.error(`Error during vision detection for model '${model}':`, error);
     }
 
-    logger.debug(`No vision capability detected for ${model}`);
+    // Log comprehensive detection results for debugging
+    logger.debug(`Vision detection summary for '${model}':`, {
+      ...detectionResults,
+      availableData: {
+        hasModalities: !!modelInfo.modalities,
+        hasArchitecture: !!modelInfo.model_info?.architecture,
+        hasFamilies: !!modelInfo.details?.families,
+        hasModelfile: !!modelInfo.modelfile,
+        hasCapabilities: !!modelInfo.capabilities,
+        hasConfig: !!modelInfo.config
+      }
+    });
+
+    logger.info(`✗ No vision capability detected for '${model}' after comprehensive analysis`);
     return false;
   }
 
@@ -299,20 +394,27 @@ export class OllamaStreamliner {
       const models = await this.listModels();
       const visionModels: string[] = [];
       
+      logger.info(`Checking ${models.length} models for vision capabilities...`);
+      
       // Check each model for vision capabilities using our robust detection
       for (const model of models) {
         try {
           const capabilities = await this.detectCapabilities(model);
           if (capabilities.vision) {
             visionModels.push(model);
+            logger.info(`✓ Added '${model}' to vision models list`);
+          } else {
+            logger.debug(`✗ Model '${model}' does not have vision capabilities`);
           }
         } catch (error) {
-          logger.debug(`Failed to check vision capability for model ${model}:`, error);
+          logger.warn(`Failed to check vision capability for model '${model}':`, error);
           // Continue checking other models
         }
       }
       
-      logger.info(`Found ${visionModels.length} vision-capable models: ${visionModels.join(', ')}`);
+      logger.info(`Vision capability detection complete: Found ${visionModels.length} vision-capable models out of ${models.length} total models`);
+      logger.info(`Vision models: [${visionModels.join(', ')}]`);
+      
       return visionModels;
     } catch (error) {
       logger.error('Failed to get available vision models:', error);
