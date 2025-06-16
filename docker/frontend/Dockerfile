@@ -23,7 +23,7 @@ RUN npm run build:client && \
     echo "=== Verifying build output ===" && \
     ls -la packages/client/dist/ && \
     echo "=== Content of built index.html ===" && \
-    cat packages/client/dist/index.html
+    head -5 packages/client/dist/index.html
 
 # Production stage
 FROM nginx:alpine
@@ -31,18 +31,18 @@ FROM nginx:alpine
 # Install curl for health checks
 RUN apk add --no-cache curl
 
-# Remove ALL default nginx files
+# Remove ALL default nginx files and configurations
 RUN rm -rf /etc/nginx/conf.d/* && \
     rm -rf /etc/nginx/sites-enabled/* && \
     rm -rf /etc/nginx/sites-available/* && \
     rm -rf /usr/share/nginx/html/* && \
-    rm -rf /var/www/html/*
+    rm -rf /var/www/html/* && \
+    rm -f /etc/nginx/nginx.conf
 
-# Copy nginx configuration
+# Copy our custom nginx configuration
 COPY docker/nginx/nginx.conf /etc/nginx/nginx.conf
-COPY docker/nginx/conf.d/ /etc/nginx/conf.d/
 
-# Copy entrypoint
+# Copy entrypoint script
 COPY docker/nginx/docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 
@@ -50,13 +50,22 @@ RUN chmod +x /docker-entrypoint.sh
 COPY --from=builder /app/packages/client/dist /usr/share/nginx/html
 
 # Verify deployment
-RUN echo "=== Deployed files ===" && \
+RUN echo "=== Final verification ===" && \
+    echo "Nginx config:" && \
+    head -10 /etc/nginx/nginx.conf && \
+    echo "" && \
+    echo "Static files:" && \
     ls -la /usr/share/nginx/html/ && \
-    echo "=== Index.html verification ===" && \
-    if grep -q "src=\"/src/main.tsx\"" /usr/share/nginx/html/index.html; then \
-        echo "ERROR: Source index.html detected instead of built version!" && exit 1; \
+    echo "" && \
+    echo "Index.html check:" && \
+    if [ -f /usr/share/nginx/html/index.html ]; then \
+        if grep -q "src=\"/src/main.tsx\"" /usr/share/nginx/html/index.html; then \
+            echo "ERROR: Source index.html detected!" && exit 1; \
+        else \
+            echo "✓ Built index.html confirmed"; \
+        fi; \
     else \
-        echo "✓ Built index.html confirmed"; \
+        echo "ERROR: index.html missing!" && exit 1; \
     fi
 
 # Health check
