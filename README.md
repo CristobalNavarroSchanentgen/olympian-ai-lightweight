@@ -26,7 +26,8 @@ The latest version includes comprehensive vision support for processing images w
 
 **📚 Documentation**:
 - [Vision Capabilities (User Guide)](docs/VISION_CAPABILITIES.md) - Complete user documentation
-- [Vision Detection Technical](docs/VISION_DETECTION_TECHNICAL.md) - **NEW!** Deep technical implementation details
+- [Vision Detection Technical](docs/VISION_DETECTION_TECHNICAL.md) - Deep technical implementation details
+- [Multi-Host Vision Troubleshooting](docs/MULTI_HOST_VISION_TROUBLESHOOTING.md) - **NEW!** Fix vision issues in multi-host deployments
 
 ## What's New: Chat Memory Feature 🧠
 
@@ -397,15 +398,22 @@ curl http://localhost:11434/api/tags
 ```
 
 ### Vision Model Issues
+
+**For comprehensive multi-host vision troubleshooting, see: [Multi-Host Vision Troubleshooting Guide](docs/MULTI_HOST_VISION_TROUBLESHOOTING.md)**
+
+Quick checks:
 ```bash
+# Check vision health status
+curl http://localhost:8080/api/health/vision
+
 # Check available vision models
-curl http://localhost:4000/api/chat/vision-models
+curl http://localhost:8080/api/chat/vision-models
 
 # Pull a vision model if none available
 ollama pull llava:13b
 
 # Check model capabilities
-curl http://localhost:4000/api/chat/models/{modelName}/capabilities
+curl http://localhost:8080/api/chat/models/{modelName}/capabilities
 
 # Debug vision detection (see technical docs for detailed debugging)
 docker logs olympian-backend | grep "Vision detection"
@@ -414,10 +422,10 @@ docker logs olympian-backend | grep "Vision detection"
 ### Chat Memory Issues
 ```bash
 # Check memory stats for a conversation
-curl http://localhost:4000/api/chat/conversations/{conversationId}/memory-stats
+curl http://localhost:8080/api/chat/conversations/{conversationId}/memory-stats
 
 # Clear old messages if needed
-curl -X POST http://localhost:4000/api/chat/conversations/{conversationId}/clear-old-messages \
+curl -X POST http://localhost:8080/api/chat/conversations/{conversationId}/clear-old-messages \
   -H "Content-Type: application/json" \
   -d '{"keepLast": 50}'
 ```
@@ -433,8 +441,9 @@ olympian-ai-lightweight/
 │   ├── client/                   # React frontend
 │   ├── server/                   # Express backend
 │   │   └── services/
-│   │       ├── ChatMemoryService.ts  # 🧠 Memory management
-│   │       └── OllamaStreamliner.ts  # 🎨 Vision processing & detection
+│   │       ├── ChatMemoryService.ts      # 🧠 Memory management
+│   │       ├── OllamaStreamliner.ts      # 🎨 Vision processing & detection
+│   │       └── OllamaHealthCheck.ts      # 🔍 Health monitoring
 │   └── shared/                   # Shared types
 ├── docker/
 │   ├── frontend/                 # Frontend + nginx
@@ -443,10 +452,11 @@ olympian-ai-lightweight/
 │       ├── docker-entrypoint.sh  # 🔧 Auto-config script
 │       └── conf.d/               # Nginx configurations
 ├── docs/
-│   ├── nginx-configuration.md    # Nginx documentation
-│   ├── CHAT_MEMORY.md           # Chat memory documentation
-│   ├── VISION_CAPABILITIES.md   # Vision features user guide
-│   └── VISION_DETECTION_TECHNICAL.md # 🔬 Technical implementation details
+│   ├── nginx-configuration.md              # Nginx documentation
+│   ├── CHAT_MEMORY.md                      # Chat memory documentation
+│   ├── VISION_CAPABILITIES.md              # Vision features user guide
+│   ├── VISION_DETECTION_TECHNICAL.md       # 🔬 Technical implementation details
+│   └── MULTI_HOST_VISION_TROUBLESHOOTING.md # 🔍 Multi-host vision fixes
 └── scripts/                      # Helper scripts
 ```
 
@@ -465,7 +475,8 @@ olympian-ai-lightweight/
 - [Nginx Configuration Guide](docs/nginx-configuration.md)
 - [Chat Memory Feature](docs/CHAT_MEMORY.md)
 - [Vision Capabilities (User Guide)](docs/VISION_CAPABILITIES.md)
-- [Vision Detection Technical](docs/VISION_DETECTION_TECHNICAL.md) - **NEW!** Technical deep dive
+- [Vision Detection Technical](docs/VISION_DETECTION_TECHNICAL.md) - Technical deep dive
+- [Multi-Host Vision Troubleshooting](docs/MULTI_HOST_VISION_TROUBLESHOOTING.md) - Fix vision issues
 - [Docker Deployment Guide](docker/README.md)
 - [Contributing Guide](CONTRIBUTING.md)
 
