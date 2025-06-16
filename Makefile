@@ -35,7 +35,7 @@ setup: ## Install dependencies and create .env from template
 
 quick-docker-multi: env-docker-multi-interactive build-prod up-prod ## Quick setup for multi-host Docker deployment
 
-quick-docker-same-existing: build-prod-clean up-prod ## Quick setup for same-host Docker deployment with existing config (forces clean rebuild)
+quick-docker-same-existing: build-same-host-existing up-same-host-existing ## Quick setup for same-host Docker deployment with existing Ollama (forces clean rebuild)
 
 ##@ 🏗️  Building
 
@@ -50,6 +50,10 @@ build-prod: ## Build the application for production
 build-prod-clean: ## Build the application for production (no cache)
 	@echo "$(CYAN)🏗️  Building application for production (clean build)...$(RESET)"
 	@docker-compose -f docker-compose.prod.yml build --no-cache
+
+build-same-host-existing: ## Build for same-host with existing Ollama (no cache)
+	@echo "$(CYAN)🏗️  Building for same-host with existing Ollama (clean build)...$(RESET)"
+	@docker-compose -f docker-compose.same-host-existing-ollama.yml build --no-cache
 
 rebuild-backend: ## Rebuild only the backend container (no cache)
 	@echo "$(CYAN)🔄 Rebuilding backend container...$(RESET)"
@@ -72,12 +76,20 @@ up-prod: ## Start production environment with Docker
 	@echo "$(GREEN)✅ Production environment started!$(RESET)"
 	@echo "$(CYAN)Access the application at: http://localhost:8080$(RESET)"
 
+up-same-host-existing: ## Start same-host environment with existing Ollama
+	@echo "$(CYAN)🐳 Starting same-host environment with existing Ollama...$(RESET)"
+	@docker-compose -f docker-compose.same-host-existing-ollama.yml up -d
+	@echo "$(GREEN)✅ Same-host environment started!$(RESET)"
+	@echo "$(CYAN)Access the application at: http://localhost:8080$(RESET)"
+	@echo "$(YELLOW)Note: Make sure Ollama is running on your host machine at port 11434$(RESET)"
+
 start: up ## Alias for 'up' command
 
 stop: ## Stop Docker containers
 	@echo "$(CYAN)🛑 Stopping containers...$(RESET)"
 	@docker-compose down
 	@docker-compose -f docker-compose.prod.yml down 2>/dev/null || true
+	@docker-compose -f docker-compose.same-host-existing-ollama.yml down 2>/dev/null || true
 	@echo "$(GREEN)✅ Containers stopped!$(RESET)"
 
 restart: stop up ## Restart the development environment
@@ -88,22 +100,46 @@ restart-prod: ## Restart the production environment
 	@docker-compose -f docker-compose.prod.yml up -d
 	@echo "$(GREEN)✅ Production environment restarted!$(RESET)"
 
+restart-same-host-existing: ## Restart same-host environment with existing Ollama
+	@echo "$(CYAN)🔄 Restarting same-host environment...$(RESET)"
+	@docker-compose -f docker-compose.same-host-existing-ollama.yml down
+	@docker-compose -f docker-compose.same-host-existing-ollama.yml up -d
+	@echo "$(GREEN)✅ Same-host environment restarted!$(RESET)"
+
 ##@ 📋 Logs & Monitoring
 
 logs: ## Show logs from all services
 	@docker-compose logs -f
 
-logs-backend: ## Show logs from backend service
+logs-backend: ## Show logs from backend service (auto-detects which deployment)
 	@echo "$(CYAN)📋 Showing backend logs...$(RESET)"
-	@docker-compose -f docker-compose.prod.yml logs -f backend
+	@if docker ps --format "table {{.Names}}" | grep -q "olympian-backend"; then \
+		if docker-compose -f docker-compose.same-host-existing-ollama.yml ps backend >/dev/null 2>&1; then \
+			docker-compose -f docker-compose.same-host-existing-ollama.yml logs -f backend; \
+		elif docker-compose -f docker-compose.prod.yml ps backend >/dev/null 2>&1; then \
+			docker-compose -f docker-compose.prod.yml logs -f backend; \
+		else \
+			docker logs -f olympian-backend; \
+		fi \
+	else \
+		echo "$(RED)❌ Backend container is not running!$(RESET)"; \
+	fi
 
 logs-frontend: ## Show logs from frontend service
 	@echo "$(CYAN)📋 Showing frontend logs...$(RESET)"
-	@docker-compose -f docker-compose.prod.yml logs -f frontend
+	@if docker ps --format "table {{.Names}}" | grep -q "olympian-frontend"; then \
+		docker logs -f olympian-frontend; \
+	else \
+		echo "$(RED)❌ Frontend container is not running!$(RESET)"; \
+	fi
 
 logs-mongodb: ## Show logs from MongoDB service
 	@echo "$(CYAN)📋 Showing MongoDB logs...$(RESET)"
-	@docker-compose -f docker-compose.prod.yml logs -f mongodb
+	@if docker ps --format "table {{.Names}}" | grep -q "olympian-mongodb"; then \
+		docker logs -f olympian-mongodb; \
+	else \
+		echo "$(RED)❌ MongoDB container is not running!$(RESET)"; \
+	fi
 
 status: ## Show status of Docker containers
 	@echo "$(CYAN)📊 Container Status:$(RESET)"
@@ -111,6 +147,9 @@ status: ## Show status of Docker containers
 	@echo ""
 	@echo "$(CYAN)📊 Production Container Status:$(RESET)"
 	@docker-compose -f docker-compose.prod.yml ps
+	@echo ""
+	@echo "$(CYAN)📊 Same-Host-Existing Container Status:$(RESET)"
+	@docker-compose -f docker-compose.same-host-existing-ollama.yml ps
 
 ##@ 🛠️  Development
 
@@ -137,6 +176,7 @@ clean: ## Clean up Docker resources
 	@echo "$(CYAN)🧹 Cleaning up Docker resources...$(RESET)"
 	@docker-compose down -v --remove-orphans
 	@docker-compose -f docker-compose.prod.yml down -v --remove-orphans 2>/dev/null || true
+	@docker-compose -f docker-compose.same-host-existing-ollama.yml down -v --remove-orphans 2>/dev/null || true
 	@docker system prune -f
 	@echo "$(GREEN)✅ Cleanup complete!$(RESET)"
 
@@ -145,6 +185,7 @@ clean-all: ## Clean up everything including images and volumes
 	@read -p "Are you sure? (y/N): " confirm && [ "$$confirm" = "y" ]
 	@docker-compose down -v --remove-orphans --rmi all
 	@docker-compose -f docker-compose.prod.yml down -v --remove-orphans --rmi all 2>/dev/null || true
+	@docker-compose -f docker-compose.same-host-existing-ollama.yml down -v --remove-orphans --rmi all 2>/dev/null || true
 	@docker system prune -af --volumes
 	@echo "$(GREEN)✅ Complete cleanup done!$(RESET)"
 
