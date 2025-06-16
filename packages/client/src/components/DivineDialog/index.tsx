@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react';
-import { Card } from '@/components/ui/card';
 import { useChatStore } from '@/stores/useChatStore';
 import { api } from '@/services/api';
 import { ChatInput } from './ChatInput';
@@ -137,39 +136,37 @@ export function DivineDialog() {
   };
 
   return (
-    <div className="h-full flex flex-col p-4">
-      <Card className="flex-1 flex flex-col overflow-hidden">
-        {/* Header */}
-        <div className="border-b p-4 flex-shrink-0">
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-semibold">
-              {currentConversation ? currentConversation.title : 'New Conversation'}
-            </h3>
-            <ModelSelector hasImages={hasImages} />
-          </div>
+    <div className="h-full flex flex-col">
+      {/* Header */}
+      <div className="border-b px-4 py-2 flex-shrink-0 bg-background">
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-semibold">
+            {currentConversation ? currentConversation.title : 'New Conversation'}
+          </h3>
+          <ModelSelector hasImages={hasImages} />
         </div>
+      </div>
 
-        {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-4">
-          <MessageList
-            messages={messages}
-            streamedContent={streamedContent}
-            isThinking={isThinking}
-            isGenerating={isGenerating}
-          />
-          <div ref={messagesEndRef} />
-        </div>
+      {/* Messages - This takes all available space */}
+      <div className="flex-1 overflow-y-auto p-4">
+        <MessageList
+          messages={messages}
+          streamedContent={streamedContent}
+          isThinking={isThinking}
+          isGenerating={isGenerating}
+        />
+        <div ref={messagesEndRef} />
+      </div>
 
-        {/* Input */}
-        <div className="border-t p-4 flex-shrink-0">
-          <ChatInput
-            onSendMessage={handleSendMessage}
-            onCancel={handleCancelGeneration}
-            isDisabled={isThinking || isGenerating}
-            isGenerating={isGenerating}
-          />
-        </div>
-      </Card>
+      {/* Input - Fixed at bottom */}
+      <div className="border-t p-4 flex-shrink-0 bg-background">
+        <ChatInput
+          onSendMessage={handleSendMessage}
+          onCancel={handleCancelGeneration}
+          isDisabled={isThinking || isGenerating}
+          isGenerating={isGenerating}
+        />
+      </div>
     </div>
   );
 }
