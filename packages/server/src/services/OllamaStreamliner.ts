@@ -46,6 +46,17 @@ interface OllamaGenerateResponse {
   error?: string;
 }
 
+interface OllamaToolTestResponse {
+  message?: {
+    tool_calls?: Array<{
+      function: {
+        name: string;
+        arguments: Record<string, any>;
+      };
+    }>;
+  };
+}
+
 export class OllamaStreamliner {
   private modelCapabilities: Map<string, ModelCapability> = new Map();
   private deploymentConfig = getDeploymentConfig();
@@ -103,19 +114,25 @@ export class OllamaStreamliner {
       const modelInfo = await response.json() as OllamaModelInfo;
       const modelfile = modelInfo.modelfile || '';
       
+      // Check vision first - if a model has vision, it won't be tested for other capabilities
+      const hasVision = await this.hasVisionSupport(model, modelInfo);
+      
       // Parse capabilities from modelfile and metadata
       const capability: ModelCapability = {
         name: model,
-        vision: await this.hasVisionSupport(model, modelInfo),
-        tools: this.hasToolSupport(model, modelfile),
+        vision: hasVision,
+        tools: hasVision ? false : await this.hasToolSupport(model, modelfile),
+        reasoning: hasVision ? false : await this.hasReasoningSupport(model, modelInfo),
         maxTokens: this.parseMaxTokens(modelfile) || 4096,
         contextWindow: this.parseContextWindow(modelfile) || 128000,
         description: modelInfo.description,
       };
 
-      // Enhanced logging for vision detection debugging
-      logger.info(`Vision detection results for model '${model}':`, {
+      // Enhanced logging for capability detection debugging
+      logger.info(`Capability detection results for model '${model}':`, {
         hasVision: capability.vision,
+        hasTools: capability.tools,
+        hasReasoning: capability.reasoning,
         modalities: modelInfo.modalities,
         architecture: modelInfo.model_info?.architecture,
         families: modelInfo.details?.families,
@@ -140,6 +157,7 @@ export class OllamaStreamliner {
         name: model,
         vision: false,
         tools: false,
+        reasoning: false,
         maxTokens: 4096,
         contextWindow: 8192,
       };
@@ -296,12 +314,210 @@ export class OllamaStreamliner {
     return false;
   }
 
-  private hasToolSupport(model: string, modelfile: string): boolean {
-    // Models that support function calling
-    const toolModels = ['mistral', 'mixtral', 'llama3', 'llama-3.1'];
-    return toolModels.some(tm => model.toLowerCase().includes(tm)) ||
-           modelfile.includes('TOOLS') ||
-           modelfile.includes('function');
+  private async hasToolSupport(model: string, modelfile: string): Promise<boolean> {
+    const ollamaHost = this.getOllamaHost();
+    
+    // First check known tool-capable models
+    const knownToolModels = [
+      'mistral', 'mixtral', 'llama3.1', 'llama-3.1', 'llama3.2', 
+      'qwen2.5', 'gemma2', 'command-r', 'firefunction'
+    ];
+    
+    const modelLower = model.toLowerCase();
+    const hasKnownToolSupport = knownToolModels.some(tm => modelLower.includes(tm));
+    
+    // Check modelfile for tool/function indicators
+    const hasToolsInModelfile = modelfile.includes('TOOLS') || 
+                                modelfile.includes('function') ||
+                                modelfile.includes('tool_use');
+    
+    if (!hasKnownToolSupport && !hasToolsInModelfile) {
+      logger.debug(`Model '${model}' not in known tool-capable list and no tool indicators in modelfile`);
+      return false;
+    }
+    
+    // Perform actual tool capability test
+    logger.info(`Testing tool capability for model '${model}'`);
+    
+    const testTool = {
+      type: "function",
+      function: {
+        name: "generate_random_number",
+        description: "Get a random integer between 1-10",
+        parameters: {
+          type: "object",
+          properties: {
+            min: { type: "integer", const: 1 },
+            max: { type: "integer", const: 10 }
+          },
+          required: ["min", "max"]
+        }
+      }
+    };
+    
+    const testPrompt = "[SYSTEM] You MUST use the provided tool. Generate a random number between 1 and 10.";
+    
+    try {
+      const response = await fetch(`${ollamaHost}/api/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: model,
+          messages: [{ role: "user", content: testPrompt }],
+          tools: [testTool],
+          tool_choice: {
+            type: "function",
+            function: { name: "generate_random_number" }
+          },
+          options: { temperature: 0 },
+          stream: false
+        }),
+      });
+      
+      if (!response.ok) {
+        logger.debug(`Tool test request failed for model '${model}': ${response.statusText}`);
+        return false;
+      }
+      
+      const data = await response.json() as OllamaToolTestResponse;
+      const toolCalls = data.message?.tool_calls || [];
+      
+      // Validation checks
+      if (toolCalls.length !== 1) {
+        logger.debug(`Model '${model}' returned ${toolCalls.length} tool calls instead of 1`);
+        return false;
+      }
+      
+      const call = toolCalls[0];
+      if (call.function.name !== "generate_random_number" ||
+          !call.function.arguments ||
+          call.function.arguments.min !== 1 ||
+          call.function.arguments.max !== 10) {
+        logger.debug(`Model '${model}' tool call validation failed`, call);
+        return false;
+      }
+      
+      logger.info(`✓ Tool capability confirmed for model '${model}'`);
+      return true;
+      
+    } catch (error) {
+      logger.error(`Error testing tool capability for model '${model}':`, error);
+      return false;
+    }
+  }
+
+  private async hasReasoningSupport(model: string, modelInfo: OllamaModelInfo): Promise<boolean> {
+    const ollamaHost = this.getOllamaHost();
+    
+    logger.debug(`Starting reasoning detection for model: ${model}`);
+    
+    // Known reasoning models
+    const knownReasoningModels = [
+      'deepseek-r1', 'llama3.1-intuitive-thinker', 'qwen-qwq', 
+      'o1', 'o1-mini', 'claude-3-opus', 'gpt-4-turbo',
+      'gemini-1.5-pro', 'mistral-large'
+    ];
+    
+    const modelLower = model.toLowerCase();
+    
+    // Check if model is in known reasoning models list
+    if (knownReasoningModels.some(rm => modelLower.includes(rm.toLowerCase()))) {
+      logger.info(`✓ Model '${model}' is a known reasoning model`);
+      return true;
+    }
+    
+    // Check for reasoning indicators in model metadata
+    const reasoningIndicators = [
+      'reasoning', 'chain-of-thought', 'cot', 'step-by-step',
+      'logical', 'analytical', 'problem-solving', 'nonlinear-thinking'
+    ];
+    
+    // Check families
+    if (modelInfo.details?.families) {
+      const hasReasoningFamily = modelInfo.details.families.some(family =>
+        reasoningIndicators.some(indicator => 
+          family.toLowerCase().includes(indicator)
+        )
+      );
+      if (hasReasoningFamily) {
+        logger.info(`✓ Reasoning detected via families for '${model}'`);
+        return true;
+      }
+    }
+    
+    // Check description
+    if (modelInfo.description) {
+      const hasReasoningDescription = reasoningIndicators.some(indicator =>
+        modelInfo.description!.toLowerCase().includes(indicator)
+      );
+      if (hasReasoningDescription) {
+        logger.info(`✓ Reasoning detected via description for '${model}'`);
+        return true;
+      }
+    }
+    
+    // Test reasoning capability with a simple logic problem
+    logger.info(`Testing reasoning capability for model '${model}'`);
+    
+    const testPrompt = "If 5 shirts take 4 hours to dry on a clothesline, how long would 20 shirts take to dry? Think step by step.";
+    
+    try {
+      const response = await fetch(`${ollamaHost}/api/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: model,
+          messages: [{ role: "user", content: testPrompt }],
+          stream: false,
+          options: { 
+            temperature: 0.1,
+            max_tokens: 500
+          }
+        }),
+      });
+      
+      if (!response.ok) {
+        logger.debug(`Reasoning test request failed for model '${model}': ${response.statusText}`);
+        return false;
+      }
+      
+      const data = await response.json();
+      const responseContent = data.message?.content || '';
+      
+      // Check for reasoning patterns in the response
+      const reasoningPatterns = [
+        'same clothesline',
+        'parallel',
+        'simultaneously',
+        'at the same time',
+        'still 4 hours',
+        '4 hours',
+        'drying time remains',
+        'doesn\'t change'
+      ];
+      
+      const showsReasoning = reasoningPatterns.some(pattern =>
+        responseContent.toLowerCase().includes(pattern)
+      );
+      
+      // Also check for step-by-step thinking
+      const hasStepByStep = responseContent.includes('step') || 
+                           responseContent.includes('Step') ||
+                           responseContent.includes('First') ||
+                           responseContent.includes('Therefore');
+      
+      if (showsReasoning && hasStepByStep) {
+        logger.info(`✓ Reasoning capability confirmed for model '${model}'`);
+        return true;
+      }
+      
+      logger.debug(`Model '${model}' reasoning test response did not show clear reasoning patterns`);
+      return false;
+      
+    } catch (error) {
+      logger.error(`Error testing reasoning capability for model '${model}':`, error);
+      return false;
+    }
   }
 
   private parseMaxTokens(modelfile: string): number | null {
@@ -423,6 +639,31 @@ export class OllamaStreamliner {
       return visionModels;
     } catch (error) {
       logger.error('Failed to get available vision models:', error);
+      return [];
+    }
+  }
+
+  async getModelCapabilities(): Promise<ModelCapability[]> {
+    try {
+      const models = await this.listModels();
+      const capabilities: ModelCapability[] = [];
+      
+      logger.info(`Getting capabilities for ${models.length} models...`);
+      
+      for (const model of models) {
+        try {
+          const capability = await this.detectCapabilities(model);
+          capabilities.push(capability);
+        } catch (error) {
+          logger.warn(`Failed to get capabilities for model '${model}':`, error);
+          // Continue with other models
+        }
+      }
+      
+      logger.info(`Retrieved capabilities for ${capabilities.length} models`);
+      return capabilities;
+    } catch (error) {
+      logger.error('Failed to get model capabilities:', error);
       return [];
     }
   }
