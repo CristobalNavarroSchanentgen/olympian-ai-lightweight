@@ -26,6 +26,10 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+    # Add extra_hosts for custom DNS resolution
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+      ${EXTRA_HOSTS:-}
 
   backend:
     build:
@@ -80,9 +84,10 @@ services:
       timeout: 5s
       retries: 3
       start_period: 15s
-    # Add extra_hosts to allow backend to access host services
+    # Add extra_hosts to allow backend to access host services and custom DNS
     extra_hosts:
       - "host.docker.internal:host-gateway"
+      ${EXTRA_HOSTS:-}
 
   # MongoDB service - enabled for multi-host when using containerized option
   mongodb:
