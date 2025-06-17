@@ -9,7 +9,7 @@ COPY packages/shared ./packages/shared
 COPY packages/server ./packages/server
 
 # Install dependencies
-RUN npm ci --workspace=packages/shared --workspace=packages/server
+RUN npm install --workspace=packages/shared --workspace=packages/server
 
 # Build
 RUN npm run build:shared
@@ -22,7 +22,7 @@ WORKDIR /app
 # Install production dependencies only
 COPY package*.json ./
 COPY packages/server/package*.json ./packages/server/
-RUN npm ci --production --workspace=packages/server
+RUN npm install --production --workspace=packages/server
 
 # Copy built files
 COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
