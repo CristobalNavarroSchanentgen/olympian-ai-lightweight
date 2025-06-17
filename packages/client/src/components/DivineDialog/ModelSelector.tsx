@@ -31,14 +31,14 @@ export function ModelSelector({ hasImages }: ModelSelectorProps) {
   const [showSettings, setShowSettings] = useState(false);
 
   useEffect(() => {
-    console.log('🔄 [ModelSelector] Component mounted, fetching vision models...');
+    console.log('🎨 [ModelSelector] Component mounted, fetching vision models...');
     // Always fetch vision models on mount to show available options
     fetchVisionModels();
   }, [fetchVisionModels]);
 
   // Debug logging
   useEffect(() => {
-    console.log('🔍 [ModelSelector] Store state changed:', {
+    console.log('🎨 [ModelSelector] State changed, debug info:', {
       modelsCount: models.length,
       models: models,
       visionModelsCount: visionModels.length,
@@ -52,19 +52,19 @@ export function ModelSelector({ hasImages }: ModelSelectorProps) {
 
   // Handle vision model selection with "auto" as the default
   const handleVisionModelChange = (value: string) => {
-    console.log('🎯 [ModelSelector] Vision model selected:', value);
+    console.log('🎨 [ModelSelector] handleVisionModelChange called with value:', value);
     // If "auto" is selected, set to empty string (no specific vision model)
     selectVisionModel(value === 'auto' ? '' : value);
   };
 
   const handleModelChange = (value: string) => {
-    console.log('🎯 [ModelSelector] Model selected:', value);
+    console.log('🎨 [ModelSelector] handleModelChange called with value:', value);
     selectModel(value);
   };
 
   // Show loading state
   if (isLoadingModels) {
-    console.log('⏳ [ModelSelector] Rendering loading state');
+    console.log('🎨 [ModelSelector] Rendering loading state');
     return (
       <div className="flex items-center gap-4">
         <div className="w-[200px] h-10 bg-muted animate-pulse rounded-md" />
@@ -75,17 +75,17 @@ export function ModelSelector({ hasImages }: ModelSelectorProps) {
 
   // Show debug info if no models
   if (models.length === 0) {
-    console.log('❌ [ModelSelector] No models available, rendering error state');
+    console.log('🎨 [ModelSelector] Rendering no models state');
     return (
       <div className="flex items-center gap-4">
         <div className="text-sm text-destructive">
-          No models found (Debug: models.length = {models.length}, isLoading = {isLoadingModels})
+          No models found (Debug: models.length = {models.length})
         </div>
       </div>
     );
   }
 
-  console.log('✅ [ModelSelector] Rendering normal state with', models.length, 'models');
+  console.log('🎨 [ModelSelector] Rendering normal state with', models.length, 'models');
 
   return (
     <>
@@ -98,7 +98,7 @@ export function ModelSelector({ hasImages }: ModelSelectorProps) {
             </SelectTrigger>
             <SelectContent>
               {models.map((model) => {
-                console.log('🔧 [ModelSelector] Rendering model option:', model);
+                console.log('🎨 [ModelSelector] Rendering model option:', model);
                 return (
                   <SelectItem key={model} value={model}>
                     <div className="flex items-center gap-2">
@@ -129,7 +129,7 @@ export function ModelSelector({ hasImages }: ModelSelectorProps) {
                   </div>
                 </SelectItem>
                 {visionModels.map((model) => {
-                  console.log('🔧 [ModelSelector] Rendering vision model option:', model);
+                  console.log('🎨 [ModelSelector] Rendering vision model option:', model);
                   return (
                     <SelectItem key={model} value={model}>
                       <div className="flex items-center gap-2">
@@ -156,7 +156,7 @@ export function ModelSelector({ hasImages }: ModelSelectorProps) {
           size="sm" 
           className="gap-2"
           onClick={() => {
-            console.log('⚙️ [ModelSelector] Settings button clicked');
+            console.log('🎨 [ModelSelector] Settings button clicked');
             setShowSettings(true);
           }}
           title="View model capabilities and settings"
