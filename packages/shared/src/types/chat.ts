@@ -48,6 +48,7 @@ export interface ModelCapability {
   name: string;
   vision: boolean;
   tools: boolean;
+  reasoning: boolean; // Added reasoning capability
   maxTokens: number;
   contextWindow: number;
   description?: string;
