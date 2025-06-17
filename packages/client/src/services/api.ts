@@ -153,18 +153,122 @@ class ApiService {
 
   // Model API - Fixed to use chat endpoints with correct response format
   async getModels(): Promise<string[]> {
-    const { data } = await this.client.get<{ success: boolean; data: string[]; timestamp: string }>('/chat/models');
-    return data.data || [];
+    console.log('🌐 [API] getModels called - making request to /chat/models');
+    try {
+      const response = await this.client.get<{ success: boolean; data: string[]; timestamp: string }>('/chat/models');
+      console.log('🌐 [API] getModels raw response:', {
+        status: response.status,
+        statusText: response.statusText,
+        headers: response.headers,
+        data: response.data
+      });
+      
+      const { data } = response;
+      console.log('🌐 [API] getModels response data:', {
+        type: typeof data,
+        success: data.success,
+        dataField: data.data,
+        dataType: typeof data.data,
+        isArray: Array.isArray(data.data),
+        length: data.data?.length
+      });
+      
+      if (!data.success) {
+        console.error('❌ [API] getModels - API returned success: false');
+        throw new Error('API returned success: false');
+      }
+      
+      if (!Array.isArray(data.data)) {
+        console.error('❌ [API] getModels - data.data is not an array:', data.data);
+        throw new Error('Invalid response format: data.data is not an array');
+      }
+      
+      console.log('✅ [API] getModels returning:', data.data);
+      return data.data || [];
+    } catch (error) {
+      console.error('❌ [API] getModels error:', {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        error,
+        stack: error instanceof Error ? error.stack : undefined
+      });
+      throw error;
+    }
   }
 
   async getVisionModels(): Promise<string[]> {
-    const { data } = await this.client.get<{ success: boolean; data: string[]; timestamp: string }>('/chat/vision-models');
-    return data.data || [];
+    console.log('🌐 [API] getVisionModels called - making request to /chat/vision-models');
+    try {
+      const response = await this.client.get<{ success: boolean; data: string[]; timestamp: string }>('/chat/vision-models');
+      console.log('🌐 [API] getVisionModels raw response:', {
+        status: response.status,
+        statusText: response.statusText,
+        data: response.data
+      });
+      
+      const { data } = response;
+      console.log('🌐 [API] getVisionModels response data:', {
+        type: typeof data,
+        success: data.success,
+        dataField: data.data,
+        dataType: typeof data.data,
+        isArray: Array.isArray(data.data),
+        length: data.data?.length
+      });
+      
+      if (!data.success) {
+        console.error('❌ [API] getVisionModels - API returned success: false');
+        throw new Error('API returned success: false');
+      }
+      
+      if (!Array.isArray(data.data)) {
+        console.error('❌ [API] getVisionModels - data.data is not an array:', data.data);
+        throw new Error('Invalid response format: data.data is not an array');
+      }
+      
+      console.log('✅ [API] getVisionModels returning:', data.data);
+      return data.data || [];
+    } catch (error) {
+      console.error('❌ [API] getVisionModels error:', {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        error,
+        stack: error instanceof Error ? error.stack : undefined
+      });
+      throw error;
+    }
   }
 
   async getModelCapabilities(model: string): Promise<ModelCapability> {
-    const { data } = await this.client.get<{ success: boolean; data: ModelCapability; timestamp: string }>(`/chat/models/${model}/capabilities`);
-    return data.data!;
+    console.log('🌐 [API] getModelCapabilities called with model:', model);
+    try {
+      const response = await this.client.get<{ success: boolean; data: ModelCapability; timestamp: string }>(`/chat/models/${model}/capabilities`);
+      console.log('🌐 [API] getModelCapabilities raw response:', {
+        status: response.status,
+        statusText: response.statusText,
+        data: response.data
+      });
+      
+      const { data } = response;
+      console.log('🌐 [API] getModelCapabilities response data:', {
+        type: typeof data,
+        success: data.success,
+        dataField: data.data
+      });
+      
+      if (!data.success) {
+        console.error('❌ [API] getModelCapabilities - API returned success: false');
+        throw new Error('API returned success: false');
+      }
+      
+      console.log('✅ [API] getModelCapabilities returning:', data.data);
+      return data.data!;
+    } catch (error) {
+      console.error('❌ [API] getModelCapabilities error:', {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        error,
+        stack: error instanceof Error ? error.stack : undefined
+      });
+      throw error;
+    }
   }
 
   async getAllModelCapabilities(): Promise<ModelCapability[]> {
