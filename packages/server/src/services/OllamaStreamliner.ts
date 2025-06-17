@@ -828,11 +828,19 @@ export class OllamaStreamliner {
       lastMessagePreview: processedRequest.messages[processedRequest.messages.length - 1]?.content?.substring(0, 100) + '...'
     })}`);
     
+    // Create AbortController for timeout handling
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      logger.warn(`Stream timeout reached for model ${processedRequest.model}, aborting...`);
+      controller.abort();
+    }, 120000); // 2 minutes timeout for streaming
+    
     try {
       const response = await fetch(`${ollamaHost}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(processedRequest),
+        signal: controller.signal, // Add abort signal for timeout
       });
 
       if (!response.ok) {
@@ -849,12 +857,21 @@ export class OllamaStreamliner {
       const decoder = new TextDecoder();
       let buffer = '';
       let tokenCount = 0;
+      let lastTokenTime = Date.now();
 
       try {
         logger.info('Starting to stream response tokens...');
         
         while (true) {
+          // Add per-chunk timeout to detect stalled streams
+          const chunkTimeoutId = setTimeout(() => {
+            logger.warn(`No data received for 30 seconds, aborting stream for model ${processedRequest.model}`);
+            controller.abort();
+          }, 30000); // 30 seconds per chunk timeout
+          
           const { done, value } = await reader.read();
+          clearTimeout(chunkTimeoutId);
+          
           if (done) break;
 
           buffer += decoder.decode(value, { stream: true });
@@ -867,6 +884,7 @@ export class OllamaStreamliner {
                 const json = JSON.parse(line) as OllamaStreamResponse;
                 if (json.message?.content) {
                   tokenCount++;
+                  lastTokenTime = Date.now();
                   onToken(json.message.content);
                   
                   if (tokenCount === 1) {
@@ -891,8 +909,20 @@ export class OllamaStreamliner {
         }
       } finally {
         reader.releaseLock();
+        clearTimeout(timeoutId);
       }
     } catch (error) {
+      clearTimeout(timeoutId);
+      
+      if (error instanceof Error && error.name === 'AbortError') {
+        logger.error('Stream was aborted due to timeout:', {
+          model: processedRequest.model,
+          host: ollamaHost,
+          reason: 'timeout'
+        });
+        throw new AppError(408, 'Request timeout: The model took too long to respond. This could be due to model complexity or server load.', 'STREAM_TIMEOUT');
+      }
+      
       logger.error('Error in streamChat:', {
         error: error instanceof Error ? error.message : error,
         host: ollamaHost,
