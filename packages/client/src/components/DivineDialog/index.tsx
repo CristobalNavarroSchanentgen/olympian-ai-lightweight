@@ -18,7 +18,7 @@ export function DivineDialog() {
     fetchModels,
     addMessage,
     setCurrentConversation,
-    createNewConversation,
+    createConversation,
   } = useChatStore();
   
   const [isThinking, setIsThinking] = useState(false);
@@ -38,7 +38,7 @@ export function DivineDialog() {
   }, [messages, streamedContent]);
 
   const handleNewConversation = () => {
-    createNewConversation();
+    createConversation();
   };
 
   const handleSendMessage = async (content: string, images?: string[]) => {
