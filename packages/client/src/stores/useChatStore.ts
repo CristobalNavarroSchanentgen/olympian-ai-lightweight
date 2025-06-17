@@ -51,7 +51,7 @@ function detectVisionModelsByName(models: string[]): string[] {
     /yi-vl/i,
     /phi.*vision/i,
     /phi-3-vision/i,
-    /vision/i,
+    // Removed the generic /vision/i pattern as it's too broad
     /multimodal/i
   ];
 
@@ -162,7 +162,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       // Fetch all models first
       const allModels = await api.getModels();
       
-      // Try to fetch vision models from API, with fallback to name-based detection
+      // Try to fetch vision models from API
       let visionModels: string[] = [];
       try {
         visionModels = await api.getVisionModels();
@@ -173,22 +173,16 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         console.log('Vision models from fallback detection:', visionModels);
       }
       
-      // Ensure we have some vision model detection, use both API and fallback
-      const fallbackVisionModels = detectVisionModelsByName(allModels);
-      const combinedVisionModels = [...new Set([...visionModels, ...fallbackVisionModels])];
-      
-      // Filter out ALL detected vision models from the regular models list
-      const filteredModels = allModels.filter(model => !combinedVisionModels.includes(model));
-      
+      // Don't filter out vision models from the regular models list
+      // Let users choose any model they want
       console.log('All models:', allModels);
-      console.log('Combined vision models:', combinedVisionModels);
-      console.log('Filtered regular models (vision models excluded):', filteredModels);
+      console.log('Vision models:', visionModels);
       
-      set({ models: filteredModels, visionModels: combinedVisionModels });
+      set({ models: allModels, visionModels });
       
       // Auto-select first model if none selected
-      if (filteredModels.length > 0 && !get().selectedModel) {
-        await get().selectModel(filteredModels[0]);
+      if (allModels.length > 0 && !get().selectedModel) {
+        await get().selectModel(allModels[0]);
       }
     } catch (error) {
       console.error('Error in fetchModels:', error);
