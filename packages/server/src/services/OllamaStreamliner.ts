@@ -57,6 +57,12 @@ interface OllamaToolTestResponse {
   };
 }
 
+interface OllamaChatResponse {
+  message?: {
+    content?: string;
+  };
+}
+
 export class OllamaStreamliner {
   private modelCapabilities: Map<string, ModelCapability> = new Map();
   private deploymentConfig = getDeploymentConfig();
@@ -481,7 +487,7 @@ export class OllamaStreamliner {
         return false;
       }
       
-      const data = await response.json();
+      const data = await response.json() as OllamaChatResponse;
       const responseContent = data.message?.content || '';
       
       // Check for reasoning patterns in the response

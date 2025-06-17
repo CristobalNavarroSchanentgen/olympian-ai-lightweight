@@ -1,47 +1,51 @@
 import { Request, Response, NextFunction } from 'express';
 import { logger } from '../utils/logger';
-import { ApiError } from '@olympian/shared';
 
 export class AppError extends Error {
-  constructor(
-    public statusCode: number,
-    public message: string,
-    public code: string = 'INTERNAL_ERROR'
-  ) {
+  public statusCode: number;
+  public isOperational: boolean;
+  public code?: string;
+
+  constructor(statusCode: number, message: string, code?: string, isOperational = true) {
     super(message);
-    this.name = 'AppError';
+    this.statusCode = statusCode;
+    this.isOperational = isOperational;
+    this.code = code;
+
+    Error.captureStackTrace(this, this.constructor);
   }
 }
 
-export function errorHandler(
-  error: Error,
-  _req: Request,
-  res: Response,
-  _next: NextFunction
-): void {
-  logger.error('Error handler:', error);
+// Async handler wrapper to catch async errors
+export const asyncHandler = (fn: Function) => (req: Request, res: Response, next: NextFunction) => {
+  Promise.resolve(fn(req, res, next)).catch(next);
+};
 
-  if (error instanceof AppError) {
-    const apiError: ApiError = {
-      code: error.code,
-      message: error.message,
-    };
+export const errorHandler = (err: any, req: Request, res: Response, next: NextFunction) => {
+  let error = { ...err };
+  error.message = err.message;
 
-    res.status(error.statusCode).json({
-      success: false,
-      error: apiError,
-      timestamp: new Date(),
-    });
-    return;
-  }
+  // Log error
+  logger.error('Error caught by middleware:', {
+    error: error.message,
+    stack: err.stack,
+    url: req.url,
+    method: req.method,
+    ip: req.ip,
+  });
 
   // Default error
-  res.status(500).json({
+  let statusCode = 500;
+  let message = 'Internal Server Error';
+
+  if (err instanceof AppError) {
+    statusCode = err.statusCode;
+    message = err.message;
+  }
+
+  res.status(statusCode).json({
     success: false,
-    error: {
-      code: 'INTERNAL_ERROR',
-      message: 'An unexpected error occurred',
-    },
-    timestamp: new Date(),
+    error: message,
+    ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
   });
-}
+};
