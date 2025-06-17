@@ -24,7 +24,8 @@ export function ModelSelector({ hasImages }: ModelSelectorProps) {
     selectedVisionModel,
     selectModel,
     selectVisionModel,
-    fetchVisionModels
+    fetchVisionModels,
+    isLoadingModels
   } = useChatStore();
   
   const [showSettings, setShowSettings] = useState(false);
@@ -34,11 +35,45 @@ export function ModelSelector({ hasImages }: ModelSelectorProps) {
     fetchVisionModels();
   }, [fetchVisionModels]);
 
+  // Debug logging
+  useEffect(() => {
+    console.log('ModelSelector Debug:', {
+      modelsCount: models.length,
+      models: models,
+      visionModelsCount: visionModels.length,
+      visionModels: visionModels,
+      selectedModel,
+      selectedVisionModel,
+      isLoadingModels
+    });
+  }, [models, visionModels, selectedModel, selectedVisionModel, isLoadingModels]);
+
   // Handle vision model selection with "auto" as the default
   const handleVisionModelChange = (value: string) => {
     // If "auto" is selected, set to empty string (no specific vision model)
     selectVisionModel(value === 'auto' ? '' : value);
   };
+
+  // Show loading state
+  if (isLoadingModels) {
+    return (
+      <div className="flex items-center gap-4">
+        <div className="w-[200px] h-10 bg-muted animate-pulse rounded-md" />
+        <div className="text-sm text-muted-foreground">Loading models...</div>
+      </div>
+    );
+  }
+
+  // Show debug info if no models
+  if (models.length === 0) {
+    return (
+      <div className="flex items-center gap-4">
+        <div className="text-sm text-destructive">
+          No models found (Debug: models.length = {models.length})
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -47,7 +82,7 @@ export function ModelSelector({ hasImages }: ModelSelectorProps) {
         <div className="flex items-center gap-2">
           <Select value={selectedModel || ''} onValueChange={selectModel}>
             <SelectTrigger className="w-[200px]">
-              <SelectValue placeholder="Select AI model" />
+              <SelectValue placeholder={`Select AI model (${models.length} available)`} />
             </SelectTrigger>
             <SelectContent>
               {models.map((model) => (
@@ -70,7 +105,7 @@ export function ModelSelector({ hasImages }: ModelSelectorProps) {
               onValueChange={handleVisionModelChange}
             >
               <SelectTrigger className="w-[200px]">
-                <SelectValue placeholder="Vision model" />
+                <SelectValue placeholder={`Vision model (${visionModels.length} available)`} />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="auto">
