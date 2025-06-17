@@ -4,8 +4,10 @@ import { api } from '@/services/api';
 import { ChatInput } from './ChatInput';
 import { MessageList } from './MessageList';
 import { ModelSelector } from './ModelSelector';
+import { Button } from '@/components/ui/button';
 import { Message } from '@olympian/shared';
 import { toast } from '@/hooks/useToast';
+import { Plus } from 'lucide-react';
 
 export function DivineDialog() {
   const {
@@ -16,6 +18,7 @@ export function DivineDialog() {
     fetchModels,
     addMessage,
     setCurrentConversation,
+    createNewConversation,
   } = useChatStore();
   
   const [isThinking, setIsThinking] = useState(false);
@@ -33,6 +36,10 @@ export function DivineDialog() {
     // Auto-scroll to bottom when new messages arrive
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, streamedContent]);
+
+  const handleNewConversation = () => {
+    createNewConversation();
+  };
 
   const handleSendMessage = async (content: string, images?: string[]) => {
     if (!selectedModel) {
@@ -140,10 +147,26 @@ export function DivineDialog() {
       {/* Header */}
       <div className="border-b px-4 py-2 flex-shrink-0 bg-background">
         <div className="flex items-center justify-between">
-          <h3 className="text-lg font-semibold">
+          {/* Left side - New button */}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleNewConversation}
+            className="flex items-center gap-2"
+          >
+            <Plus className="h-4 w-4" />
+            New
+          </Button>
+
+          {/* Center - Conversation title */}
+          <h3 className="text-lg font-semibold text-center flex-1">
             {currentConversation ? currentConversation.title : 'New Conversation'}
           </h3>
-          <ModelSelector hasImages={hasImages} />
+
+          {/* Right side - Model selector */}
+          <div className="flex justify-end">
+            <ModelSelector hasImages={hasImages} />
+          </div>
         </div>
       </div>
 
