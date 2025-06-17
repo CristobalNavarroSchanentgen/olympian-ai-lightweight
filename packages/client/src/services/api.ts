@@ -151,19 +151,25 @@ class ApiService {
     return { messages: data.data || [], total: data.total };
   }
 
+  // Model API - Fixed endpoints to match backend routes
   async getModels(): Promise<string[]> {
-    const { data } = await this.client.get<ApiResponse<string[]>>('/chat/models');
-    return data.data || [];
+    const { data } = await this.client.get<{ models: string[] }>('/models/list');
+    return data.models || [];
   }
 
   async getVisionModels(): Promise<string[]> {
-    const { data } = await this.client.get<ApiResponse<string[]>>('/chat/vision-models');
-    return data.data || [];
+    const { data } = await this.client.get<{ models: string[] }>('/models/vision');
+    return data.models || [];
   }
 
   async getModelCapabilities(model: string): Promise<ModelCapability> {
-    const { data } = await this.client.get<ApiResponse<ModelCapability>>(`/chat/models/${model}/capabilities`);
-    return data.data!;
+    const { data } = await this.client.get<{ capability: ModelCapability }>(`/models/capabilities/${model}`);
+    return data.capability!;
+  }
+
+  async getAllModelCapabilities(): Promise<ModelCapability[]> {
+    const { data } = await this.client.get<{ capabilities: ModelCapability[] }>('/models/capabilities');
+    return data.capabilities || [];
   }
 
   // Config API
