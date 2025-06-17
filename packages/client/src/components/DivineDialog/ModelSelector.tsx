@@ -8,7 +8,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Bot, Eye, Wrench, ImageIcon } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Bot, Eye, Settings, ImageIcon } from 'lucide-react';
 
 interface ModelSelectorProps {
   hasImages?: boolean;
@@ -93,26 +94,18 @@ export function ModelSelector({ hasImages }: ModelSelectorProps) {
         </div>
       )}
       
-      {/* Model Capabilities Badges */}
-      {modelCapabilities && (
-        <div className="flex gap-2">
-          {modelCapabilities.vision && (
-            <Badge variant="secondary" className="gap-1">
-              <Eye className="h-3 w-3" />
-              Vision
-            </Badge>
-          )}
-          {modelCapabilities.tools && (
-            <Badge variant="secondary" className="gap-1">
-              <Wrench className="h-3 w-3" />
-              Tools
-            </Badge>
-          )}
-          <Badge variant="outline" className="text-xs">
-            {modelCapabilities.contextWindow.toLocaleString()} tokens
-          </Badge>
-        </div>
-      )}
+      {/* Model Settings Button (placeholder for future functionality) */}
+      <Button 
+        variant="ghost" 
+        size="sm" 
+        className="gap-2"
+        onClick={() => {
+          // Placeholder for model settings functionality
+          console.log('Model settings clicked');
+        }}
+      >
+        <Settings className="h-4 w-4" />
+      </Button>
     </div>
   );
 }
