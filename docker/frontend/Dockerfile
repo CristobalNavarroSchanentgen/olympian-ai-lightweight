@@ -8,7 +8,7 @@ COPY packages/shared/package*.json ./packages/shared/
 COPY packages/client/package*.json ./packages/client/
 
 # Install dependencies
-RUN npm ci
+RUN npm install
 
 # Copy source files
 COPY tsconfig.json ./
