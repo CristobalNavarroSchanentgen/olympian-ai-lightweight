@@ -4,6 +4,7 @@ import { mcpRouter } from './mcp';
 import { chatRouter } from './chat';
 import { configRouter } from './config';
 import { healthRouter } from './health';
+import { modelsRouter } from './models';
 
 export function setupRoutes(app: Application): void {
   // Health and monitoring
@@ -14,4 +15,5 @@ export function setupRoutes(app: Application): void {
   app.use('/api/mcp', mcpRouter);
   app.use('/api/chat', chatRouter);
   app.use('/api/config', configRouter);
+  app.use('/api/models', modelsRouter);
 }
