@@ -11,6 +11,15 @@ export interface OllamaHealthStatus {
   visionModels?: string[];
 }
 
+interface OllamaModel {
+  name: string;
+  // Add other properties if needed
+}
+
+interface OllamaTagsResponse {
+  models?: OllamaModel[];
+}
+
 export class OllamaHealthCheck {
   private deploymentConfig = getDeploymentConfig();
 
@@ -31,8 +40,8 @@ export class OllamaHealthCheck {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
-      const data = await response.json();
-      const models = data.models?.map((m: any) => m.name) || [];
+      const data = await response.json() as OllamaTagsResponse;
+      const models = data.models?.map((m) => m.name) || [];
       
       // Check for vision models using name patterns
       const visionPatterns = [
