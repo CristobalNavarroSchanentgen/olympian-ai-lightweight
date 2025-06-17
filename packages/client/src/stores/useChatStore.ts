@@ -177,52 +177,91 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
 
   fetchModels: async () => {
-    console.log('🚀 [useChatStore] fetchModels called - starting fetch process');
+    console.log('🚀 [useChatStore] ===== FETCH MODELS START =====');
+    console.log('🚀 [useChatStore] Setting isLoadingModels to true');
     set({ isLoadingModels: true });
     
     try {
-      console.log('📞 [useChatStore] Calling api.getModels()...');
+      console.log('📞 [useChatStore] Step 1: Calling api.getModels()...');
+      
       // Fetch all models first
       const allModels = await api.getModels();
-      console.log('✅ [useChatStore] api.getModels() response:', allModels);
+      console.log('✅ [useChatStore] Step 1 SUCCESS: api.getModels() returned:', {
+        type: typeof allModels,
+        isArray: Array.isArray(allModels),
+        length: allModels?.length,
+        data: allModels
+      });
+      
+      // Validate the response
+      if (!Array.isArray(allModels)) {
+        console.error('❌ [useChatStore] ERROR: allModels is not an array!', allModels);
+        throw new Error('Invalid models response: expected array, got ' + typeof allModels);
+      }
+      
       console.log('📊 [useChatStore] Number of models received:', allModels.length);
       console.log('📋 [useChatStore] Models list:', allModels);
       
       // Try to fetch vision models from API
       let visionModels: string[] = [];
       try {
-        console.log('📞 [useChatStore] Calling api.getVisionModels()...');
+        console.log('📞 [useChatStore] Step 2: Calling api.getVisionModels()...');
         visionModels = await api.getVisionModels();
-        console.log('✅ [useChatStore] api.getVisionModels() response:', visionModels);
-        console.log('📊 [useChatStore] Number of vision models received:', visionModels.length);
+        console.log('✅ [useChatStore] Step 2 SUCCESS: api.getVisionModels() response:', {
+          type: typeof visionModels,
+          isArray: Array.isArray(visionModels),
+          length: visionModels?.length,
+          data: visionModels
+        });
       } catch (error) {
-        console.warn('⚠️ [useChatStore] Failed to fetch vision models from API, using fallback detection:', error);
+        console.warn('⚠️ [useChatStore] Step 2 FAILED: Failed to fetch vision models from API, using fallback detection:', error);
         visionModels = detectVisionModelsByName(allModels);
         console.log('🔄 [useChatStore] Fallback vision models result:', visionModels);
       }
       
-      // Don't filter out vision models from the regular models list
-      // Let users choose any model they want
-      console.log('📝 [useChatStore] Setting models and visionModels in store...');
-      console.log('📝 [useChatStore] Setting models:', allModels);
-      console.log('📝 [useChatStore] Setting visionModels:', visionModels);
-      
-      set({ models: allModels, visionModels });
-      console.log('✅ [useChatStore] Store updated with models');
-      
-      // Auto-select first model if none selected
-      const currentSelectedModel = get().selectedModel;
-      console.log('🔍 [useChatStore] Current selected model:', currentSelectedModel);
-      
-      if (allModels.length > 0 && !currentSelectedModel) {
-        console.log('🎯 [useChatStore] Auto-selecting first model:', allModels[0]);
-        await get().selectModel(allModels[0]);
-      } else {
-        console.log('ℹ️ [useChatStore] Not auto-selecting model (already selected or no models available)');
+      // Validate vision models response
+      if (!Array.isArray(visionModels)) {
+        console.warn('⚠️ [useChatStore] Warning: visionModels is not an array, converting to empty array:', visionModels);
+        visionModels = [];
       }
       
-      console.log('🎉 [useChatStore] fetchModels completed successfully');
+      console.log('📝 [useChatStore] Step 3: About to update store with:');
+      console.log('📝 [useChatStore] - models:', allModels);
+      console.log('📝 [useChatStore] - visionModels:', visionModels);
+      
+      // Update the store
+      console.log('📝 [useChatStore] Step 3: Calling set() to update store...');
+      set({ models: allModels, visionModels });
+      console.log('✅ [useChatStore] Step 3 SUCCESS: Store updated');
+      
+      // Verify the store was updated
+      const storeAfterUpdate = get();
+      console.log('🔍 [useChatStore] Store verification after update:', {
+        modelsLength: storeAfterUpdate.models.length,
+        visionModelsLength: storeAfterUpdate.visionModels.length,
+        isLoadingModels: storeAfterUpdate.isLoadingModels,
+        selectedModel: storeAfterUpdate.selectedModel
+      });
+      
+      // Auto-select first model if none selected
+      const currentSelectedModel = storeAfterUpdate.selectedModel;
+      console.log('🔍 [useChatStore] Step 4: Auto-selection check - current selected model:', currentSelectedModel);
+      
+      if (allModels.length > 0 && !currentSelectedModel) {
+        console.log('🎯 [useChatStore] Step 4: Auto-selecting first model:', allModels[0]);
+        await get().selectModel(allModels[0]);
+        console.log('✅ [useChatStore] Step 4 SUCCESS: Auto-selection completed');
+      } else {
+        console.log('ℹ️ [useChatStore] Step 4 SKIP: Not auto-selecting model', {
+          hasModels: allModels.length > 0,
+          hasSelectedModel: !!currentSelectedModel,
+          reason: allModels.length === 0 ? 'no models available' : 'model already selected'
+        });
+      }
+      
+      console.log('🎉 [useChatStore] ===== FETCH MODELS SUCCESS =====');
     } catch (error) {
+      console.error('❌ [useChatStore] ===== FETCH MODELS ERROR =====');
       console.error('❌ [useChatStore] Error in fetchModels:', error);
       console.error('❌ [useChatStore] Error details:', {
         message: error instanceof Error ? error.message : 'Unknown error',
@@ -235,17 +274,21 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         variant: 'destructive',
       });
     } finally {
-      console.log('🏁 [useChatStore] fetchModels finally block - setting isLoadingModels to false');
+      console.log('🏁 [useChatStore] ===== FETCH MODELS FINALLY =====');
+      console.log('🏁 [useChatStore] Setting isLoadingModels to false');
       set({ isLoadingModels: false });
       
       // Log final state
       const finalState = get();
-      console.log('📊 [useChatStore] Final state after fetchModels:', {
+      console.log('📊 [useChatStore] FINAL STATE after fetchModels:', {
         modelsCount: finalState.models.length,
+        models: finalState.models,
         visionModelsCount: finalState.visionModels.length,
+        visionModels: finalState.visionModels,
         selectedModel: finalState.selectedModel,
         isLoadingModels: finalState.isLoadingModels
       });
+      console.log('🏁 [useChatStore] ===== FETCH MODELS COMPLETE =====');
     }
   },
 
