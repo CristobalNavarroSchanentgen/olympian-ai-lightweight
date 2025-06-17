@@ -9,7 +9,7 @@ import {
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Bot, Eye, Settings, ImageIcon } from 'lucide-react';
+import { Bot, Settings, ImageIcon } from 'lucide-react';
 
 interface ModelSelectorProps {
   hasImages?: boolean;
@@ -21,7 +21,6 @@ export function ModelSelector({ hasImages }: ModelSelectorProps) {
     visionModels,
     selectedModel, 
     selectedVisionModel,
-    modelCapabilities, 
     selectModel,
     selectVisionModel,
     fetchVisionModels
