@@ -151,20 +151,20 @@ class ApiService {
     return { messages: data.data || [], total: data.total };
   }
 
-  // Model API - Fixed endpoints to match backend routes
+  // Model API - Fixed to use chat endpoints with correct response format
   async getModels(): Promise<string[]> {
-    const { data } = await this.client.get<{ models: string[] }>('/models/list');
-    return data.models || [];
+    const { data } = await this.client.get<{ success: boolean; data: string[]; timestamp: string }>('/chat/models');
+    return data.data || [];
   }
 
   async getVisionModels(): Promise<string[]> {
-    const { data } = await this.client.get<{ models: string[] }>('/models/vision');
-    return data.models || [];
+    const { data } = await this.client.get<{ success: boolean; data: string[]; timestamp: string }>('/chat/vision-models');
+    return data.data || [];
   }
 
   async getModelCapabilities(model: string): Promise<ModelCapability> {
-    const { data } = await this.client.get<{ capability: ModelCapability }>(`/models/capabilities/${model}`);
-    return data.capability!;
+    const { data } = await this.client.get<{ success: boolean; data: ModelCapability; timestamp: string }>(`/chat/models/${model}/capabilities`);
+    return data.data!;
   }
 
   async getAllModelCapabilities(): Promise<ModelCapability[]> {
