@@ -114,11 +114,11 @@ class ApiService {
     message: string;
     metadata: any;
   }> {
-    // Extended timeout for vision processing requests
+    // Match nginx timeout configuration: 300s for vision processing
     const hasImages = params.images && params.images.length > 0;
-    const timeout = hasImages ? 300000 : 60000; // 5 minutes for vision, 1 minute for text
+    const timeout = hasImages ? 300000 : 60000; // 300s (nginx match) for vision, 60s for text
     
-    console.log(`🌐 [API] sendMessage with ${hasImages ? 'images' : 'text only'}, timeout: ${timeout}ms`);
+    console.log(`🌐 [API] sendMessage with ${hasImages ? 'images' : 'text only'}, timeout: ${timeout}ms (${timeout/1000}s)`);
     
     const { data } = await this.client.post<ApiResponse<{
       conversation: Conversation;
