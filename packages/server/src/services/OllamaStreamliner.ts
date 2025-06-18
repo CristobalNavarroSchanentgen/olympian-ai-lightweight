@@ -98,6 +98,19 @@ export class OllamaStreamliner {
     return this.deploymentConfig.ollama.host;
   }
 
+  /**
+   * Clear cached model capabilities (useful for testing or when models are updated)
+   */
+  clearCapabilityCache(model?: string): void {
+    if (model) {
+      this.modelCapabilities.delete(model);
+      logger.info(`Cleared capability cache for model: ${model}`);
+    } else {
+      this.modelCapabilities.clear();
+      logger.info('Cleared all model capability cache');
+    }
+  }
+
   async detectCapabilities(model: string): Promise<ModelCapability> {
     // Check cache first
     if (this.modelCapabilities.has(model)) {
@@ -129,16 +142,28 @@ export class OllamaStreamliner {
       const modelInfo = await this.getModelInfo(model, ollamaHost);
       
       // Step 2: Quick vision detection (pattern matching - fast)
+      // VISION IS EXCLUSIVE - if a model has vision, it won't have tools or reasoning
       logger.debug(`👁️ Detecting vision capabilities for: ${model}`);
       const hasVision = await this.hasVisionSupport(model, modelInfo);
       
-      // Step 3: Quick tool detection (skip actual testing for performance)
-      logger.debug(`🔧 Detecting tool capabilities for: ${model}`);
-      const hasTools = hasVision ? false : await this.hasToolSupportFast(model, modelInfo);
+      // Step 3 & 4: Tools and reasoning detection (INCLUSIVE - a model can have both)
+      // Only detect tools and reasoning if the model is NOT a vision model
+      let hasTools = false;
+      let hasReasoning = false;
       
-      // Step 4: Quick reasoning detection (pattern matching - fast)
-      logger.debug(`🧠 Detecting reasoning capabilities for: ${model}`);
-      const hasReasoning = hasVision ? false : await this.hasReasoningSupportFast(model, modelInfo);
+      if (hasVision) {
+        // Vision models are exclusive - they don't have tools or reasoning capabilities
+        logger.debug(`🚫 Model '${model}' has vision - skipping tools and reasoning detection (vision is exclusive)`);
+        hasTools = false;
+        hasReasoning = false;
+      } else {
+        // Non-vision models can have tools AND/OR reasoning (INCLUSIVE)
+        logger.debug(`🔧 Detecting tool capabilities for: ${model}`);
+        hasTools = await this.hasToolSupportFast(model, modelInfo);
+        
+        logger.debug(`🧠 Detecting reasoning capabilities for: ${model}`);
+        hasReasoning = await this.hasReasoningSupportFast(model, modelInfo);
+      }
       
       // Parse capabilities from modelfile and metadata
       const capability: ModelCapability = {
@@ -158,10 +183,18 @@ export class OllamaStreamliner {
         hasVision: capability.vision,
         hasTools: capability.tools,
         hasReasoning: capability.reasoning,
+        combinedCapabilities: `vision:${capability.vision}, tools:${capability.tools}, reasoning:${capability.reasoning}`,
+        isVisionExclusive: hasVision && (!hasTools && !hasReasoning),
+        canHaveBothToolsAndReasoning: !hasVision && (hasTools || hasReasoning),
         maxTokens: capability.maxTokens,
         contextWindow: capability.contextWindow,
         detectionTimeMs: detectionTime
       });
+
+      // Validation check to ensure capability logic is correct
+      if (hasVision && (hasTools || hasReasoning)) {
+        logger.warn(`⚠️ Logic error: Vision model '${model}' incorrectly detected with tools(${hasTools}) or reasoning(${hasReasoning}). Vision should be exclusive.`);
+      }
 
       // Cache the result
       this.modelCapabilities.set(model, capability);
@@ -366,6 +399,7 @@ export class OllamaStreamliner {
   }
 
   // Fast tool detection without actual API testing
+  // Tools and reasoning are INCLUSIVE - a model can have both
   private async hasToolSupportFast(model: string, modelInfo: OllamaModelInfo): Promise<boolean> {
     logger.debug(`🔧 Fast tool detection for model: ${model}`);
     
@@ -373,7 +407,8 @@ export class OllamaStreamliner {
     const knownToolModels = [
       'mistral', 'mixtral', 'llama3.1', 'llama-3.1', 'llama3.2', 
       'qwen2.5', 'gemma2', 'command-r', 'firefunction', 'hermes',
-      'dolphin', 'codegemma', 'codellama', 'deepseek-coder'
+      'dolphin', 'codegemma', 'codellama', 'deepseek-coder',
+      'nous-hermes', 'openchat', 'vicuna', 'wizard', 'orca'
     ];
     
     const modelLower = model.toLowerCase();
@@ -515,6 +550,7 @@ export class OllamaStreamliner {
   }
 
   // Fast reasoning detection without actual API testing
+  // Tools and reasoning are INCLUSIVE - a model can have both
   private async hasReasoningSupportFast(model: string, modelInfo: OllamaModelInfo): Promise<boolean> {
     logger.debug(`🧠 Fast reasoning detection for model: ${model}`);
     
@@ -522,7 +558,9 @@ export class OllamaStreamliner {
     const knownReasoningModels = [
       'deepseek-r1', 'llama3.1-intuitive-thinker', 'qwen-qwq', 
       'o1', 'o1-mini', 'claude-3-opus', 'gpt-4-turbo',
-      'gemini-1.5-pro', 'mistral-large', 'qwq'
+      'gemini-1.5-pro', 'mistral-large', 'qwq', 'qwen2.5',
+      'llama3.1', 'llama-3.1', 'mixtral', 'nous-hermes',
+      'wizard', 'dolphin', 'openchat', 'vicuna'
     ];
     
     const modelLower = model.toLowerCase();
@@ -536,7 +574,8 @@ export class OllamaStreamliner {
     // Check for reasoning indicators in model metadata
     const reasoningIndicators = [
       'reasoning', 'chain-of-thought', 'cot', 'step-by-step',
-      'logical', 'analytical', 'problem-solving', 'nonlinear-thinking'
+      'logical', 'analytical', 'problem-solving', 'nonlinear-thinking',
+      'thinking', 'analysis', 'instruct', 'chat'
     ];
     
     // Check families
@@ -561,6 +600,17 @@ export class OllamaStreamliner {
         logger.info(`✓ Reasoning detected via description for '${model}'`);
         return true;
       }
+    }
+    
+    // Check modelfile for reasoning indicators
+    const modelfile = modelInfo.modelfile || '';
+    const hasReasoningInModelfile = reasoningIndicators.some(indicator =>
+      modelfile.toLowerCase().includes(indicator)
+    );
+    
+    if (hasReasoningInModelfile) {
+      logger.info(`✓ Reasoning detected via modelfile for '${model}'`);
+      return true;
     }
     
     logger.debug(`✗ No reasoning capability patterns detected for '${model}'`);
@@ -852,7 +902,20 @@ export class OllamaStreamliner {
         capabilities.push(...chunkResults);
       }
       
-      logger.info(`✅ Retrieved capabilities for ${capabilities.length} models`);
+      // Log summary of capabilities detected
+      const visionCount = capabilities.filter(c => c.vision).length;
+      const toolsCount = capabilities.filter(c => c.tools).length;
+      const reasoningCount = capabilities.filter(c => c.reasoning).length;
+      const bothToolsAndReasoningCount = capabilities.filter(c => c.tools && c.reasoning).length;
+      
+      logger.info(`✅ Retrieved capabilities for ${capabilities.length} models:`, {
+        visionModels: visionCount,
+        toolsModels: toolsCount,
+        reasoningModels: reasoningCount,
+        modelsWithBothToolsAndReasoning: bothToolsAndReasoningCount,
+        exclusivityCheck: `Vision models correctly exclude tools/reasoning: ${capabilities.filter(c => c.vision && (c.tools || c.reasoning)).length === 0}`
+      });
+      
       return capabilities;
     } catch (error) {
       logger.error('Failed to get model capabilities:', error);
