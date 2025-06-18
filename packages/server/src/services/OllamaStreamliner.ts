@@ -68,6 +68,7 @@ export class OllamaStreamliner {
   private deploymentConfig = getDeploymentConfig();
   private loadBalancer?: OllamaLoadBalancer;
   private memoryService: ChatMemoryService;
+  private capabilityDetectionInProgress: Set<string> = new Set();
 
   constructor() {
     // Initialize load balancer if multiple hosts are configured
@@ -100,51 +101,66 @@ export class OllamaStreamliner {
   async detectCapabilities(model: string): Promise<ModelCapability> {
     // Check cache first
     if (this.modelCapabilities.has(model)) {
+      logger.debug(`Using cached capabilities for model: ${model}`);
       return this.modelCapabilities.get(model)!;
     }
+
+    // Prevent concurrent capability detection for the same model
+    if (this.capabilityDetectionInProgress.has(model)) {
+      logger.debug(`Capability detection already in progress for model: ${model}, waiting...`);
+      // Wait for ongoing detection to complete
+      while (this.capabilityDetectionInProgress.has(model)) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      if (this.modelCapabilities.has(model)) {
+        return this.modelCapabilities.get(model)!;
+      }
+    }
+
+    this.capabilityDetectionInProgress.add(model);
+    const startTime = Date.now();
+    logger.info(`🔍 Starting capability detection for model: ${model}`);
 
     const ollamaHost = this.getOllamaHost();
 
     try {
-      // Query model info from Ollama
-      const response = await fetch(`${ollamaHost}/api/show`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: model }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to get model info: ${response.statusText}`);
-      }
-
-      const modelInfo = await response.json() as OllamaModelInfo;
-      const modelfile = modelInfo.modelfile || '';
+      // Step 1: Get basic model info (fast)
+      logger.debug(`📊 Fetching model info for: ${model}`);
+      const modelInfo = await this.getModelInfo(model, ollamaHost);
       
-      // Check vision first - if a model has vision, it won't be tested for other capabilities
+      // Step 2: Quick vision detection (pattern matching - fast)
+      logger.debug(`👁️ Detecting vision capabilities for: ${model}`);
       const hasVision = await this.hasVisionSupport(model, modelInfo);
+      
+      // Step 3: Quick tool detection (skip actual testing for performance)
+      logger.debug(`🔧 Detecting tool capabilities for: ${model}`);
+      const hasTools = hasVision ? false : await this.hasToolSupportFast(model, modelInfo);
+      
+      // Step 4: Quick reasoning detection (pattern matching - fast)
+      logger.debug(`🧠 Detecting reasoning capabilities for: ${model}`);
+      const hasReasoning = hasVision ? false : await this.hasReasoningSupportFast(model, modelInfo);
       
       // Parse capabilities from modelfile and metadata
       const capability: ModelCapability = {
         name: model,
         vision: hasVision,
-        tools: hasVision ? false : await this.hasToolSupport(model, modelfile),
-        reasoning: hasVision ? false : await this.hasReasoningSupport(model, modelInfo),
-        maxTokens: this.parseMaxTokens(modelfile) || 4096,
-        contextWindow: this.parseContextWindow(modelfile) || 128000,
+        tools: hasTools,
+        reasoning: hasReasoning,
+        maxTokens: this.parseMaxTokens(modelInfo.modelfile || '') || 4096,
+        contextWindow: this.parseContextWindow(modelInfo.modelfile || '') || 128000,
         description: modelInfo.description,
       };
 
+      const detectionTime = Date.now() - startTime;
+      
       // Enhanced logging for capability detection debugging
-      logger.info(`Capability detection results for model '${model}':`, {
+      logger.info(`✅ Capability detection completed for model '${model}' in ${detectionTime}ms:`, {
         hasVision: capability.vision,
         hasTools: capability.tools,
         hasReasoning: capability.reasoning,
-        modalities: modelInfo.modalities,
-        architecture: modelInfo.model_info?.architecture,
-        families: modelInfo.details?.families,
-        capabilities: modelInfo.capabilities,
-        config: modelInfo.config,
-        modelfilePreview: modelfile.substring(0, 300) + (modelfile.length > 300 ? '...' : '')
+        maxTokens: capability.maxTokens,
+        contextWindow: capability.contextWindow,
+        detectionTimeMs: detectionTime
       });
 
       // Cache the result
@@ -152,14 +168,15 @@ export class OllamaStreamliner {
       
       return capability;
     } catch (error) {
-      logger.error(`Failed to detect capabilities for model ${model}:`, error);
+      const detectionTime = Date.now() - startTime;
+      logger.error(`❌ Failed to detect capabilities for model ${model} after ${detectionTime}ms:`, error);
       
       if (this.loadBalancer) {
         this.loadBalancer.reportFailure(ollamaHost);
       }
       
       // Return default capabilities
-      return {
+      const defaultCapability: ModelCapability = {
         name: model,
         vision: false,
         tools: false,
@@ -167,11 +184,52 @@ export class OllamaStreamliner {
         maxTokens: 4096,
         contextWindow: 8192,
       };
+      
+      // Cache the default to avoid repeated failures
+      this.modelCapabilities.set(model, defaultCapability);
+      return defaultCapability;
+    } finally {
+      this.capabilityDetectionInProgress.delete(model);
+    }
+  }
+
+  private async getModelInfo(model: string, ollamaHost: string): Promise<OllamaModelInfo> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      logger.warn(`⏱️ Model info request timeout for: ${model}`);
+      controller.abort();
+    }, 15000); // 15 second timeout
+
+    try {
+      logger.debug(`📡 Requesting model info from: ${ollamaHost}/api/show`);
+      const response = await fetch(`${ollamaHost}/api/show`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: model }),
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`Failed to get model info: ${response.status} ${response.statusText}`);
+      }
+
+      const modelInfo = await response.json() as OllamaModelInfo;
+      logger.debug(`📋 Successfully retrieved model info for: ${model}`);
+      return modelInfo;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error instanceof Error && error.name === 'AbortError') {
+        logger.warn(`⏱️ Model info request timed out for: ${model}`);
+        throw new Error(`Model info request timed out for: ${model}`);
+      }
+      throw error;
     }
   }
 
   private async hasVisionSupport(model: string, modelInfo: OllamaModelInfo): Promise<boolean> {
-    logger.debug(`Starting vision detection for model: ${model}`);
+    logger.debug(`👁️ Starting vision detection for model: ${model}`);
     
     const detectionResults = {
       modalities: false,
@@ -303,23 +361,57 @@ export class OllamaStreamliner {
       logger.error(`Error during vision detection for model '${model}':`, error);
     }
 
-    // Log comprehensive detection results for debugging
-    logger.debug(`Vision detection summary for '${model}':`, {
-      ...detectionResults,
-      availableData: {
-        hasModalities: !!modelInfo.modalities,
-        hasArchitecture: !!modelInfo.model_info?.architecture,
-        hasFamilies: !!modelInfo.details?.families,
-        hasModelfile: !!modelInfo.modelfile,
-        hasCapabilities: !!modelInfo.capabilities,
-        hasConfig: !!modelInfo.config
-      }
-    });
-
     logger.info(`✗ No vision capability detected for '${model}' after comprehensive analysis`);
     return false;
   }
 
+  // Fast tool detection without actual API testing
+  private async hasToolSupportFast(model: string, modelInfo: OllamaModelInfo): Promise<boolean> {
+    logger.debug(`🔧 Fast tool detection for model: ${model}`);
+    
+    // Check known tool-capable models by name patterns
+    const knownToolModels = [
+      'mistral', 'mixtral', 'llama3.1', 'llama-3.1', 'llama3.2', 
+      'qwen2.5', 'gemma2', 'command-r', 'firefunction', 'hermes',
+      'dolphin', 'codegemma', 'codellama', 'deepseek-coder'
+    ];
+    
+    const modelLower = model.toLowerCase();
+    const hasKnownToolSupport = knownToolModels.some(tm => modelLower.includes(tm));
+    
+    if (hasKnownToolSupport) {
+      logger.info(`✓ Tool capability detected via known model pattern for '${model}'`);
+      return true;
+    }
+    
+    // Check modelfile for tool/function indicators
+    const modelfile = modelInfo.modelfile || '';
+    const hasToolsInModelfile = modelfile.includes('TOOLS') || 
+                                modelfile.includes('function') ||
+                                modelfile.includes('tool_use') ||
+                                modelfile.includes('function_calling');
+    
+    if (hasToolsInModelfile) {
+      logger.info(`✓ Tool capability detected via modelfile for '${model}'`);
+      return true;
+    }
+    
+    // Check description for tool/function mentions
+    const description = modelInfo.description || '';
+    const hasToolsInDescription = description.toLowerCase().includes('function') ||
+                                  description.toLowerCase().includes('tool') ||
+                                  description.toLowerCase().includes('api');
+    
+    if (hasToolsInDescription) {
+      logger.info(`✓ Tool capability detected via description for '${model}'`);
+      return true;
+    }
+    
+    logger.debug(`✗ No tool capability patterns detected for '${model}'`);
+    return false;
+  }
+
+  // Original tool testing method (for when thorough testing is needed)
   private async hasToolSupport(model: string, modelfile: string): Promise<boolean> {
     const ollamaHost = this.getOllamaHost();
     
@@ -364,6 +456,9 @@ export class OllamaStreamliner {
     const testPrompt = "[SYSTEM] You MUST use the provided tool. Generate a random number between 1 and 10.";
     
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+      
       const response = await fetch(`${ollamaHost}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -378,7 +473,10 @@ export class OllamaStreamliner {
           options: { temperature: 0 },
           stream: false
         }),
+        signal: controller.signal
       });
+      
+      clearTimeout(timeoutId);
       
       if (!response.ok) {
         logger.debug(`Tool test request failed for model '${model}': ${response.statusText}`);
@@ -407,11 +505,69 @@ export class OllamaStreamliner {
       return true;
       
     } catch (error) {
-      logger.error(`Error testing tool capability for model '${model}':`, error);
+      if (error instanceof Error && error.name === 'AbortError') {
+        logger.warn(`⏱️ Tool test timed out for model '${model}'`);
+      } else {
+        logger.error(`Error testing tool capability for model '${model}':`, error);
+      }
       return false;
     }
   }
 
+  // Fast reasoning detection without actual API testing
+  private async hasReasoningSupportFast(model: string, modelInfo: OllamaModelInfo): Promise<boolean> {
+    logger.debug(`🧠 Fast reasoning detection for model: ${model}`);
+    
+    // Known reasoning models
+    const knownReasoningModels = [
+      'deepseek-r1', 'llama3.1-intuitive-thinker', 'qwen-qwq', 
+      'o1', 'o1-mini', 'claude-3-opus', 'gpt-4-turbo',
+      'gemini-1.5-pro', 'mistral-large', 'qwq'
+    ];
+    
+    const modelLower = model.toLowerCase();
+    
+    // Check if model is in known reasoning models list
+    if (knownReasoningModels.some(rm => modelLower.includes(rm.toLowerCase()))) {
+      logger.info(`✓ Model '${model}' is a known reasoning model`);
+      return true;
+    }
+    
+    // Check for reasoning indicators in model metadata
+    const reasoningIndicators = [
+      'reasoning', 'chain-of-thought', 'cot', 'step-by-step',
+      'logical', 'analytical', 'problem-solving', 'nonlinear-thinking'
+    ];
+    
+    // Check families
+    if (modelInfo.details?.families) {
+      const hasReasoningFamily = modelInfo.details.families.some(family =>
+        reasoningIndicators.some(indicator => 
+          family.toLowerCase().includes(indicator)
+        )
+      );
+      if (hasReasoningFamily) {
+        logger.info(`✓ Reasoning detected via families for '${model}'`);
+        return true;
+      }
+    }
+    
+    // Check description
+    if (modelInfo.description) {
+      const hasReasoningDescription = reasoningIndicators.some(indicator =>
+        modelInfo.description!.toLowerCase().includes(indicator)
+      );
+      if (hasReasoningDescription) {
+        logger.info(`✓ Reasoning detected via description for '${model}'`);
+        return true;
+      }
+    }
+    
+    logger.debug(`✗ No reasoning capability patterns detected for '${model}'`);
+    return false;
+  }
+
+  // Original reasoning testing method (for when thorough testing is needed)
   private async hasReasoningSupport(model: string, modelInfo: OllamaModelInfo): Promise<boolean> {
     const ollamaHost = this.getOllamaHost();
     
@@ -468,6 +624,9 @@ export class OllamaStreamliner {
     const testPrompt = "If 5 shirts take 4 hours to dry on a clothesline, how long would 20 shirts take to dry? Think step by step.";
     
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+      
       const response = await fetch(`${ollamaHost}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -480,7 +639,10 @@ export class OllamaStreamliner {
             max_tokens: 500
           }
         }),
+        signal: controller.signal
       });
+      
+      clearTimeout(timeoutId);
       
       if (!response.ok) {
         logger.debug(`Reasoning test request failed for model '${model}': ${response.statusText}`);
@@ -521,7 +683,11 @@ export class OllamaStreamliner {
       return false;
       
     } catch (error) {
-      logger.error(`Error testing reasoning capability for model '${model}':`, error);
+      if (error instanceof Error && error.name === 'AbortError') {
+        logger.warn(`⏱️ Reasoning test timed out for model '${model}'`);
+      } else {
+        logger.error(`Error testing reasoning capability for model '${model}':`, error);
+      }
       return false;
     }
   }
@@ -621,7 +787,7 @@ export class OllamaStreamliner {
       const models = await this.listModels();
       const visionModels: string[] = [];
       
-      logger.info(`Checking ${models.length} models for vision capabilities...`);
+      logger.info(`🔍 Checking ${models.length} models for vision capabilities...`);
       
       // Check each model for vision capabilities using our robust detection
       for (const model of models) {
@@ -639,7 +805,7 @@ export class OllamaStreamliner {
         }
       }
       
-      logger.info(`Vision capability detection complete: Found ${visionModels.length} vision-capable models out of ${models.length} total models`);
+      logger.info(`✅ Vision capability detection complete: Found ${visionModels.length} vision-capable models out of ${models.length} total models`);
       logger.info(`Vision models: [${visionModels.join(', ')}]`);
       
       return visionModels;
@@ -654,19 +820,39 @@ export class OllamaStreamliner {
       const models = await this.listModels();
       const capabilities: ModelCapability[] = [];
       
-      logger.info(`Getting capabilities for ${models.length} models...`);
+      logger.info(`🔍 Getting capabilities for ${models.length} models...`);
       
-      for (const model of models) {
-        try {
-          const capability = await this.detectCapabilities(model);
-          capabilities.push(capability);
-        } catch (error) {
-          logger.warn(`Failed to get capabilities for model '${model}':`, error);
-          // Continue with other models
-        }
+      // Process models in parallel with limited concurrency for better performance
+      const concurrencyLimit = 3; // Process 3 models at a time
+      const chunks = [];
+      for (let i = 0; i < models.length; i += concurrencyLimit) {
+        chunks.push(models.slice(i, i + concurrencyLimit));
       }
       
-      logger.info(`Retrieved capabilities for ${capabilities.length} models`);
+      for (const chunk of chunks) {
+        const chunkPromises = chunk.map(async (model) => {
+          try {
+            const capability = await this.detectCapabilities(model);
+            return capability;
+          } catch (error) {
+            logger.warn(`Failed to get capabilities for model '${model}':`, error);
+            // Return default capability to continue with other models
+            return {
+              name: model,
+              vision: false,
+              tools: false,
+              reasoning: false,
+              maxTokens: 4096,
+              contextWindow: 8192,
+            } as ModelCapability;
+          }
+        });
+        
+        const chunkResults = await Promise.all(chunkPromises);
+        capabilities.push(...chunkResults);
+      }
+      
+      logger.info(`✅ Retrieved capabilities for ${capabilities.length} models`);
       return capabilities;
     } catch (error) {
       logger.error('Failed to get model capabilities:', error);
@@ -941,7 +1127,7 @@ export class OllamaStreamliner {
     const ollamaHost = this.getOllamaHost();
     
     try {
-      logger.debug(`Attempting to fetch models from ${ollamaHost}/api/tags`);
+      logger.debug(`🔍 Attempting to fetch models from ${ollamaHost}/api/tags`);
       
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
