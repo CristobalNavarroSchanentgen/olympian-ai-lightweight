@@ -22,6 +22,8 @@ class ApiService {
       headers: {
         'Content-Type': 'application/json',
       },
+      // Default timeout for regular requests
+      timeout: 30000, // 30 seconds
     });
 
     // Add response interceptor for error handling
@@ -112,12 +114,25 @@ class ApiService {
     message: string;
     metadata: any;
   }> {
+    // Extended timeout for vision processing requests
+    const hasImages = params.images && params.images.length > 0;
+    const timeout = hasImages ? 300000 : 60000; // 5 minutes for vision, 1 minute for text
+    
+    console.log(`🌐 [API] sendMessage with ${hasImages ? 'images' : 'text only'}, timeout: ${timeout}ms`);
+    
     const { data } = await this.client.post<ApiResponse<{
       conversation: Conversation;
       conversationId: string;
       message: string;
       metadata: any;
-    }>>('/chat/send', params);
+    }>>('/chat/send', params, {
+      timeout,
+      // Add progress monitoring for long requests
+      onUploadProgress: hasImages ? (progressEvent) => {
+        const percentCompleted = Math.round((progressEvent.loaded * 100) / (progressEvent.total || 1));
+        console.log(`📤 Upload progress: ${percentCompleted}%`);
+      } : undefined,
+    });
     return data.data!;
   }
 
