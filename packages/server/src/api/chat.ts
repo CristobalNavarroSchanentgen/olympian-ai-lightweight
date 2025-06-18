@@ -379,13 +379,21 @@ router.get('/search', async (req, res, next) => {
   }
 });
 
-// Get available models
+// Get available models (excluding vision models)
 router.get('/models', async (_req, res, next) => {
   try {
-    const models = await streamliner.listModels();
+    // Get all models and vision models
+    const [allModels, visionModels] = await Promise.all([
+      streamliner.listModels(),
+      streamliner.getAvailableVisionModels()
+    ]);
+    
+    // Filter out vision models from the regular models list
+    const nonVisionModels = allModels.filter(model => !visionModels.includes(model));
+    
     res.json({
       success: true,
-      data: models,
+      data: nonVisionModels,
       timestamp: new Date(),
     });
   } catch (error) {
