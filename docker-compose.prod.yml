@@ -31,7 +31,7 @@ services:
           memory: 128M
           cpus: '0.25'
     healthcheck:
-      test: ["/healthcheck.sh"]
+      test: ["CMD", "/healthcheck.sh"]
       interval: 30s
       timeout: 10s
       retries: 3
