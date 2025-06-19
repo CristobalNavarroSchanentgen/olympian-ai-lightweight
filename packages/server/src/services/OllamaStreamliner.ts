@@ -3,6 +3,7 @@ import { logger } from '../utils/logger';
 import { AppError } from '../middleware/errorHandler';
 import { getDeploymentConfig, OllamaLoadBalancer } from '../config/deployment';
 import { ChatMemoryService, MemoryConfig } from './ChatMemoryService';
+import { customModelCapabilityService } from './CustomModelCapabilityService';
 
 interface OllamaModelInfo {
   modelfile?: string;
@@ -105,6 +106,7 @@ export class OllamaStreamliner {
       host: this.deploymentConfig.ollama.host,
       deploymentMode: this.deploymentConfig.mode,
       hosts: this.deploymentConfig.ollama.hosts,
+      modelCapabilityMode: this.deploymentConfig.modelCapability.mode,
       subproject: 'Multi-host deployment'
     })}`);
   }
@@ -130,13 +132,62 @@ export class OllamaStreamliner {
   }
 
   /**
+   * Enhanced model capability detection with support for custom mode
+   * Uses either:
+   * 1. Custom predefined capabilities (fast, no testing) - when MODEL_CAPABILITY_MODE=custom
+   * 2. Automatic detection via API testing (slow, accurate) - when MODEL_CAPABILITY_MODE=automatic
+   */
+  async detectCapabilities(model: string): Promise<ModelCapability> {
+    // Check if we're in custom mode first
+    if (this.deploymentConfig.modelCapability.mode === 'custom') {
+      return this.getCustomCapability(model);
+    }
+
+    // Automatic mode - existing enhanced detection logic
+    return this.detectCapabilitiesAutomatic(model);
+  }
+
+  /**
+   * Get capability using custom predefined list
+   */
+  private async getCustomCapability(model: string): Promise<ModelCapability> {
+    logger.debug(`🔧 Getting custom predefined capability for model: ${model}`);
+    
+    const customCapability = customModelCapabilityService.getModelCapability(model);
+    
+    if (customCapability) {
+      logger.debug(`✅ Found custom capability for model: ${model}`, {
+        vision: customCapability.vision,
+        tools: customCapability.tools,
+        reasoning: customCapability.reasoning,
+        mode: 'custom'
+      });
+      return customCapability;
+    }
+
+    // Model not in predefined list, return default base capability
+    logger.debug(`❌ No custom capability defined for model: ${model}, using default base capability`);
+    const defaultCapability: ModelCapability = {
+      name: model,
+      vision: false,
+      tools: false,
+      reasoning: false,
+      maxTokens: 4096,
+      contextWindow: 8192,
+      description: `${model} - Base model (not in predefined capability list)`
+    };
+
+    return defaultCapability;
+  }
+
+  /**
    * IMPROVED: Comprehensive model capability detection using:
    * 1. Official Ollama capabilities field (highest priority)
    * 2. Programmatic testing via API calls (medium priority)
    * 3. Enhanced metadata analysis (fallback)
    * NO hardcoded patterns or model name assumptions
    */
-  async detectCapabilities(model: string): Promise<ModelCapability> {
+  private async detectCapabilitiesAutomatic(model: string): Promise<ModelCapability> {
     // Check cache first
     if (this.modelCapabilities.has(model)) {
       logger.debug(`Using cached capabilities for model: ${model}`);
@@ -909,6 +960,14 @@ export class OllamaStreamliner {
   }
 
   async getAvailableVisionModels(): Promise<string[]> {
+    // Check if we're in custom mode
+    if (this.deploymentConfig.modelCapability.mode === 'custom') {
+      const customVisionModels = customModelCapabilityService.getCustomVisionModels();
+      logger.info(`🔧 Using custom predefined vision models: [${customVisionModels.join(', ')}]`);
+      return customVisionModels;
+    }
+
+    // Automatic mode - existing detection logic
     try {
       const models = await this.listModels();
       const visionModels: string[] = [];
@@ -942,6 +1001,26 @@ export class OllamaStreamliner {
   }
 
   async getModelCapabilities(): Promise<ModelCapability[]> {
+    // Check if we're in custom mode
+    if (this.deploymentConfig.modelCapability.mode === 'custom') {
+      const customCapabilities = customModelCapabilityService.getAllCustomCapabilities();
+      const stats = customModelCapabilityService.getCapabilityStats();
+      
+      logger.info(`🔧 Using custom predefined model capabilities for subproject 3:`, {
+        totalModels: stats.total,
+        visionModels: stats.vision,
+        toolsModels: stats.tools,
+        reasoningModels: stats.reasoning,
+        bothToolsAndReasoning: stats.bothToolsAndReasoning,
+        baseModels: stats.baseModels,
+        mode: 'custom (no testing)',
+        deployment: 'multi-host'
+      });
+      
+      return customCapabilities;
+    }
+
+    // Automatic mode - existing detection logic
     try {
       const models = await this.listModels();
       const capabilities: ModelCapability[] = [];
