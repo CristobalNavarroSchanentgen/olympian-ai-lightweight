@@ -107,29 +107,6 @@ export class OllamaStreamliner {
   }
 
   /**
-   * Parse model size from official Ollama parameter_size field
-   * Returns size in billions of parameters, or null if not found
-   */
-  private parseModelSizeFromOllama(modelInfo: OllamaModelInfo): number | null {
-    if (!modelInfo.details?.parameter_size) {
-      return null;
-    }
-
-    const paramSize = modelInfo.details.parameter_size.toLowerCase();
-    const match = paramSize.match(/(\d+(?:\.\d+)?)[bm]/);
-    if (match) {
-      const size = parseFloat(match[1]);
-      if (paramSize.includes('b')) {
-        return size; // Already in billions
-      } else if (paramSize.includes('m')) {
-        return size / 1000; // Convert millions to billions
-      }
-    }
-
-    return null;
-  }
-
-  /**
    * Clear cached model capabilities (useful for testing or when models are updated)
    */
   clearCapabilityCache(model?: string): void {
@@ -197,10 +174,10 @@ export class OllamaStreamliner {
         
         logger.info(`🎯 Official capabilities detected - Vision: ${hasVision}, Tools: ${hasTools}, Reasoning: ${hasReasoning}`);
       } else {
-        logger.debug(`📋 No official capabilities field found, using data-driven detection methods`);
+        logger.debug(`📋 No official capabilities field found, using pure data-driven detection methods`);
       }
 
-      // Step 3: Data-driven detection if official capabilities are not available
+      // Step 3: Pure data-driven detection if official capabilities are not available
       if (!modelInfo.capabilities || modelInfo.capabilities.length === 0) {
         // Enhanced vision detection using Ollama data
         hasVision = await this.hasVisionSupportDataDriven(model, modelInfo);
@@ -208,13 +185,13 @@ export class OllamaStreamliner {
         // Only detect tools and reasoning if NOT a vision model (vision is exclusive)
         if (!hasVision) {
           hasTools = await this.hasToolSupportDataDriven(model, modelInfo);
-          hasReasoning = await this.hasReasoningSupportDataDriven(model, modelInfo);
+          hasReasoning = await this.hasReasoningSupportPurelyDataDriven(model, modelInfo);
         }
       } else {
         // Even with official capabilities, we might need to detect reasoning if not officially tracked
         // Only do additional reasoning detection if not already detected and not a vision model
         if (!hasReasoning && !hasVision) {
-          hasReasoning = await this.hasReasoningSupportDataDriven(model, modelInfo);
+          hasReasoning = await this.hasReasoningSupportPurelyDataDriven(model, modelInfo);
         }
       }
 
@@ -245,8 +222,8 @@ export class OllamaStreamliner {
         hasReasoning: capability.reasoning,
         combinedCapabilities: `vision:${capability.vision}, tools:${capability.tools}, reasoning:${capability.reasoning}`,
         officialCapabilities: modelInfo.capabilities || 'none',
-        detectionMethod: modelInfo.capabilities ? 'official_api' : 'data_driven_fallback',
-        modelSize: this.parseModelSizeFromOllama(modelInfo),
+        detectionMethod: modelInfo.capabilities ? 'official_api' : 'purely_data_driven_fallback',
+        parameterSize: modelInfo.details?.parameter_size,
         families: modelInfo.details?.families,
         architecture: modelInfo.model_info?.['general.architecture'],
         isVisionExclusive: hasVision && (!hasTools && !hasReasoning),
@@ -480,12 +457,9 @@ export class OllamaStreamliner {
     return false;
   }
 
-  // Data-driven reasoning detection using only Ollama API data and size
-  private async hasReasoningSupportDataDriven(model: string, modelInfo: OllamaModelInfo): Promise<boolean> {
-    logger.debug(`🧠 Data-driven reasoning detection for model: ${model}`);
-    
-    // Parse model size for intelligent detection
-    const modelSize = this.parseModelSizeFromOllama(modelInfo);
+  // Purely data-driven reasoning detection with no size assumptions
+  private async hasReasoningSupportPurelyDataDriven(model: string, modelInfo: OllamaModelInfo): Promise<boolean> {
+    logger.debug(`🧠 Purely data-driven reasoning detection for model: ${model}`);
     
     // Method 1: Check for explicit reasoning indicators in description
     if (modelInfo.description) {
@@ -518,29 +492,53 @@ export class OllamaStreamliner {
       return true;
     }
 
-    // Method 3: Size-based reasoning detection for large models (7B+)
-    if (modelSize !== null && modelSize >= 7) {
-      logger.info(`✓ Large model '${model}' (${modelSize}B) assumed to have reasoning capabilities`);
+    // Method 3: Check template for sophisticated instruction patterns
+    const template = modelInfo.template || '';
+    const sophisticatedTemplatePatterns = [
+      'chain of thought', 'step by step', 'reasoning', 'think through',
+      'analyze', 'problem', 'solution'
+    ];
+    const hasSophisticatedTemplate = sophisticatedTemplatePatterns.some(pattern =>
+      template.toLowerCase().includes(pattern)
+    );
+    
+    if (hasSophisticatedTemplate) {
+      logger.info(`✓ Reasoning detected via sophisticated template patterns for '${model}'`);
       return true;
     }
     
-    // Method 4: Check template for reasoning/instruction patterns
-    const template = modelInfo.template || '';
-    const hasInstructionTemplate = template.includes('user') && template.includes('assistant') ||
-                                  template.includes('USER') && template.includes('ASSISTANT') ||
-                                  template.includes('instruction') || template.includes('INSTRUCTION');
-    
-    if (hasInstructionTemplate) {
-      // Only consider instruction templates as reasoning if model is large enough
-      if (modelSize === null || modelSize >= 7) {
-        logger.info(`✓ Reasoning detected via instruction template for '${model}' (size: ${modelSize}B)`);
+    // Method 4: Check families for explicit reasoning indicators
+    if (modelInfo.details?.families && Array.isArray(modelInfo.details.families)) {
+      const reasoningFamilyIndicators = [
+        'reasoning', 'thinking', 'analytical', 'logic', 'problem'
+      ];
+      const hasReasoningFamily = modelInfo.details.families.some(family =>
+        reasoningFamilyIndicators.some(indicator => 
+          family.toLowerCase().includes(indicator)
+        )
+      );
+      if (hasReasoningFamily) {
+        logger.info(`✓ Reasoning detected via explicit family indicators for '${model}': [${modelInfo.details.families.join(', ')}]`);
         return true;
-      } else {
-        logger.debug(`✗ Instruction template found but model too small for reasoning (${modelSize}B < 7B)`);
       }
     }
     
-    logger.debug(`✗ No reasoning capability patterns detected for '${model}' (data-driven detection, modelSize: ${modelSize}B)`);
+    // Method 5: Check architecture for reasoning-specific architectures
+    if (modelInfo.model_info?.['general.architecture']) {
+      const architecture = modelInfo.model_info['general.architecture'].toLowerCase();
+      const reasoningArchitectures = [
+        'reasoning', 'thinking', 'analytical', 'logic'
+      ];
+      const hasReasoningArch = reasoningArchitectures.some(arch => 
+        architecture.includes(arch)
+      );
+      if (hasReasoningArch) {
+        logger.info(`✓ Reasoning detected via architecture for '${model}': ${architecture}`);
+        return true;
+      }
+    }
+    
+    logger.debug(`✗ No explicit reasoning capability indicators detected for '${model}' (purely data-driven detection)`);
     return false;
   }
 
@@ -653,7 +651,7 @@ export class OllamaStreamliner {
       const models = await this.listModels();
       const visionModels: string[] = [];
       
-      logger.info(`🔍 Checking ${models.length} models for vision capabilities using data-driven detection...`);
+      logger.info(`🔍 Checking ${models.length} models for vision capabilities using purely data-driven detection...`);
       
       // Check each model for vision capabilities using our robust detection
       for (const model of models) {
@@ -671,7 +669,7 @@ export class OllamaStreamliner {
         }
       }
       
-      logger.info(`✅ Data-driven vision capability detection complete: Found ${visionModels.length} vision-capable models out of ${models.length} total models`);
+      logger.info(`✅ Purely data-driven vision capability detection complete: Found ${visionModels.length} vision-capable models out of ${models.length} total models`);
       logger.info(`Vision models: [${visionModels.join(', ')}]`);
       
       return visionModels;
@@ -686,7 +684,7 @@ export class OllamaStreamliner {
       const models = await this.listModels();
       const capabilities: ModelCapability[] = [];
       
-      logger.info(`🔍 Getting data-driven capabilities for ${models.length} models...`);
+      logger.info(`🔍 Getting purely data-driven capabilities for ${models.length} models...`);
       
       // Process models in parallel with limited concurrency for better performance
       const concurrencyLimit = 3; // Process 3 models at a time
@@ -725,14 +723,14 @@ export class OllamaStreamliner {
       const bothToolsAndReasoningCount = capabilities.filter(c => c.tools && c.reasoning).length;
       const officialCapabilitiesCount = capabilities.filter(c => c.description?.includes('official')).length;
       
-      logger.info(`✅ Retrieved data-driven capabilities for ${capabilities.length} models:`, {
+      logger.info(`✅ Retrieved purely data-driven capabilities for ${capabilities.length} models:`, {
         visionModels: visionCount,
         toolsModels: toolsCount,
         reasoningModels: reasoningCount,
         modelsWithBothToolsAndReasoning: bothToolsAndReasoningCount,
         exclusivityCheck: `Vision models correctly exclude tools/reasoning: ${capabilities.filter(c => c.vision && (c.tools || c.reasoning)).length === 0}`,
-        detectionMethod: 'Pure data-driven using only Ollama API data',
-        approach: 'No hardcoded patterns or model names, only official Ollama metadata'
+        detectionMethod: 'Purely data-driven using only explicit Ollama API indicators',
+        approach: 'No hardcoded patterns, model names, or size assumptions'
       });
       
       return capabilities;
