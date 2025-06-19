@@ -1,6 +1,7 @@
 import { logger } from '../utils/logger';
 
 export type DeploymentMode = 'development' | 'same-host' | 'same-host-existing-ollama' | 'multi-host' | 'docker-same-host' | 'docker-multi-host';
+export type ModelCapabilityMode = 'automatic' | 'custom';
 
 export interface DeploymentConfig {
   mode: DeploymentMode;
@@ -22,6 +23,9 @@ export interface DeploymentConfig {
     subnet: string;
     discoveryInterval: number;
   };
+  modelCapability: {
+    mode: ModelCapabilityMode;
+  };
 }
 
 /**
@@ -30,8 +34,9 @@ export interface DeploymentConfig {
  */
 export function getDeploymentConfig(): DeploymentConfig {
   const mode = (process.env.DEPLOYMENT_MODE as DeploymentMode) || 'development';
+  const modelCapabilityMode = (process.env.MODEL_CAPABILITY_MODE as ModelCapabilityMode) || 'automatic';
   
-  logger.info(`Initializing deployment configuration in ${mode} mode`);
+  logger.info(`Initializing deployment configuration in ${mode} mode with ${modelCapabilityMode} model capability detection`);
 
   // Check if running in Docker by looking for Docker-specific environment variables
   const isDocker = process.env.RUNNING_IN_DOCKER === 'true' || 
@@ -42,6 +47,7 @@ export function getDeploymentConfig(): DeploymentConfig {
   // Debug logging
   logger.info(`Docker environment detection: RUNNING_IN_DOCKER=${process.env.RUNNING_IN_DOCKER}, NODE_ENV=${process.env.NODE_ENV}, isDocker=${isDocker}`);
   logger.info(`Environment MONGODB_URI: ${process.env.MONGODB_URI}`);
+  logger.info(`Model capability mode: ${modelCapabilityMode}`);
 
   if (mode === 'development') {
     // Development mode configuration
@@ -84,6 +90,9 @@ export function getDeploymentConfig(): DeploymentConfig {
         subnet: 'localhost',
         discoveryInterval: 300000,
       },
+      modelCapability: {
+        mode: modelCapabilityMode,
+      },
     };
   } else if (mode === 'same-host') {
     // Same-host configuration: services communicate via Docker network
@@ -110,6 +119,9 @@ export function getDeploymentConfig(): DeploymentConfig {
         serviceDiscoveryEnabled: false, // Docker handles service discovery
         subnet: 'bridge',
         discoveryInterval: 300000,
+      },
+      modelCapability: {
+        mode: modelCapabilityMode,
       },
     };
   } else if (mode === 'same-host-existing-ollama') {
@@ -138,6 +150,9 @@ export function getDeploymentConfig(): DeploymentConfig {
         serviceDiscoveryEnabled: false,
         subnet: 'bridge',
         discoveryInterval: 300000,
+      },
+      modelCapability: {
+        mode: modelCapabilityMode,
       },
     };
   } else if (mode === 'docker-same-host' || mode === 'docker-multi-host') {
@@ -178,6 +193,9 @@ export function getDeploymentConfig(): DeploymentConfig {
         serviceDiscoveryEnabled: process.env.SERVICE_DISCOVERY_ENABLED === 'true',
         subnet: process.env.SERVICE_DISCOVERY_SUBNET || '192.168.1.0/24',
         discoveryInterval: parseInt(process.env.SERVICE_DISCOVERY_INTERVAL || '300000'),
+      },
+      modelCapability: {
+        mode: modelCapabilityMode,
       },
     };
   } else {
@@ -228,6 +246,9 @@ export function getDeploymentConfig(): DeploymentConfig {
         serviceDiscoveryEnabled: process.env.SERVICE_DISCOVERY_ENABLED === 'true',
         subnet: process.env.SERVICE_DISCOVERY_SUBNET || '192.168.1.0/24',
         discoveryInterval: parseInt(process.env.SERVICE_DISCOVERY_INTERVAL || '300000'),
+      },
+      modelCapability: {
+        mode: modelCapabilityMode,
       },
     };
   }
