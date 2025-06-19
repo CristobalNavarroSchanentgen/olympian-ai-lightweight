@@ -1,5 +1,6 @@
 import { Message } from '@olympian/shared';
 import { MessageItem } from './MessageItem';
+import { TypewriterText } from './TypewriterText';
 import { Spinner } from '@/components/ui/spinner';
 import { Bot } from 'lucide-react';
 
@@ -45,26 +46,40 @@ export function MessageList({
             <Bot className="h-5 w-5" />
           </div>
           <div className="flex-1">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Spinner size="sm" />
-              <span>Model is thinking...</span>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-sm font-medium">Assistant</span>
+              <span className="text-xs text-muted-foreground">thinking...</span>
+            </div>
+            <div className="rounded-lg bg-muted p-3">
+              <div className="flex items-center gap-2 text-sm">
+                <Spinner size="sm" />
+                <span>Model is thinking...</span>
+              </div>
             </div>
           </div>
         </div>
       )}
       
-      {/* Generating State / Streamed Content */}
+      {/* Streaming Content with Typewriter Effect */}
       {(isGenerating || streamedContent) && (
         <div className="flex items-start gap-3">
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground">
             <Bot className="h-5 w-5" />
           </div>
           <div className="flex-1">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-sm font-medium">Assistant</span>
+              <span className="text-xs text-muted-foreground">
+                {isGenerating ? 'streaming...' : 'typing...'}
+              </span>
+            </div>
             <div className="rounded-lg bg-muted p-3">
               {streamedContent ? (
-                <div className="prose prose-sm dark:prose-invert max-w-none">
-                  {streamedContent}
-                </div>
+                <TypewriterText
+                  content={streamedContent}
+                  speed={5} // Faster speed for streaming (5ms per character)
+                  className="prose prose-sm dark:prose-invert max-w-none"
+                />
               ) : (
                 <div className="flex items-center gap-2 text-sm">
                   <Spinner size="sm" />
