@@ -78,6 +78,7 @@ export function MessageList({
                 <TypewriterText
                   content={streamedContent}
                   speed={5} // Faster speed for streaming (5ms per character)
+                  isStreaming={isGenerating} // Pass streaming state
                   className="prose prose-sm dark:prose-invert max-w-none"
                 />
               ) : (
