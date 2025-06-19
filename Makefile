@@ -35,7 +35,7 @@ setup: ## Install dependencies and create .env from template
 
 quick-docker-same: build-same-host up-same-host ## Quick setup for same-host Docker deployment with Ollama container (forces clean rebuild)
 
-quick-docker-multi: env-docker-multi-interactive build-prod up-prod ## Quick setup for multi-host Docker deployment
+quick-docker-multi: env-docker-multi-interactive build-prod-clean up-prod ## Quick setup for multi-host Docker deployment (forces clean rebuild)
 
 quick-docker-same-existing: build-same-host-existing up-same-host-existing ## Quick setup for same-host Docker deployment with existing Ollama (forces clean rebuild)
 
