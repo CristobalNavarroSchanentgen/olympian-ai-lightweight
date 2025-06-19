@@ -107,6 +107,53 @@ export class OllamaStreamliner {
   }
 
   /**
+   * Parse model size from model name or model info
+   * Returns size in billions of parameters, or null if not found
+   */
+  private parseModelSize(model: string, modelInfo?: OllamaModelInfo): number | null {
+    // First try to get from official model info
+    if (modelInfo?.details?.parameter_size) {
+      const paramSize = modelInfo.details.parameter_size.toLowerCase();
+      const match = paramSize.match(/(\d+(?:\.\d+)?)[bm]/);
+      if (match) {
+        const size = parseFloat(match[1]);
+        if (paramSize.includes('b')) {
+          return size; // Already in billions
+        } else if (paramSize.includes('m')) {
+          return size / 1000; // Convert millions to billions
+        }
+      }
+    }
+
+    // Fallback: parse from model name
+    const modelLower = model.toLowerCase();
+    
+    // Pattern for size in model name (e.g., "llama3.2:3b", "qwen2.5:7b", "mixtral:8x7b")
+    const sizePatterns = [
+      /(\d+(?:\.\d+)?)b/,        // 3b, 7b, 11b, 70b, etc.
+      /(\d+)x(\d+)b/,            // 8x7b, 8x22b (for mixtral)
+      /:(\d+(?:\.\d+)?)b/,       // :3b, :7b (after colon)
+      /-(\d+(?:\.\d+)?)b/,       // -3b, -7b (after dash)
+    ];
+
+    for (const pattern of sizePatterns) {
+      const match = modelLower.match(pattern);
+      if (match) {
+        if (pattern.source.includes('x')) {
+          // Handle mixtral-style naming (8x7b = 8 * 7 = 56B)
+          const num1 = parseFloat(match[1]);
+          const num2 = parseFloat(match[2]);
+          return num1 * num2;
+        } else {
+          return parseFloat(match[1]);
+        }
+      }
+    }
+
+    return null;
+  }
+
+  /**
    * Clear cached model capabilities (useful for testing or when models are updated)
    */
   clearCapabilityCache(model?: string): void {
@@ -185,13 +232,13 @@ export class OllamaStreamliner {
         // Only detect tools and reasoning if NOT a vision model (vision is exclusive)
         if (!hasVision) {
           hasTools = await this.hasToolSupportAdvanced(model, modelInfo);
-          hasReasoning = await this.hasReasoningSupportBalanced(model, modelInfo);
+          hasReasoning = await this.hasReasoningSupportSizeAware(model, modelInfo);
         }
       } else {
         // Even with official capabilities, we might need to detect reasoning if not officially tracked
         // Only do additional reasoning detection if not already detected and not a vision model
         if (!hasReasoning && !hasVision) {
-          hasReasoning = await this.hasReasoningSupportBalanced(model, modelInfo);
+          hasReasoning = await this.hasReasoningSupportSizeAware(model, modelInfo);
         }
       }
 
@@ -223,6 +270,7 @@ export class OllamaStreamliner {
         combinedCapabilities: `vision:${capability.vision}, tools:${capability.tools}, reasoning:${capability.reasoning}`,
         officialCapabilities: modelInfo.capabilities || 'none',
         detectionMethod: modelInfo.capabilities ? 'official_api' : 'pattern_based_fallback',
+        modelSize: this.parseModelSize(model, modelInfo),
         isVisionExclusive: hasVision && (!hasTools && !hasReasoning),
         canHaveBothToolsAndReasoning: !hasVision && (hasTools || hasReasoning),
         maxTokens: capability.maxTokens,
@@ -495,9 +543,13 @@ export class OllamaStreamliner {
     return false;
   }
 
-  // Balanced reasoning detection - more comprehensive than refined but still precise
-  private async hasReasoningSupportBalanced(model: string, modelInfo: OllamaModelInfo): Promise<boolean> {
-    logger.debug(`🧠 Balanced reasoning detection for model: ${model}`);
+  // Size-aware reasoning detection to prevent small model false positives
+  private async hasReasoningSupportSizeAware(model: string, modelInfo: OllamaModelInfo): Promise<boolean> {
+    logger.debug(`🧠 Size-aware reasoning detection for model: ${model}`);
+    
+    // Parse model size for intelligent detection
+    const modelSize = this.parseModelSize(model, modelInfo);
+    const modelLower = model.toLowerCase();
     
     // Method 1: Check official capabilities first (most reliable)
     if (modelInfo.capabilities && Array.isArray(modelInfo.capabilities)) {
@@ -511,16 +563,13 @@ export class OllamaStreamliner {
       }
     }
     
-    // Method 2: Explicit reasoning models (highest confidence)
+    // Method 2: Explicit reasoning models (highest confidence, no size check needed)
     const explicitReasoningModels = [
       'deepseek-r1', 'qwen-qwq', 'qwq', 'thinking', 'reasoning',
       'r1-', '-r1', 'reasoning-', '-reasoning', 'think-', '-think',
       'chain-of-thought', 'cot-', 'step-by-step'
     ];
     
-    const modelLower = model.toLowerCase();
-    
-    // Check for explicit reasoning model patterns
     const hasExplicitReasoning = explicitReasoningModels.some(pattern => 
       modelLower.includes(pattern.toLowerCase())
     );
@@ -530,29 +579,51 @@ export class OllamaStreamliner {
       return true;
     }
     
-    // Method 3: High-capability model families with regex patterns (flexible versioning)
+    // Method 3: Size-aware high-capability model families
     const highCapabilityFamilies = [
-      /^llama3\.\d+/,     // llama3.1, llama3.2, llama3.3, etc.
-      /^qwen\d*(\.\d+)?/, // qwen2, qwen2.5, qwen3, qwen3.1, etc.
-      /^mixtral/,         // mixtral variants
-      /^deepseek/,        // deepseek variants
-      /^gemma\d+/,        // gemma2, gemma3, etc.
-      /^nous-hermes/,     // nous-hermes variants
-      /^wizard/,          // wizard variants
-      /^dolphin/,         // dolphin variants
-      /^command-r/,       // command-r variants
+      { pattern: /^llama3\.\d+/, minSize: 7 },    // llama3.1, llama3.2, etc. - need 7B+
+      { pattern: /^qwen\d*(\.\d+)?/, minSize: 7 }, // qwen2, qwen2.5, qwen3, etc. - need 7B+
+      { pattern: /^mixtral/, minSize: null },      // mixtral variants - all sizes OK
+      { pattern: /^deepseek/, minSize: 7 },        // deepseek variants - need 7B+
+      { pattern: /^gemma\d+/, minSize: 7 },        // gemma2, gemma3, etc. - need 7B+
+      { pattern: /^nous-hermes/, minSize: 7 },     // nous-hermes variants - need 7B+
+      { pattern: /^wizard/, minSize: 7 },          // wizard variants - need 7B+
+      { pattern: /^dolphin/, minSize: 7 },         // dolphin variants - need 7B+
+      { pattern: /^command-r/, minSize: null },    // command-r variants - all sizes OK
     ];
     
-    const matchesHighCapabilityFamily = highCapabilityFamilies.some(pattern => 
-      pattern.test(modelLower)
-    );
-    
-    if (matchesHighCapabilityFamily) {
-      logger.info(`✓ Model '${model}' detected as high-capability family with reasoning potential`);
-      return true;
+    for (const family of highCapabilityFamilies) {
+      if (family.pattern.test(modelLower)) {
+        // If no minimum size requirement, accept the model
+        if (family.minSize === null) {
+          logger.info(`✓ Model '${model}' detected as high-capability family with no size restriction`);
+          return true;
+        }
+        
+        // If we have size info, check minimum requirement
+        if (modelSize !== null) {
+          if (modelSize >= family.minSize) {
+            logger.info(`✓ Model '${model}' detected as high-capability family (${modelSize}B >= ${family.minSize}B required)`);
+            return true;
+          } else {
+            logger.debug(`✗ Model '${model}' matches family but too small (${modelSize}B < ${family.minSize}B required)`);
+            return false; // Explicitly reject small models from reasoning families
+          }
+        } else {
+          // No size info available, be conservative for known small model patterns
+          if (modelLower.includes(':1b') || modelLower.includes(':3b') || 
+              modelLower.includes('-1b') || modelLower.includes('-3b')) {
+            logger.debug(`✗ Model '${model}' appears to be small model, rejecting for reasoning`);
+            return false;
+          }
+          // If size unknown and no explicit small indicators, assume it's large enough
+          logger.info(`✓ Model '${model}' detected as high-capability family (size unknown, assuming sufficient)`);
+          return true;
+        }
+      }
     }
     
-    // Method 4: Family-based detection with known reasoning families
+    // Method 4: Family-based detection with size awareness
     if (modelInfo.details?.families && Array.isArray(modelInfo.details.families)) {
       const reasoningFamilies = [
         'llama', 'qwen', 'mixtral', 'deepseek', 'gemma', 
@@ -561,23 +632,22 @@ export class OllamaStreamliner {
       const hasReasoningFamily = modelInfo.details.families.some(family =>
         reasoningFamilies.some(rf => family.toLowerCase().includes(rf))
       );
+      
       if (hasReasoningFamily) {
+        // Apply size check for family-based detection
+        if (modelSize !== null && modelSize < 7) {
+          logger.debug(`✗ Model '${model}' in reasoning family but too small (${modelSize}B < 7B required)`);
+          return false;
+        }
         logger.info(`✓ Reasoning detected via model families for '${model}': [${modelInfo.details.families.join(', ')}]`);
         return true;
       }
     }
     
     // Method 5: Size-based reasoning detection for large models (32B+)
-    if (modelInfo.details?.parameter_size) {
-      const paramSize = modelInfo.details.parameter_size.toLowerCase();
-      const isLargeModel = paramSize.includes('32b') || paramSize.includes('70b') || 
-                          paramSize.includes('72b') || paramSize.includes('405b') || 
-                          paramSize.includes('8x22b') || paramSize.includes('8x7b');
-      
-      if (isLargeModel) {
-        logger.info(`✓ Large model '${model}' (${paramSize}) assumed to have reasoning capabilities`);
-        return true;
-      }
+    if (modelSize !== null && modelSize >= 32) {
+      logger.info(`✓ Large model '${model}' (${modelSize}B) assumed to have reasoning capabilities`);
+      return true;
     }
     
     // Method 6: Check for explicit reasoning indicators in description
@@ -611,7 +681,7 @@ export class OllamaStreamliner {
       return true;
     }
     
-    logger.debug(`✗ No reasoning capability patterns detected for '${model}' (balanced detection)`);
+    logger.debug(`✗ No reasoning capability patterns detected for '${model}' (size-aware detection, modelSize: ${modelSize}B)`);
     return false;
   }
 
@@ -802,8 +872,8 @@ export class OllamaStreamliner {
         reasoningModels: reasoningCount,
         modelsWithBothToolsAndReasoning: bothToolsAndReasoningCount,
         exclusivityCheck: `Vision models correctly exclude tools/reasoning: ${capabilities.filter(c => c.vision && (c.tools || c.reasoning)).length === 0}`,
-        detectionMethod: 'Balanced detection with flexible pattern matching',
-        improvements: 'Added regex patterns for versioned models, enhanced family detection'
+        detectionMethod: 'Size-aware detection to prevent small model false positives',
+        improvements: 'Added intelligent size parsing and size-based thresholds'
       });
       
       return capabilities;
