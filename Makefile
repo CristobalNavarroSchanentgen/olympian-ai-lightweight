@@ -180,6 +180,11 @@ diagnose: ## Run comprehensive diagnostics for multi-host deployment
 	@chmod +x scripts/diagnose-multi-host.sh
 	@./scripts/diagnose-multi-host.sh
 
+debug-backend: ## Debug backend startup and health check issues
+	@echo "$(CYAN)🔍 Debugging backend startup...$(RESET)"
+	@chmod +x scripts/debug-backend.sh
+	@./scripts/debug-backend.sh
+
 ##@ 🛠️  Development
 
 dev: ## Start development servers locally (without Docker)
