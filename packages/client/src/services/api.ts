@@ -27,6 +27,19 @@ interface ProgressiveUpdate {
   error?: string;
 }
 
+// Streaming event types for basic models
+interface StreamingEvent {
+  type: 'connected' | 'conversation' | 'thinking' | 'streaming_start' | 'token' | 'streaming_end' | 'complete' | 'error';
+  conversation?: Conversation;
+  conversationId?: string;
+  isThinking?: boolean;
+  token?: string;
+  content?: string;
+  message?: string;
+  metadata?: any;
+  error?: string;
+}
+
 class ApiService {
   private client: AxiosInstance;
 
@@ -50,6 +63,12 @@ class ApiService {
         throw error;
       }
     );
+  }
+
+  // Helper function to check if a model is basic (no capabilities)
+  private isBasicModel(capabilities: ModelCapability | null): boolean {
+    if (!capabilities) return false;
+    return !capabilities.vision && !capabilities.tools && !capabilities.reasoning;
   }
 
   // Connections API
@@ -113,6 +132,92 @@ class ApiService {
   async invokeMCPTool(request: MCPInvokeRequest): Promise<MCPInvokeResponse> {
     const { data } = await this.client.post<ApiResponse<MCPInvokeResponse>>('/mcp/invoke', request);
     return data.data!;
+  }
+
+  // NEW: Streaming API for basic models
+  async sendMessageStreaming(
+    params: {
+      message: string;
+      model: string;
+      visionModel?: string;
+      conversationId?: string;
+      images?: string[];
+    },
+    onEvent: (event: StreamingEvent) => void,
+    capabilities?: ModelCapability | null
+  ): Promise<void> {
+    return new Promise((resolve, reject) => {
+      // Check if model is basic before attempting to stream
+      if (!this.isBasicModel(capabilities)) {
+        reject(new Error('Streaming is only available for basic models (models without vision, tools, or reasoning capabilities)'));
+        return;
+      }
+
+      const eventSource = new EventSource('/api/chat/stream', {
+        // Note: EventSource doesn't support POST directly, so we'll use a different approach
+      });
+
+      // For now, let's use fetch with ReadableStream since EventSource doesn't support POST
+      this.streamWithFetch(params, onEvent)
+        .then(resolve)
+        .catch(reject);
+    });
+  }
+
+  private async streamWithFetch(
+    params: {
+      message: string;
+      model: string;
+      visionModel?: string;
+      conversationId?: string;
+      images?: string[];
+    },
+    onEvent: (event: StreamingEvent) => void
+  ): Promise<void> {
+    const response = await fetch('/api/chat/stream', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(params),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    if (!response.body) {
+      throw new Error('Response body is null');
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        
+        if (done) {
+          break;
+        }
+
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n');
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const eventData = JSON.parse(line.slice(6));
+              onEvent(eventData);
+            } catch (error) {
+              console.warn('Failed to parse streaming event:', error);
+            }
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
   }
 
   // Chat API
@@ -480,3 +585,4 @@ class ApiService {
 }
 
 export const api = new ApiService();
+export type { StreamingEvent };
