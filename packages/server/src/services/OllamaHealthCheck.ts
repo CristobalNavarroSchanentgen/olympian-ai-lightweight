@@ -1,5 +1,6 @@
 import { logger } from '../utils/logger';
 import { getDeploymentConfig } from '../config/deployment';
+import { customModelCapabilityService } from './CustomModelCapabilityService';
 
 export interface OllamaHealthStatus {
   connected: boolean;
@@ -25,6 +26,26 @@ export class OllamaHealthCheck {
   private deploymentConfig = getDeploymentConfig();
 
   async checkHealth(): Promise<OllamaHealthStatus> {
+    // CRITICAL: In custom mode, skip all API calls and return predefined data
+    if (this.deploymentConfig.modelCapability.mode === 'custom') {
+      logger.info('🔧 Custom mode enabled - skipping Ollama health check (NO API calls)');
+      
+      const customModels = customModelCapabilityService.getAvailableModelNames();
+      const customVisionModels = customModelCapabilityService.getCustomVisionModels();
+      
+      return {
+        connected: true, // Always "connected" in custom mode
+        host: 'CUSTOM_MODE_NO_HOST',
+        modelCount: customModels.length,
+        visionModelCount: customVisionModels.length,
+        models: customModels,
+        visionModels: customVisionModels,
+        responseTime: 0, // No API call made
+        error: undefined
+      };
+    }
+
+    // Automatic mode - proceed with normal health check
     const ollamaHost = this.deploymentConfig.ollama.host;
     const startTime = Date.now();
     
@@ -98,6 +119,15 @@ export class OllamaHealthCheck {
   }
 
   async ensureVisionModelsAvailable(): Promise<void> {
+    // CRITICAL: In custom mode, skip all checks since we use predefined models
+    if (this.deploymentConfig.modelCapability.mode === 'custom') {
+      const customVisionModels = customModelCapabilityService.getCustomVisionModels();
+      logger.info(`🔧 Custom mode - Using ${customVisionModels.length} predefined vision models: ${customVisionModels.join(', ')}`);
+      logger.info('📋 No Ollama connectivity check required in custom mode');
+      return;
+    }
+
+    // Automatic mode - proceed with normal health check
     const health = await this.checkHealth();
     
     if (!health.connected) {
