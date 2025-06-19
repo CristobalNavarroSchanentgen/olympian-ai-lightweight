@@ -37,6 +37,8 @@ services:
       DEPLOYMENT_MODE: same-host-existing-ollama
       MONGODB_URI: mongodb://olympian-mongodb:27017/olympian_ai_lite
       OLLAMA_HOST: http://host.docker.internal:11434
+      # Model capability configuration for subproject 2
+      MODEL_CAPABILITY_MODE: ${MODEL_CAPABILITY_MODE:-automatic}
       NODE_ENV: production
       PORT: 4000
       LOG_LEVEL: ${LOG_LEVEL:-info}
