@@ -36,6 +36,8 @@ services:
       DEPLOYMENT_MODE: same-host
       MONGODB_URI: mongodb://olympian-mongodb:27017/olympian_ai_lite
       OLLAMA_HOST: http://olympian-ollama:11434
+      # Model capability configuration for subproject 1
+      MODEL_CAPABILITY_MODE: ${MODEL_CAPABILITY_MODE:-automatic}
       NODE_ENV: production
       PORT: 4000
       LOG_LEVEL: ${LOG_LEVEL:-info}
