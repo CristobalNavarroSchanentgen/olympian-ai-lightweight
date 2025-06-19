@@ -1,19 +1,21 @@
-import { Application } from 'express';
-import { connectionsRouter } from './connections';
-import { mcpRouter } from './mcp';
+import { Router } from 'express';
 import { chatRouter } from './chat';
 import { configRouter } from './config';
-import { healthRouter } from './health';
+import { connectionsRouter } from './connections';
+import { mcpRouter } from './mcp';
 import { modelsRouter } from './models';
+import { healthRouter } from './health';
+import { progressiveRouter } from './progressive';
 
-export function setupRoutes(app: Application): void {
-  // Health and monitoring
-  app.use('/api/health', healthRouter);
+const router = Router();
 
-  // API routes
-  app.use('/api/connections', connectionsRouter);
-  app.use('/api/mcp', mcpRouter);
-  app.use('/api/chat', chatRouter);
-  app.use('/api/config', configRouter);
-  app.use('/api/models', modelsRouter);
-}
+// Register all API routes
+router.use('/chat', chatRouter);
+router.use('/config', configRouter);
+router.use('/connections', connectionsRouter);
+router.use('/mcp', mcpRouter);
+router.use('/models', modelsRouter);
+router.use('/health', healthRouter);
+router.use('/progressive', progressiveRouter); // New progressive loading endpoints
+
+export { router };
