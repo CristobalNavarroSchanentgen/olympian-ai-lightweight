@@ -167,10 +167,12 @@ export class OllamaStreamliner {
                   modelInfo.capabilities.includes('functions') ||
                   modelInfo.capabilities.includes('function_calling');
                   
-        // For reasoning, we still need to use pattern detection since it's not officially tracked
-        hasReasoning = false; // Will be detected separately below
+        // Check for reasoning capability in official capabilities
+        hasReasoning = modelInfo.capabilities.includes('reasoning') ||
+                      modelInfo.capabilities.includes('thinking') ||
+                      modelInfo.capabilities.includes('analysis');
         
-        logger.info(`🎯 Official capabilities detected - Vision: ${hasVision}, Tools: ${hasTools}`);
+        logger.info(`🎯 Official capabilities detected - Vision: ${hasVision}, Tools: ${hasTools}, Reasoning: ${hasReasoning}`);
       } else {
         logger.debug(`📋 No official capabilities field found, using fallback detection methods`);
       }
@@ -183,13 +185,13 @@ export class OllamaStreamliner {
         // Only detect tools and reasoning if NOT a vision model (vision is exclusive)
         if (!hasVision) {
           hasTools = await this.hasToolSupportAdvanced(model, modelInfo);
-          hasReasoning = await this.hasReasoningSupportAdvanced(model, modelInfo);
+          hasReasoning = await this.hasReasoningSupportRefined(model, modelInfo);
         }
       } else {
-        // Even with official capabilities, we still need to detect reasoning
-        // since it's not commonly included in the official capabilities field
-        if (!hasVision) {
-          hasReasoning = await this.hasReasoningSupportAdvanced(model, modelInfo);
+        // Even with official capabilities, we might need to detect reasoning if not officially tracked
+        // Only do additional reasoning detection if not already detected and not a vision model
+        if (!hasReasoning && !hasVision) {
+          hasReasoning = await this.hasReasoningSupportRefined(model, modelInfo);
         }
       }
 
@@ -220,6 +222,7 @@ export class OllamaStreamliner {
         hasReasoning: capability.reasoning,
         combinedCapabilities: `vision:${capability.vision}, tools:${capability.tools}, reasoning:${capability.reasoning}`,
         officialCapabilities: modelInfo.capabilities || 'none',
+        detectionMethod: modelInfo.capabilities ? 'official_api' : 'pattern_based_fallback',
         isVisionExclusive: hasVision && (!hasTools && !hasReasoning),
         canHaveBothToolsAndReasoning: !hasVision && (hasTools || hasReasoning),
         maxTokens: capability.maxTokens,
@@ -431,9 +434,7 @@ export class OllamaStreamliner {
       'mistral', 'mixtral', 'llama3.1', 'llama-3.1', 'llama3.2', 
       'qwen2.5', 'qwen2', 'gemma2', 'command-r', 'firefunction', 
       'hermes', 'dolphin', 'nous-hermes', 'openchat', 'wizard',
-      'codegemma', 'codellama', 'deepseek-coder', 'starcoder',
-      // Instruction-tuned models often support tools
-      'instruct', 'chat', 'assistant'
+      'codegemma', 'codellama', 'deepseek-coder', 'starcoder'
     ];
     
     const modelLower = model.toLowerCase();
@@ -494,11 +495,11 @@ export class OllamaStreamliner {
     return false;
   }
 
-  // Advanced reasoning detection using enhanced patterns and official API
-  private async hasReasoningSupportAdvanced(model: string, modelInfo: OllamaModelInfo): Promise<boolean> {
-    logger.debug(`🧠 Advanced reasoning detection for model: ${model}`);
+  // Refined reasoning detection to reduce false positives
+  private async hasReasoningSupportRefined(model: string, modelInfo: OllamaModelInfo): Promise<boolean> {
+    logger.debug(`🧠 Refined reasoning detection for model: ${model}`);
     
-    // Method 1: Check official capabilities (if reasoning becomes officially tracked)
+    // Method 1: Check official capabilities first (most reliable)
     if (modelInfo.capabilities && Array.isArray(modelInfo.capabilities)) {
       const reasoningCapabilities = ['reasoning', 'thinking', 'analysis', 'problem_solving'];
       const hasOfficialReasoning = modelInfo.capabilities.some(cap => 
@@ -510,86 +511,85 @@ export class OllamaStreamliner {
       }
     }
     
-    // Method 2: Enhanced reasoning model patterns
-    const knownReasoningModels = [
-      // Explicit reasoning models
+    // Method 2: Explicit reasoning models only (strict pattern matching)
+    const explicitReasoningModels = [
+      // Explicit reasoning models - these are actually designed for reasoning
       'deepseek-r1', 'qwen-qwq', 'qwq', 'thinking', 'reasoning',
-      // High-capability instruction models
-      'llama3.1', 'llama-3.1', 'qwen2.5', 'qwen2', 'mixtral',
-      'gemma2', 'nous-hermes', 'wizard', 'dolphin', 'openchat',
-      'mistral', 'command-r', 'yi-', 'deepseek', 'internlm',
-      // Instruction and chat variants often have reasoning
-      'instruct', 'chat', 'assistant'
+      'r1-', '-r1', 'reasoning-', '-reasoning', 'think-', '-think',
+      // High-end models known for reasoning capabilities
+      'llama3.1:70b', 'llama3.1:405b', 'mixtral:8x7b', 'mixtral:8x22b',
+      'qwen2.5:72b', 'qwen2.5:32b', 'deepseek-v2', 'deepseek-v2.5',
+      // Other explicit reasoning indicators
+      'chain-of-thought', 'cot-', 'step-by-step'
     ];
     
     const modelLower = model.toLowerCase();
     
-    // Check if model is in known reasoning models list
-    if (knownReasoningModels.some(rm => modelLower.includes(rm.toLowerCase()))) {
-      logger.info(`✓ Model '${model}' detected as reasoning-capable via pattern matching`);
+    // Check for explicit reasoning model patterns
+    const hasExplicitReasoning = explicitReasoningModels.some(rm => {
+      if (rm.includes(':')) {
+        // Exact match for models with size specifiers
+        return modelLower === rm || modelLower.includes(rm);
+      } else {
+        // Pattern match for base model names
+        return modelLower.includes(rm.toLowerCase());
+      }
+    });
+    
+    if (hasExplicitReasoning) {
+      logger.info(`✓ Model '${model}' detected as explicit reasoning-capable via strict pattern matching`);
       return true;
     }
     
-    // Method 3: Check for reasoning indicators in model families
-    if (modelInfo.details?.families) {
-      const reasoningFamilyIndicators = [
-        'reasoning', 'thinking', 'analysis', 'instruct', 'chat',
-        'assistant', 'helpful', 'smart', 'intelligent'
-      ];
-      const hasReasoningFamily = modelInfo.details.families.some(family =>
-        reasoningFamilyIndicators.some(indicator => 
-          family.toLowerCase().includes(indicator)
-        )
-      );
-      if (hasReasoningFamily) {
-        logger.info(`✓ Reasoning detected via model families for '${model}': [${modelInfo.details.families.join(', ')}]`);
-        return true;
-      }
-    }
-    
-    // Method 4: Check description for reasoning capabilities
+    // Method 3: Check for explicit reasoning indicators in description
     if (modelInfo.description) {
-      const reasoningDescriptionIndicators = [
-        'reasoning', 'think', 'analysis', 'problem', 'logic',
-        'step-by-step', 'chain of thought', 'intelligent', 'smart',
-        'helpful', 'assistant', 'instruction', 'chat'
+      const explicitReasoningDescriptors = [
+        'reasoning', 'chain of thought', 'step-by-step thinking', 
+        'logical reasoning', 'problem solving', 'analytical thinking',
+        'complex reasoning', 'multi-step reasoning', 'critical thinking'
       ];
-      const hasReasoningDescription = reasoningDescriptionIndicators.some(indicator =>
-        modelInfo.description!.toLowerCase().includes(indicator)
+      const hasExplicitReasoningDescription = explicitReasoningDescriptors.some(indicator =>
+        modelInfo.description!.toLowerCase().includes(indicator.toLowerCase())
       );
-      if (hasReasoningDescription) {
-        logger.info(`✓ Reasoning detected via description for '${model}'`);
+      if (hasExplicitReasoningDescription) {
+        logger.info(`✓ Reasoning detected via explicit description for '${model}'`);
         return true;
       }
     }
     
-    // Method 5: Check modelfile for reasoning indicators
+    // Method 4: Check modelfile for explicit reasoning indicators
     const modelfile = modelInfo.modelfile || '';
-    const reasoningModelfileIndicators = [
-      'reasoning', 'think', 'step', 'analysis', 'problem',
-      'helpful', 'assistant', 'intelligent', 'instruction'
+    const explicitReasoningModelfileIndicators = [
+      'reasoning', 'think step by step', 'chain of thought',
+      'analytical', 'problem solving', 'logical thinking'
     ];
-    const hasReasoningInModelfile = reasoningModelfileIndicators.some(indicator =>
-      modelfile.toLowerCase().includes(indicator)
+    const hasExplicitReasoningInModelfile = explicitReasoningModelfileIndicators.some(indicator =>
+      modelfile.toLowerCase().includes(indicator.toLowerCase())
     );
     
-    if (hasReasoningInModelfile) {
-      logger.info(`✓ Reasoning detected via modelfile for '${model}'`);
+    if (hasExplicitReasoningInModelfile) {
+      logger.info(`✓ Reasoning detected via explicit modelfile patterns for '${model}'`);
       return true;
     }
 
-    // Method 6: Check for instruction/chat templates (good reasoning indicator)
-    const template = modelInfo.template || '';
-    const hasInstructionTemplate = template.includes('user') && template.includes('assistant') ||
-                                  template.includes('USER') && template.includes('ASSISTANT') ||
-                                  template.includes('instruction') || template.includes('INSTRUCTION');
-    
-    if (hasInstructionTemplate) {
-      logger.info(`✓ Reasoning detected via instruction template for '${model}'`);
-      return true;
+    // Method 5: Size-based reasoning detection for large models (70B+)
+    if (modelInfo.details?.parameter_size) {
+      const paramSize = modelInfo.details.parameter_size.toLowerCase();
+      const isLargeModel = paramSize.includes('70b') || paramSize.includes('72b') || 
+                          paramSize.includes('405b') || paramSize.includes('8x22b');
+      
+      if (isLargeModel) {
+        logger.info(`✓ Large model '${model}' (${paramSize}) assumed to have reasoning capabilities`);
+        return true;
+      }
     }
     
-    logger.debug(`✗ No reasoning capability patterns detected for '${model}'`);
+    // REMOVED: Overly broad patterns that were causing false positives
+    // - 'instruct', 'chat', 'assistant' (too broad, catches all conversational models)
+    // - Generic template checking (too permissive)
+    // - Family-based detection without explicit reasoning indicators
+    
+    logger.debug(`✗ No explicit reasoning capability patterns detected for '${model}' (refined detection)`);
     return false;
   }
 
@@ -780,7 +780,8 @@ export class OllamaStreamliner {
         reasoningModels: reasoningCount,
         modelsWithBothToolsAndReasoning: bothToolsAndReasoningCount,
         exclusivityCheck: `Vision models correctly exclude tools/reasoning: ${capabilities.filter(c => c.vision && (c.tools || c.reasoning)).length === 0}`,
-        detectionMethod: 'Enhanced with official Ollama API capabilities field'
+        detectionMethod: 'Refined with strict reasoning patterns to reduce false positives',
+        falsePositiveReduction: 'Applied strict reasoning detection patterns'
       });
       
       return capabilities;
