@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { DatabaseService } from '../services/DatabaseService';
 import { getDeploymentConfig } from '../config/deployment';
 import { OllamaHealthCheck } from '../services/OllamaHealthCheck';
+import { customModelCapabilityService } from '../services/CustomModelCapabilityService';
 import { MongoClient } from 'mongodb';
 
 interface OllamaVersionResponse {
@@ -15,10 +16,13 @@ const ollamaHealthCheck = new OllamaHealthCheck();
 // Basic health check - always returns 200 if server is running
 // This is used by Docker health checks and should remain simple
 router.get('/', (_req, res) => {
+  const deploymentConfig = getDeploymentConfig();
+  
   res.json({
     status: 'ok',
     timestamp: new Date(),
-    deploymentMode: process.env.DEPLOYMENT_MODE || 'multi-host',
+    deploymentMode: deploymentConfig.mode,
+    modelCapabilityMode: deploymentConfig.modelCapability.mode,
     uptime: process.uptime(),
     message: 'Server is running and accepting requests',
   });
@@ -172,18 +176,38 @@ router.get('/services', async (_req, res) => {
     } : null
   };
 
+  // Add model capability service health
+  services.modelCapabilities = {
+    mode: deploymentConfig.modelCapability.mode,
+    status: 'healthy',
+    message: `Using ${deploymentConfig.modelCapability.mode} capability detection mode`,
+    details: deploymentConfig.modelCapability.mode === 'custom' ? {
+      predefinedModels: customModelCapabilityService.getCapabilityStats(),
+      availableModels: customModelCapabilityService.getAvailableModelNames().length,
+      visionModels: customModelCapabilityService.getCustomVisionModels().length,
+      toolsModels: customModelCapabilityService.getCustomToolsModels().length,
+      reasoningModels: customModelCapabilityService.getCustomReasoningModels().length,
+    } : {
+      description: 'Dynamic capability detection via API testing',
+      performance: 'Slower but more accurate',
+      note: 'Capabilities detected by testing each model'
+    }
+  };
+
   // Overall health status - more lenient for multi-host deployments
   const statusCode = overallHealthy ? 200 : (deploymentConfig.mode === 'multi-host' ? 200 : 503);
   
   res.status(statusCode).json({
     status: overallHealthy ? 'healthy' : 'degraded',
     deploymentMode: deploymentConfig.mode,
+    modelCapabilityMode: deploymentConfig.modelCapability.mode,
     services,
     timestamp: new Date(),
     summary: {
       httpServer: 'running',
       mongodb: services.mongodb.status,
       ollama: ollamaHealthy ? 'healthy' : 'degraded',
+      modelCapabilities: 'healthy',
       overallHealthy,
       note: deploymentConfig.mode === 'multi-host' ? 
         'Multi-host deployments can operate with limited external service availability' : 
@@ -198,6 +222,7 @@ router.get('/config', (_req, res) => {
   
   res.json({
     deploymentMode: deploymentConfig.mode,
+    modelCapabilityMode: deploymentConfig.modelCapability.mode,
     mongodb: {
       configured: !!deploymentConfig.mongodb.uri,
       hasReplicaSet: !!deploymentConfig.mongodb.options.replicaSet,
@@ -208,6 +233,18 @@ router.get('/config', (_req, res) => {
       hostCount: Math.max(1, deploymentConfig.ollama.hosts.length),
       loadBalancer: deploymentConfig.ollama.loadBalancer,
       primaryHost: deploymentConfig.ollama.host,
+    },
+    modelCapabilities: {
+      mode: deploymentConfig.modelCapability.mode,
+      description: deploymentConfig.modelCapability.mode === 'custom' 
+        ? 'Using predefined model capabilities (faster, no testing)'
+        : 'Using automatic capability detection (slower, more accurate)',
+      benefits: deploymentConfig.modelCapability.mode === 'custom'
+        ? ['Faster startup', 'No API testing required', 'Predictable performance', 'Reduced server load']
+        : ['More accurate detection', 'Supports new models', 'Dynamic capability discovery', 'No configuration needed'],
+      stats: deploymentConfig.modelCapability.mode === 'custom' 
+        ? customModelCapabilityService.getCapabilityStats()
+        : null
     },
     network: {
       serviceDiscovery: deploymentConfig.network.serviceDiscoveryEnabled,
@@ -225,16 +262,28 @@ router.get('/config', (_req, res) => {
 
 // Vision-specific health check endpoint with enhanced multi-host diagnostics
 router.get('/vision', async (_req, res) => {
+  const deploymentConfig = getDeploymentConfig();
+  
   try {
     const health = await ollamaHealthCheck.checkHealth();
     
     const diagnostics = {
       ...health,
-      deploymentMode: process.env.DEPLOYMENT_MODE || 'multi-host',
+      deploymentMode: deploymentConfig.mode,
+      modelCapabilityMode: deploymentConfig.modelCapability.mode,
       timestamp: new Date(),
+      capabilityDetection: {
+        mode: deploymentConfig.modelCapability.mode,
+        visionModelsSource: deploymentConfig.modelCapability.mode === 'custom' 
+          ? 'predefined list' 
+          : 'dynamic detection',
+        predefinedVisionModels: deploymentConfig.modelCapability.mode === 'custom'
+          ? customModelCapabilityService.getCustomVisionModels()
+          : null
+      },
       recommendations: (() => {
         if (!health.connected) {
-          if (process.env.DEPLOYMENT_MODE === 'multi-host') {
+          if (deploymentConfig.mode === 'multi-host') {
             return {
               type: 'connectivity',
               severity: 'warning',
@@ -264,39 +313,58 @@ router.get('/vision', async (_req, res) => {
             };
           }
         } else if (health.visionModelCount === 0) {
-          return {
-            type: 'models',
-            severity: 'warning',
-            message: 'No vision models detected',
-            impact: 'Vision features available but no models installed',
-            steps: [
-              '1. Connect to the Ollama host',
-              '2. Install a vision model: ollama pull llava:13b',
-              '3. Verify with: ollama list',
-              '4. Restart backend service to refresh model cache',
-              'Alternative models: bakllava, moondream, llava-phi3',
-            ]
-          };
+          if (deploymentConfig.modelCapability.mode === 'custom') {
+            return {
+              type: 'models',
+              severity: 'info',
+              message: 'Using predefined vision model list',
+              impact: 'Vision features available if predefined models are installed',
+              steps: [
+                'Install predefined vision models:',
+                '  - ollama pull llama3.2-vision:11b',
+                '  - ollama pull granite3.2-vision:2b',
+                'Verify models are available: ollama list',
+                'No need to restart - predefined capabilities will be used',
+              ],
+              predefinedModels: customModelCapabilityService.getCustomVisionModels()
+            };
+          } else {
+            return {
+              type: 'models',
+              severity: 'warning',
+              message: 'No vision models detected via automatic detection',
+              impact: 'Vision features available but no models installed',
+              steps: [
+                '1. Connect to the Ollama host',
+                '2. Install a vision model: ollama pull llava:13b',
+                '3. Verify with: ollama list',
+                '4. Restart backend service to refresh model cache',
+                'Alternative models: bakllava, moondream, llava-phi3',
+              ]
+            };
+          }
         } else {
           return {
             type: 'success',
             severity: 'info',
-            message: `Found ${health.visionModelCount} vision models`,
+            message: `Found ${health.visionModelCount} vision models via ${deploymentConfig.modelCapability.mode} detection`,
             impact: 'Full vision functionality available',
             models: health.visionModels,
             performance: health.responseTime ? `Response time: ${health.responseTime}ms` : 'Performance metrics available',
+            detectionMode: deploymentConfig.modelCapability.mode
           };
         }
       })()
     };
 
-    const statusCode = health.connected ? 200 : (process.env.DEPLOYMENT_MODE === 'multi-host' ? 200 : 503);
+    const statusCode = health.connected ? 200 : (deploymentConfig.mode === 'multi-host' ? 200 : 503);
     res.status(statusCode).json(diagnostics);
   } catch (error) {
     res.status(500).json({
       connected: false,
       error: error instanceof Error ? error.message : 'Unknown error',
-      deploymentMode: process.env.DEPLOYMENT_MODE || 'multi-host',
+      deploymentMode: deploymentConfig.mode,
+      modelCapabilityMode: deploymentConfig.modelCapability.mode,
       timestamp: new Date(),
       recommendations: {
         type: 'error',
