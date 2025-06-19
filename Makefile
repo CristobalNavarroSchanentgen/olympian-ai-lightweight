@@ -327,6 +327,25 @@ env-docker-multi-interactive: ## Interactive multi-host environment configuratio
 		fi; \
 	fi
 	@echo ""
+	@echo "$(CYAN)🤖 Model Capability Configuration:$(RESET)"
+	@echo "$(YELLOW)Choose between automatic model capability detection or custom model listing:$(RESET)"
+	@echo "$(YELLOW)- Automatic (y): Tests each model to detect capabilities (slower, more accurate)$(RESET)"
+	@echo "$(YELLOW)- Custom (n): Uses predefined model capabilities (faster, no testing required)$(RESET)"
+	@printf "Use automatic model capability detection? (y/N): "; \
+	read use_auto_detection; \
+	if [ "$$use_auto_detection" = "y" ] || [ "$$use_auto_detection" = "Y" ]; then \
+		sed -i.bak 's|^MODEL_CAPABILITY_MODE=.*|MODEL_CAPABILITY_MODE=automatic|' .env; \
+		echo "$(GREEN)✅ Using automatic model capability detection$(RESET)"; \
+	else \
+		sed -i.bak 's|^MODEL_CAPABILITY_MODE=.*|MODEL_CAPABILITY_MODE=custom|' .env; \
+		echo "$(GREEN)✅ Using custom model capabilities (predefined list)$(RESET)"; \
+		echo "$(CYAN)📋 Predefined model capabilities will be used:$(RESET)"; \
+		echo "$(YELLOW)  Vision models: llama3.2-vision:11b, granite3.2-vision:2b$(RESET)"; \
+		echo "$(YELLOW)  Reasoning + Tools: qwen3:32b, qwen3:4b, deepseek-r1:14b$(RESET)"; \
+		echo "$(YELLOW)  Tools only: gemma3:27b, gemma3:4b$(RESET)"; \
+		echo "$(YELLOW)  Base models: phi4:14b, llama3.2:3b$(RESET)"; \
+	fi
+	@echo ""
 	@echo "$(CYAN)🔐 Generating secure secrets...$(RESET)"
 	@JWT_SECRET=$$(openssl rand -base64 32); \
 	SESSION_SECRET=$$(openssl rand -base64 32); \
@@ -346,4 +365,5 @@ env-docker-multi-interactive: ## Interactive multi-host environment configuratio
 	@echo "$(CYAN)📋 Configuration summary:$(RESET)"
 	@grep "^OLLAMA_HOST=" .env | sed 's/^/  /'
 	@grep "^MONGODB_URI=" .env | head -1 | sed 's/^/  /'
+	@grep "^MODEL_CAPABILITY_MODE=" .env | sed 's/^/  /'
 	@grep "^ALLOWED_ORIGINS=" .env | sed 's/^/  /'
