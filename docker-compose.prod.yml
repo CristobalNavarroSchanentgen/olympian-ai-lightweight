@@ -100,13 +100,13 @@ services:
         reservations:
           memory: 1G
           cpus: '1.0'
-    # Use curl healthcheck (now available in backend container)
+    # Enhanced health check with more resilient timing for multi-host deployments
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:4000/api/health"]
-      interval: 45s
-      timeout: 10s
-      retries: 5
-      start_period: 90s  # Increased startup time for vision model loading
+      interval: 30s
+      timeout: 15s
+      retries: 6
+      start_period: 120s  # Extended startup time for external service dependencies
     # Add extra_hosts to allow backend to access host services and custom DNS
     extra_hosts:
       - "host.docker.internal:host-gateway"
