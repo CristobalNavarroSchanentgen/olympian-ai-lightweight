@@ -7,7 +7,7 @@ import { modelProgressiveLoader } from '../services/ModelProgressiveLoader';
 import { AppError } from '../middleware/errorHandler';
 import { chatRateLimiter } from '../middleware/rateLimiter';
 import { z } from 'zod';
-import { Message, Conversation } from '@olympian/shared';
+import { Message, Conversation, ModelCapability } from '@olympian/shared';
 
 const router = Router();
 const db = DatabaseService.getInstance();
@@ -54,6 +54,190 @@ function formatMessage(doc: any): Message {
     createdAt: doc.createdAt instanceof Date ? doc.createdAt : new Date(doc.createdAt),
   };
 }
+
+// Helper function to check if a model is basic (no capabilities)
+function isBasicModel(capabilities: ModelCapability | null): boolean {
+  if (!capabilities) return false;
+  return !capabilities.vision && !capabilities.tools && !capabilities.reasoning;
+}
+
+// Helper function to get model capabilities with fallback
+async function getModelCapabilitiesWithFallback(modelName: string): Promise<ModelCapability | null> {
+  try {
+    // First check if we have this model in progressive loader cache
+    const cachedCapabilities = modelProgressiveLoader.getCapabilities();
+    const cachedCapability = cachedCapabilities.find(cap => cap.name === modelName);
+    
+    if (cachedCapability) {
+      console.log(`✅ Using cached capability for model '${modelName}' from progressive loader`);
+      return cachedCapability;
+    }
+    
+    // Fallback to direct detection
+    console.log(`🔍 No cached data for '${modelName}', detecting capabilities directly...`);
+    return await streamliner.detectCapabilities(modelName);
+  } catch (error) {
+    console.warn(`⚠️ Failed to get capabilities for model '${modelName}':`, error);
+    return null;
+  }
+}
+
+// NEW: Streaming endpoint for basic models with typewriter effect
+router.post('/stream', async (req, res, next) => {
+  try {
+    // Validate input
+    const validation = sendMessageSchema.safeParse(req.body);
+    if (!validation.success) {
+      throw new AppError(400, 'Invalid request body');
+    }
+
+    const { message, conversationId, model, visionModel, images } = validation.data;
+
+    // Check if model is basic (no capabilities)
+    const capabilities = await getModelCapabilitiesWithFallback(model);
+    if (!isBasicModel(capabilities)) {
+      throw new AppError(400, 'Streaming is only available for basic models (models without vision, tools, or reasoning capabilities)');
+    }
+
+    // Set up Server-Sent Events
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Headers': 'Cache-Control',
+    });
+
+    // Send initial event to confirm connection
+    res.write(`data: ${JSON.stringify({ type: 'connected' })}\n\n`);
+
+    try {
+      // Get or create conversation
+      let convId: string;
+      let conversation: Conversation;
+      
+      if (conversationId) {
+        // Validate existing conversation
+        const existingConv = await db.conversations.findOne({ 
+          _id: new ObjectId(conversationId) 
+        } as any);
+        if (!existingConv) {
+          throw new AppError(404, 'Conversation not found');
+        }
+        convId = conversationId;
+        conversation = formatConversation(existingConv);
+      } else {
+        // Create new conversation
+        const newConversation: ConversationDoc = {
+          title: message.substring(0, 50) + (message.length > 50 ? '...' : ''),
+          model,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          messageCount: 0,
+        };
+        const result = await db.conversations.insertOne(newConversation as any);
+        convId = result.insertedId.toString();
+        conversation = formatConversation({
+          ...newConversation,
+          _id: result.insertedId,
+        });
+      }
+
+      // Send conversation info
+      res.write(`data: ${JSON.stringify({ 
+        type: 'conversation', 
+        conversation,
+        conversationId: convId 
+      })}\n\n`);
+
+      // Save user message BEFORE processing to ensure it's in history
+      const userMessage: MessageDoc = {
+        conversationId: convId,
+        role: 'user' as const,
+        content: message,
+        images,
+        createdAt: new Date(),
+      };
+      await db.messages.insertOne(userMessage as any);
+
+      // Process the request with conversation history
+      const processedRequest = await streamliner.processRequest({
+        content: message,
+        model,
+        visionModel,
+        images,
+        conversationId: convId,
+      });
+
+      // Send thinking state
+      res.write(`data: ${JSON.stringify({ type: 'thinking', isThinking: true })}\n\n`);
+
+      // Start streaming response
+      let assistantContent = '';
+      const startTime = Date.now();
+      let tokenCount = 0;
+
+      res.write(`data: ${JSON.stringify({ type: 'streaming_start' })}\n\n`);
+
+      await streamliner.streamChat(processedRequest, (token: string) => {
+        assistantContent += token;
+        tokenCount++;
+        
+        // Send each token as it comes
+        res.write(`data: ${JSON.stringify({ 
+          type: 'token', 
+          token,
+          content: assistantContent 
+        })}\n\n`);
+      });
+
+      // Send streaming end
+      res.write(`data: ${JSON.stringify({ type: 'streaming_end' })}\n\n`);
+
+      // Save assistant message
+      const assistantMessage: MessageDoc = {
+        conversationId: convId,
+        role: 'assistant' as const,
+        content: assistantContent,
+        metadata: {
+          model,
+          visionModel,
+          tokens: tokenCount,
+          generationTime: Date.now() - startTime,
+        },
+        createdAt: new Date(),
+      };
+      await db.messages.insertOne(assistantMessage as any);
+
+      // Update conversation
+      await db.conversations.updateOne(
+        { _id: new ObjectId(convId) } as any,
+        {
+          $set: { updatedAt: new Date() },
+          $inc: { messageCount: 2 },
+        }
+      );
+
+      // Send final completion event
+      res.write(`data: ${JSON.stringify({ 
+        type: 'complete',
+        message: assistantContent,
+        metadata: assistantMessage.metadata 
+      })}\n\n`);
+
+    } catch (streamError) {
+      console.error('Streaming error:', streamError);
+      res.write(`data: ${JSON.stringify({ 
+        type: 'error', 
+        error: streamError instanceof Error ? streamError.message : 'Unknown error' 
+      })}\n\n`);
+    }
+
+    res.end();
+  } catch (error) {
+    next(error);
+  }
+});
 
 // Send a chat message (HTTP fallback for WebSocket)
 router.post('/send', async (req, res, next) => {
