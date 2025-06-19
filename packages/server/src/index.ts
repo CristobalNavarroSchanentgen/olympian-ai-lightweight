@@ -66,11 +66,7 @@ async function start(): Promise<void> {
     wsService.initialize();
     logger.info('WebSocket service initialized');
 
-    // Check Ollama health and vision models availability
-    logger.info('Checking Ollama connectivity and vision models...');
-    await ollamaHealthCheck.ensureVisionModelsAvailable();
-
-    // Start HTTP server
+    // Start HTTP server first - this allows health checks to pass even if Ollama is not available
     httpServer.listen(PORT, () => {
       logger.info(`Server running on port ${PORT}`);
       logger.info(`Deployment mode: ${deploymentConfig.mode}`);
@@ -86,6 +82,27 @@ async function start(): Promise<void> {
         logger.info('=========================================');
       }
     });
+
+    // Check Ollama health and vision models availability asynchronously
+    // This allows the server to start even if Ollama is temporarily unavailable
+    logger.info('Checking Ollama connectivity and vision models (non-blocking)...');
+    
+    // Use setImmediate to ensure this runs after the server is fully started
+    setImmediate(async () => {
+      try {
+        await ollamaHealthCheck.ensureVisionModelsAvailable();
+        logger.info('Ollama health check completed successfully');
+      } catch (error) {
+        logger.warn('Ollama health check failed during startup (this is non-blocking):', error);
+        logger.info('The server will continue to run. Check /api/health/vision for current status.');
+        
+        if (deploymentConfig.mode === 'multi-host') {
+          logger.warn('Multi-host deployment: Ensure external Ollama service is running and accessible');
+          logger.warn(`Configured Ollama host: ${deploymentConfig.ollama.host}`);
+        }
+      }
+    });
+
   } catch (error) {
     logger.error('Failed to start server:', error);
     process.exit(1);
