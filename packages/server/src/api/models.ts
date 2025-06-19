@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { OllamaStreamliner } from '../services/OllamaStreamliner';
 import { modelProgressiveLoader } from '../services/ModelProgressiveLoader';
+import { getDeploymentConfig } from '../config/deployment';
 import { asyncHandler } from '../middleware/errorHandler';
 import { logger } from '../utils/logger';
 
@@ -12,13 +13,20 @@ modelsRouter.get('/list', asyncHandler(async (req, res) => {
   logger.info('GET /api/models/list - Fetching available models');
   
   const models = await ollamaStreamliner.listModels();
+  const deploymentConfig = getDeploymentConfig();
   
-  res.json({ models });
+  res.json({ 
+    models,
+    deploymentMode: deploymentConfig.mode,
+    modelCapabilityMode: deploymentConfig.modelCapability.mode
+  });
 }));
 
 // Get model capabilities for all models - WITH INCREASED TIMEOUT AND PROGRESSIVE FALLBACK
 modelsRouter.get('/capabilities', asyncHandler(async (req, res) => {
   logger.info('GET /api/models/capabilities - Fetching model capabilities');
+  
+  const deploymentConfig = getDeploymentConfig();
   
   // Set a longer timeout for this request (5 minutes)
   req.setTimeout(300000); // 5 minutes
@@ -34,7 +42,9 @@ modelsRouter.get('/capabilities', asyncHandler(async (req, res) => {
         capabilities,
         cached: true,
         source: 'progressive_loader',
-        message: 'Using cached model capabilities from progressive loader'
+        deploymentMode: deploymentConfig.mode,
+        modelCapabilityMode: deploymentConfig.modelCapability.mode,
+        message: `Using cached model capabilities from progressive loader (${deploymentConfig.modelCapability.mode} mode)`
       });
       return;
     }
@@ -49,7 +59,9 @@ modelsRouter.get('/capabilities', asyncHandler(async (req, res) => {
         cached: false,
         isLoading: true,
         source: 'progressive_loader_partial',
-        message: 'Progressive loading in progress. Use /api/progressive/models/capabilities/stream for real-time updates.'
+        deploymentMode: deploymentConfig.mode,
+        modelCapabilityMode: deploymentConfig.modelCapability.mode,
+        message: `Progressive loading in progress (${deploymentConfig.modelCapability.mode} mode). Use /api/progressive/models/capabilities/stream for real-time updates.`
       });
       return;
     }
@@ -64,7 +76,9 @@ modelsRouter.get('/capabilities', asyncHandler(async (req, res) => {
       capabilities,
       cached: false,
       source: 'direct_streamliner',
-      message: 'Fetched capabilities directly from OllamaStreamliner (may be slow with many models)'
+      deploymentMode: deploymentConfig.mode,
+      modelCapabilityMode: deploymentConfig.modelCapability.mode,
+      message: `Fetched capabilities directly from OllamaStreamliner (${deploymentConfig.modelCapability.mode} mode - may be slow with many models)`
     });
     
   } catch (error) {
@@ -80,8 +94,10 @@ modelsRouter.get('/capabilities', asyncHandler(async (req, res) => {
         cached: true,
         partial: true,
         source: 'progressive_loader_fallback',
+        deploymentMode: deploymentConfig.mode,
+        modelCapabilityMode: deploymentConfig.modelCapability.mode,
         error: error instanceof Error ? error.message : 'Unknown error',
-        message: 'Returning partial cached capabilities due to error in full fetch'
+        message: `Returning partial cached capabilities due to error in full fetch (${deploymentConfig.modelCapability.mode} mode)`
       });
       return;
     }
@@ -94,6 +110,8 @@ modelsRouter.get('/capabilities', asyncHandler(async (req, res) => {
 modelsRouter.get('/capabilities/:modelName', asyncHandler(async (req, res) => {
   const { modelName } = req.params;
   logger.info(`GET /api/models/capabilities/${modelName} - Fetching capabilities for model`);
+  
+  const deploymentConfig = getDeploymentConfig();
   
   // Set a longer timeout for individual model capability detection (2 minutes)
   req.setTimeout(120000); // 2 minutes
@@ -109,7 +127,10 @@ modelsRouter.get('/capabilities/:modelName', asyncHandler(async (req, res) => {
       res.json({ 
         capability: cachedCapability,
         cached: true,
-        source: 'progressive_loader'
+        source: 'progressive_loader',
+        deploymentMode: deploymentConfig.mode,
+        modelCapabilityMode: deploymentConfig.modelCapability.mode,
+        detectionMethod: deploymentConfig.modelCapability.mode
       });
       return;
     }
@@ -121,7 +142,10 @@ modelsRouter.get('/capabilities/:modelName', asyncHandler(async (req, res) => {
     res.json({ 
       capability,
       cached: false,
-      source: 'direct_detection'
+      source: 'direct_detection',
+      deploymentMode: deploymentConfig.mode,
+      modelCapabilityMode: deploymentConfig.modelCapability.mode,
+      detectionMethod: deploymentConfig.modelCapability.mode
     });
     
   } catch (error) {
@@ -133,6 +157,8 @@ modelsRouter.get('/capabilities/:modelName', asyncHandler(async (req, res) => {
 // Get vision-capable models - WITH INCREASED TIMEOUT AND PROGRESSIVE FALLBACK
 modelsRouter.get('/vision', asyncHandler(async (req, res) => {
   logger.info('GET /api/models/vision - Fetching vision-capable models');
+  
+  const deploymentConfig = getDeploymentConfig();
   
   // Set a longer timeout for this request (5 minutes)
   req.setTimeout(300000); // 5 minutes  
@@ -148,7 +174,9 @@ modelsRouter.get('/vision', asyncHandler(async (req, res) => {
         models: visionModels,
         cached: true,
         source: 'progressive_loader',
-        message: 'Using cached vision models from progressive loader'
+        deploymentMode: deploymentConfig.mode,
+        modelCapabilityMode: deploymentConfig.modelCapability.mode,
+        message: `Using cached vision models from progressive loader (${deploymentConfig.modelCapability.mode} mode)`
       });
       return;
     }
@@ -163,7 +191,9 @@ modelsRouter.get('/vision', asyncHandler(async (req, res) => {
         cached: false,
         isLoading: true,
         source: 'progressive_loader_partial',
-        message: 'Progressive loading in progress. Use /api/progressive/models/capabilities/stream for real-time updates.'
+        deploymentMode: deploymentConfig.mode,
+        modelCapabilityMode: deploymentConfig.modelCapability.mode,
+        message: `Progressive loading in progress (${deploymentConfig.modelCapability.mode} mode). Use /api/progressive/models/capabilities/stream for real-time updates.`
       });
       return;
     }
@@ -178,7 +208,9 @@ modelsRouter.get('/vision', asyncHandler(async (req, res) => {
       models: visionModels,
       cached: false,
       source: 'direct_streamliner',
-      message: 'Fetched vision models directly from OllamaStreamliner (may be slow with many models)'
+      deploymentMode: deploymentConfig.mode,
+      modelCapabilityMode: deploymentConfig.modelCapability.mode,
+      message: `Fetched vision models directly from OllamaStreamliner (${deploymentConfig.modelCapability.mode} mode - may be slow with many models)`
     });
     
   } catch (error) {
@@ -194,12 +226,47 @@ modelsRouter.get('/vision', asyncHandler(async (req, res) => {
         cached: true,
         partial: true,
         source: 'progressive_loader_fallback',
+        deploymentMode: deploymentConfig.mode,
+        modelCapabilityMode: deploymentConfig.modelCapability.mode,
         error: error instanceof Error ? error.message : 'Unknown error',
-        message: 'Returning partial cached vision models due to error in full fetch'
+        message: `Returning partial cached vision models due to error in full fetch (${deploymentConfig.modelCapability.mode} mode)`
       });
       return;
     }
     
     throw error;
   }
+}));
+
+// Get model capability mode configuration info
+modelsRouter.get('/capability-mode', asyncHandler(async (req, res) => {
+  logger.info('GET /api/models/capability-mode - Fetching capability mode configuration');
+  
+  const deploymentConfig = getDeploymentConfig();
+  
+  res.json({
+    mode: deploymentConfig.modelCapability.mode,
+    deploymentMode: deploymentConfig.mode,
+    description: deploymentConfig.modelCapability.mode === 'custom' 
+      ? 'Using predefined model capabilities for faster performance'
+      : 'Using automatic capability detection for better accuracy',
+    characteristics: {
+      custom: {
+        speed: 'Fast - No API testing required',
+        accuracy: 'High for predefined models',
+        performance: 'Predictable and lightweight',
+        maintenance: 'Requires manual updates for new models',
+        benefits: ['Instant startup', 'No server load from testing', 'Consistent results', 'Reduced network usage']
+      },
+      automatic: {
+        speed: 'Slower - Requires API testing',
+        accuracy: 'High for all models',
+        performance: 'Variable depending on model count',
+        maintenance: 'No configuration needed',
+        benefits: ['Supports any model', 'Dynamic detection', 'Always up-to-date', 'No manual configuration']
+      }
+    },
+    currentMode: deploymentConfig.modelCapability.mode,
+    timestamp: new Date()
+  });
 }));
