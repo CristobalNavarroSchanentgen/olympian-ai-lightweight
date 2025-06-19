@@ -19,7 +19,7 @@ RUN npm run build:server
 FROM node:20-alpine
 WORKDIR /app
 
-# Install curl for health checks (needed for debugging)
+# Install curl for debugging (keeping for manual health checks if needed)
 RUN apk add --no-cache curl
 
 # Install production dependencies only
@@ -52,8 +52,7 @@ ENV NODE_ENV=production \
 
 EXPOSE 4000
 
-# Optimized health check with lightweight and rational settings
-HEALTHCHECK --interval=20s --timeout=5s --start-period=45s --retries=3 \
-  CMD curl -f --max-time 3 --connect-timeout 2 http://localhost:4000/api/health || exit 1
+# No health check - let the application start immediately
+# Health can be monitored externally via /api/health endpoint if needed
 
 CMD ["node", "packages/server/dist/index.js"]
