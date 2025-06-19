@@ -103,40 +103,14 @@ export class ModelProgressiveLoader extends EventEmitter {
   }
 
   /**
-   * Load capabilities using custom predefined list (faster, no testing)
+   * Load capabilities using custom predefined list (faster, no testing, NO API calls)
+   * This method completely bypasses any Ollama API calls when in custom mode
    */
   private async loadCustomCapabilities(startTime: number): Promise<ProgressiveLoadingState> {
-    logger.info('📋 Loading custom predefined model capabilities (no testing required)');
+    logger.info('📋 Loading custom predefined model capabilities (NO testing, NO API calls)');
     
-    // Get predefined capabilities
-    const predefinedCapabilities = customModelCapabilityService.getAllCustomCapabilities();
-    const availableModelNames = customModelCapabilityService.getAvailableModelNames();
-    
-    // Get list of actually available models from Ollama
-    const ollamaModels = await this.streamliner.listModels();
-    logger.info(`📊 Found ${ollamaModels.length} models in Ollama, ${predefinedCapabilities.length} predefined capabilities`);
-    
-    // Filter predefined capabilities to only include models that exist in Ollama
-    const availableCapabilities = predefinedCapabilities.filter(capability => 
-      ollamaModels.includes(capability.name)
-    );
-    
-    // For models in Ollama that don't have predefined capabilities, create default ones
-    const unmappedModels = ollamaModels.filter(model => 
-      !availableModelNames.includes(model)
-    );
-    
-    const defaultCapabilities: ModelCapability[] = unmappedModels.map(model => ({
-      name: model,
-      vision: false,
-      tools: false,
-      reasoning: false,
-      maxTokens: 4096,
-      contextWindow: 8192,
-      description: `${model} - Base model (no predefined capabilities)`
-    }));
-    
-    const allCapabilities = [...availableCapabilities, ...defaultCapabilities];
+    // Get ALL predefined capabilities - no filtering based on Ollama availability
+    const allCapabilities = customModelCapabilityService.getAllCustomCapabilities();
     const visionModels = allCapabilities.filter(cap => cap.vision).map(cap => cap.name);
     
     // Initialize loading state
@@ -151,11 +125,14 @@ export class ModelProgressiveLoader extends EventEmitter {
       mode: 'custom'
     };
 
-    logger.info(`📊 Custom mode processing summary:`, {
-      totalOllamaModels: ollamaModels.length,
-      predefinedCapabilities: availableCapabilities.length,
-      unmappedModels: unmappedModels.length,
-      totalProcessed: allCapabilities.length
+    logger.info(`📊 Custom mode processing summary (NO Ollama API calls):`, {
+      totalPredefinedModels: allCapabilities.length,
+      visionModels: visionModels.length,
+      toolsModels: allCapabilities.filter(c => c.tools).length,
+      reasoningModels: allCapabilities.filter(c => c.reasoning).length,
+      baseModels: allCapabilities.filter(c => !c.vision && !c.tools && !c.reasoning).length,
+      noOllamaConnection: true,
+      message: 'Using ONLY predefined capabilities - no network calls to Ollama'
     });
 
     // Emit initial state
@@ -213,15 +190,14 @@ export class ModelProgressiveLoader extends EventEmitter {
     const stats = customModelCapabilityService.getCapabilityStats();
     logger.info(`✅ Custom model capability loading completed in ${totalTime}ms for subproject 3:`, {
       totalModels: allCapabilities.length,
-      predefinedModels: availableCapabilities.length,
-      unmappedModels: unmappedModels.length,
       visionModels: stats.vision,
       toolsModels: stats.tools,
       reasoningModels: stats.reasoning,
       bothToolsAndReasoning: stats.bothToolsAndReasoning,
       baseModels: stats.baseModels,
-      mode: 'custom (no testing)',
-      deployment: 'multi-host'
+      mode: 'custom (NO testing, NO API calls)',
+      deployment: 'multi-host',
+      ollamaConnectionRequired: false
     });
 
     // Emit completion event
@@ -426,6 +402,11 @@ export class ModelProgressiveLoader extends EventEmitter {
    * Check if we have valid cached data
    */
   hasCachedData(): boolean {
+    // In custom mode, we always have "cached" data (predefined capabilities)
+    if (this.deploymentConfig.modelCapability.mode === 'custom') {
+      return true;
+    }
+    
     const now = Date.now();
     return this.loadingState?.isComplete === true && 
            (now - this.lastFullLoadTime) < this.CACHE_DURATION;
