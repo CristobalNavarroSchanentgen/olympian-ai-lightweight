@@ -14,7 +14,7 @@ interface ProgressiveLoadingState {
 }
 
 interface ProgressiveUpdate {
-  type: 'model_processed' | 'vision_model_found' | 'loading_complete' | 'error';
+  type: 'loading_started' | 'model_processed' | 'vision_model_found' | 'loading_complete' | 'error';
   model?: string;
   capability?: ModelCapability;
   isVisionModel?: boolean;
