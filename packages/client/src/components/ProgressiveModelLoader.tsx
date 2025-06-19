@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { ModelCapability } from '@olympian/shared';
 import { useProgressiveModelLoading } from '../hooks/useProgressiveModelLoading';
 
