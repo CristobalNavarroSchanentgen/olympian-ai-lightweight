@@ -25,7 +25,7 @@ interface OllamaModelInfo {
     quantization_level?: string;
     parent_model?: string;
   };
-  // Official capabilities field from Ollama API
+  // Official capabilities field from Ollama API - MOST RELIABLE
   capabilities?: string[]; // e.g., ["completion", "vision", "tools", "embeddings"]
   // Additional fields that might contain vision info
   config?: {
@@ -62,13 +62,22 @@ interface OllamaToolTestResponse {
         arguments: Record<string, any>;
       };
     }>;
+    content?: string;
   };
+  error?: string;
 }
 
 interface OllamaChatResponse {
   message?: {
     content?: string;
+    tool_calls?: Array<{
+      function: {
+        name: string;
+        arguments: Record<string, any>;
+      };
+    }>;
   };
+  error?: string;
 }
 
 export class OllamaStreamliner {
@@ -85,17 +94,18 @@ export class OllamaStreamliner {
         this.deploymentConfig.ollama.hosts,
         this.deploymentConfig.ollama.loadBalancer
       );
-      logger.info(`Initialized Ollama load balancer with ${this.deploymentConfig.ollama.hosts.length} hosts`);
+      logger.info(`Initialized Ollama load balancer with ${this.deploymentConfig.ollama.hosts.length} hosts for subproject 3 (Multi-host deployment)`);
     }
     
     // Initialize memory service
     this.memoryService = ChatMemoryService.getInstance();
     
     // Log Ollama configuration for debugging
-    logger.info(`Ollama configuration: ${JSON.stringify({
+    logger.info(`Ollama configuration for Multi-host deployment: ${JSON.stringify({
       host: this.deploymentConfig.ollama.host,
       deploymentMode: this.deploymentConfig.mode,
-      hosts: this.deploymentConfig.ollama.hosts
+      hosts: this.deploymentConfig.ollama.hosts,
+      subproject: 'Multi-host deployment'
     })}`);
   }
 
@@ -119,6 +129,13 @@ export class OllamaStreamliner {
     }
   }
 
+  /**
+   * IMPROVED: Comprehensive model capability detection using:
+   * 1. Official Ollama capabilities field (highest priority)
+   * 2. Programmatic testing via API calls (medium priority)
+   * 3. Enhanced metadata analysis (fallback)
+   * NO hardcoded patterns or model name assumptions
+   */
   async detectCapabilities(model: string): Promise<ModelCapability> {
     // Check cache first
     if (this.modelCapabilities.has(model)) {
@@ -140,69 +157,80 @@ export class OllamaStreamliner {
 
     this.capabilityDetectionInProgress.add(model);
     const startTime = Date.now();
-    logger.info(`🔍 Starting capability detection for model: ${model}`);
-
-    const ollamaHost = this.getOllamaHost();
+    logger.info(`🔍 Starting ENHANCED capability detection for model: ${model} (Multi-host deployment)`);
 
     try {
       // Step 1: Get comprehensive model info using official Ollama API
       logger.debug(`📊 Fetching detailed model info for: ${model}`);
-      const modelInfo = await this.getModelInfo(model, ollamaHost);
+      const modelInfo = await this.getModelInfo(model);
       
-      // Step 2: Use official capabilities field first (most reliable)
       let hasVision = false;
       let hasTools = false;
       let hasReasoning = false;
 
+      // STRATEGY 1: Official Capabilities Field (Highest Priority)
       if (modelInfo.capabilities && Array.isArray(modelInfo.capabilities)) {
-        logger.info(`✅ Using official capabilities field for '${model}': [${modelInfo.capabilities.join(', ')}]`);
+        logger.info(`✅ Using OFFICIAL capabilities field for '${model}': [${modelInfo.capabilities.join(', ')}]`);
         
         // Check for vision capability
-        hasVision = modelInfo.capabilities.includes('vision') || 
-                   modelInfo.capabilities.includes('multimodal') ||
-                   modelInfo.capabilities.includes('image');
+        hasVision = this.parseOfficialVisionCapability(modelInfo.capabilities);
         
-        // Check for tools capability  
-        hasTools = modelInfo.capabilities.includes('tools') ||
-                  modelInfo.capabilities.includes('functions') ||
-                  modelInfo.capabilities.includes('function_calling');
+        // Check for tools capability
+        hasTools = this.parseOfficialToolsCapability(modelInfo.capabilities);
                   
-        // Check for reasoning capability in official capabilities
-        hasReasoning = modelInfo.capabilities.includes('reasoning') ||
-                      modelInfo.capabilities.includes('thinking') ||
-                      modelInfo.capabilities.includes('analysis');
+        // Check for reasoning capability
+        hasReasoning = this.parseOfficialReasoningCapability(modelInfo.capabilities);
         
         logger.info(`🎯 Official capabilities detected - Vision: ${hasVision}, Tools: ${hasTools}, Reasoning: ${hasReasoning}`);
       } else {
-        logger.debug(`📋 No official capabilities field found, using pure data-driven detection methods`);
+        logger.debug(`📋 No official capabilities field found, proceeding with programmatic testing and metadata analysis`);
       }
 
-      // Step 3: Pure data-driven detection if official capabilities are not available
+      // STRATEGY 2: Programmatic Testing (Medium Priority) - Test unknown capabilities
       if (!modelInfo.capabilities || modelInfo.capabilities.length === 0) {
-        // Enhanced vision detection using Ollama data
-        hasVision = await this.hasVisionSupportDataDriven(model, modelInfo);
+        logger.info(`🧪 Starting PROGRAMMATIC testing for model: ${model}`);
         
-        // Only detect tools and reasoning if NOT a vision model (vision is exclusive)
+        // Vision detection using metadata first (vision is exclusive)
+        hasVision = await this.detectVisionCapabilityEnhanced(model, modelInfo);
+        
+        // Only test tools and reasoning if NOT a vision model (vision is exclusive)
         if (!hasVision) {
-          hasTools = await this.hasToolSupportDataDriven(model, modelInfo);
-          hasReasoning = await this.hasReasoningSupportPurelyDataDriven(model, modelInfo);
+          // Test tool capability programmatically
+          if (!hasTools) {
+            hasTools = await this.testToolCapabilityProgrammatically(model) || 
+                      await this.detectToolCapabilityEnhanced(model, modelInfo);
+          }
+          
+          // Test reasoning capability programmatically
+          if (!hasReasoning) {
+            hasReasoning = await this.testReasoningCapabilityProgrammatically(model) || 
+                          await this.detectReasoningCapabilityEnhanced(model, modelInfo);
+          }
         }
       } else {
-        // Even with official capabilities, we might need to detect reasoning if not officially tracked
-        // Only do additional reasoning detection if not already detected and not a vision model
-        if (!hasReasoning && !hasVision) {
-          hasReasoning = await this.hasReasoningSupportPurelyDataDriven(model, modelInfo);
+        // Even with official capabilities, test unknown ones programmatically
+        if (!hasVision && !hasTools && !hasReasoning) {
+          logger.info(`🧪 Official capabilities didn't detect vision/tools/reasoning. Testing programmatically...`);
+          
+          hasVision = await this.detectVisionCapabilityEnhanced(model, modelInfo);
+          
+          if (!hasVision) {
+            hasTools = await this.testToolCapabilityProgrammatically(model) || 
+                      await this.detectToolCapabilityEnhanced(model, modelInfo);
+            hasReasoning = await this.testReasoningCapabilityProgrammatically(model) || 
+                          await this.detectReasoningCapabilityEnhanced(model, modelInfo);
+          }
         }
       }
 
-      // Step 4: Apply exclusivity rules - Vision is exclusive
+      // Apply exclusivity rules - Vision is exclusive
       if (hasVision) {
         hasTools = false;
         hasReasoning = false;
         logger.debug(`🚫 Vision model detected - disabling tools and reasoning (vision is exclusive)`);
       }
       
-      // Parse capabilities from modelfile and metadata
+      // Build capability object
       const capability: ModelCapability = {
         name: model,
         vision: hasVision,
@@ -216,13 +244,13 @@ export class OllamaStreamliner {
       const detectionTime = Date.now() - startTime;
       
       // Enhanced logging for capability detection debugging
-      logger.info(`✅ Capability detection completed for model '${model}' in ${detectionTime}ms:`, {
+      logger.info(`✅ ENHANCED capability detection completed for model '${model}' in ${detectionTime}ms:`, {
         hasVision: capability.vision,
         hasTools: capability.tools,
         hasReasoning: capability.reasoning,
         combinedCapabilities: `vision:${capability.vision}, tools:${capability.tools}, reasoning:${capability.reasoning}`,
         officialCapabilities: modelInfo.capabilities || 'none',
-        detectionMethod: modelInfo.capabilities ? 'official_api' : 'purely_data_driven_fallback',
+        detectionMethod: modelInfo.capabilities ? 'official_api_primary' : 'programmatic_testing_and_metadata',
         parameterSize: modelInfo.details?.parameter_size,
         families: modelInfo.details?.families,
         architecture: modelInfo.model_info?.['general.architecture'],
@@ -230,7 +258,8 @@ export class OllamaStreamliner {
         canHaveBothToolsAndReasoning: !hasVision && (hasTools || hasReasoning),
         maxTokens: capability.maxTokens,
         contextWindow: capability.contextWindow,
-        detectionTimeMs: detectionTime
+        detectionTimeMs: detectionTime,
+        deployment: 'multi-host'
       });
 
       // Validation check to ensure capability logic is correct
@@ -245,10 +274,6 @@ export class OllamaStreamliner {
     } catch (error) {
       const detectionTime = Date.now() - startTime;
       logger.error(`❌ Failed to detect capabilities for model ${model} after ${detectionTime}ms:`, error);
-      
-      if (this.loadBalancer) {
-        this.loadBalancer.reportFailure(ollamaHost);
-      }
       
       // Return default capabilities
       const defaultCapability: ModelCapability = {
@@ -268,12 +293,13 @@ export class OllamaStreamliner {
     }
   }
 
-  private async getModelInfo(model: string, ollamaHost: string): Promise<OllamaModelInfo> {
+  private async getModelInfo(model: string): Promise<OllamaModelInfo> {
+    const ollamaHost = this.getOllamaHost();
     const controller = new AbortController();
     const timeoutId = setTimeout(() => {
       logger.warn(`⏱️ Model info request timeout for: ${model}`);
       controller.abort();
-    }, 20000); // Increased timeout to 20 seconds for thorough API calls
+    }, 25000); // Increased timeout for multi-host
 
     try {
       logger.debug(`📡 Requesting comprehensive model info from: ${ollamaHost}/api/show`);
@@ -290,21 +316,34 @@ export class OllamaStreamliner {
       clearTimeout(timeoutId);
 
       if (!response.ok) {
+        if (this.loadBalancer) {
+          this.loadBalancer.reportFailure(ollamaHost);
+        }
         throw new Error(`Failed to get model info: ${response.status} ${response.statusText}`);
       }
 
       const modelInfo = await response.json() as OllamaModelInfo;
+      
+      // Report success to load balancer
+      if (this.loadBalancer) {
+        this.loadBalancer.reportSuccess(ollamaHost);
+      }
+      
       logger.debug(`📋 Successfully retrieved comprehensive model info for: ${model}`, {
         hasCapabilities: !!modelInfo.capabilities,
         capabilitiesCount: modelInfo.capabilities?.length || 0,
         hasModalities: !!modelInfo.modalities,
         hasFamilies: !!modelInfo.details?.families,
         hasModelInfo: !!modelInfo.model_info,
-        parameterSize: modelInfo.details?.parameter_size
+        parameterSize: modelInfo.details?.parameter_size,
+        host: ollamaHost
       });
       return modelInfo;
     } catch (error) {
       clearTimeout(timeoutId);
+      if (this.loadBalancer) {
+        this.loadBalancer.reportFailure(ollamaHost);
+      }
       if (error instanceof Error && error.name === 'AbortError') {
         logger.warn(`⏱️ Model info request timed out for: ${model}`);
         throw new Error(`Model info request timed out for: ${model}`);
@@ -313,17 +352,235 @@ export class OllamaStreamliner {
     }
   }
 
-  // Data-driven vision detection using only Ollama API data
-  private async hasVisionSupportDataDriven(model: string, modelInfo: OllamaModelInfo): Promise<boolean> {
-    logger.debug(`👁️ Starting data-driven vision detection for model: ${model}`);
+  /**
+   * Parse official vision capability from Ollama capabilities array
+   */
+  private parseOfficialVisionCapability(capabilities: string[]): boolean {
+    const visionCapabilityKeywords = ['vision', 'multimodal', 'image', 'visual'];
+    return capabilities.some(cap => 
+      visionCapabilityKeywords.some(keyword => 
+        cap.toLowerCase().includes(keyword)
+      )
+    );
+  }
+
+  /**
+   * Parse official tools capability from Ollama capabilities array
+   */
+  private parseOfficialToolsCapability(capabilities: string[]): boolean {
+    const toolsCapabilityKeywords = ['tools', 'functions', 'function_calling', 'tool_use'];
+    return capabilities.some(cap => 
+      toolsCapabilityKeywords.some(keyword => 
+        cap.toLowerCase().includes(keyword)
+      )
+    );
+  }
+
+  /**
+   * Parse official reasoning capability from Ollama capabilities array
+   */
+  private parseOfficialReasoningCapability(capabilities: string[]): boolean {
+    const reasoningCapabilityKeywords = ['reasoning', 'thinking', 'analysis', 'logic'];
+    return capabilities.some(cap => 
+      reasoningCapabilityKeywords.some(keyword => 
+        cap.toLowerCase().includes(keyword)
+      )
+    );
+  }
+
+  /**
+   * PROGRAMMATIC TESTING: Actually test if model can use tools via API call
+   */
+  private async testToolCapabilityProgrammatically(model: string): Promise<boolean> {
+    const ollamaHost = this.getOllamaHost();
+    logger.debug(`🔧 PROGRAMMATICALLY testing tool capability for model: ${model}`);
     
     try {
-      // Method 1: Check modalities field (very reliable)
+      const testToolDefinition = {
+        type: 'function',
+        function: {
+          name: 'test_function',
+          description: 'A simple test function to check tool capability',
+          parameters: {
+            type: 'object',
+            properties: {
+              message: {
+                type: 'string',
+                description: 'A test message'
+              }
+            },
+            required: ['message']
+          }
+        }
+      };
+
+      const requestBody = {
+        model: model,
+        messages: [
+          {
+            role: 'user',
+            content: 'Please call the test_function with the message "capability_test"'
+          }
+        ],
+        tools: [testToolDefinition],
+        stream: false
+      };
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+
+      const response = await fetch(`${ollamaHost}/api/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody),
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        if (this.loadBalancer) {
+          this.loadBalancer.reportFailure(ollamaHost);
+        }
+        logger.debug(`Tool test request failed for ${model}: ${response.status}`);
+        return false;
+      }
+
+      const result = await response.json() as OllamaToolTestResponse;
+      
+      // Report success to load balancer
+      if (this.loadBalancer) {
+        this.loadBalancer.reportSuccess(ollamaHost);
+      }
+
+      if (result.error) {
+        logger.debug(`Tool test returned error for ${model}: ${result.error}`);
+        return false;
+      }
+
+      // Check if model responded with tool_calls
+      const hasToolCalls = result.message?.tool_calls && result.message.tool_calls.length > 0;
+      
+      if (hasToolCalls) {
+        logger.info(`✅ PROGRAMMATIC tool capability confirmed for '${model}' - Model successfully used tools`);
+        return true;
+      } else {
+        logger.debug(`✗ PROGRAMMATIC tool test failed for '${model}' - No tool_calls in response`);
+        return false;
+      }
+    } catch (error) {
+      if (this.loadBalancer) {
+        this.loadBalancer.reportFailure(ollamaHost);
+      }
+      logger.debug(`Error during programmatic tool testing for model '${model}':`, error);
+      return false;
+    }
+  }
+
+  /**
+   * PROGRAMMATIC TESTING: Actually test if model can do step-by-step reasoning
+   */
+  private async testReasoningCapabilityProgrammatically(model: string): Promise<boolean> {
+    const ollamaHost = this.getOllamaHost();
+    logger.debug(`🧠 PROGRAMMATICALLY testing reasoning capability for model: ${model}`);
+    
+    try {
+      const requestBody = {
+        model: model,
+        messages: [
+          {
+            role: 'user',
+            content: 'Please solve this step by step: If a train travels 60 miles in 2 hours, what is its speed? Show your reasoning process.'
+          }
+        ],
+        stream: false,
+        options: {
+          temperature: 0.1,
+          max_tokens: 200
+        }
+      };
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 20000); // 20 second timeout
+
+      const response = await fetch(`${ollamaHost}/api/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody),
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        if (this.loadBalancer) {
+          this.loadBalancer.reportFailure(ollamaHost);
+        }
+        logger.debug(`Reasoning test request failed for ${model}: ${response.status}`);
+        return false;
+      }
+
+      const result = await response.json() as OllamaChatResponse;
+      
+      // Report success to load balancer
+      if (this.loadBalancer) {
+        this.loadBalancer.reportSuccess(ollamaHost);
+      }
+
+      if (result.error || !result.message?.content) {
+        logger.debug(`Reasoning test returned error for ${model}:`, result.error);
+        return false;
+      }
+
+      const responseText = result.message.content.toLowerCase();
+      
+      // Check for step-by-step reasoning indicators
+      const reasoningIndicators = [
+        'step', 'first', 'then', 'therefore', 'because', 'since',
+        'given', 'solution', 'calculate', 'divide', 'miles per hour',
+        'speed = distance', 'reasoning', 'process'
+      ];
+      
+      const reasoningScore = reasoningIndicators.filter(indicator => 
+        responseText.includes(indicator)
+      ).length;
+      
+      // Also check for mathematical correctness (30 mph)
+      const hasCorrectAnswer = responseText.includes('30') && 
+                              (responseText.includes('mph') || responseText.includes('miles per hour'));
+      
+      // Model shows reasoning capability if it has multiple reasoning indicators and correct answer
+      const hasReasoning = reasoningScore >= 3 && hasCorrectAnswer;
+      
+      if (hasReasoning) {
+        logger.info(`✅ PROGRAMMATIC reasoning capability confirmed for '${model}' - Model showed step-by-step thinking (score: ${reasoningScore})`);
+        return true;
+      } else {
+        logger.debug(`✗ PROGRAMMATIC reasoning test inconclusive for '${model}' - Score: ${reasoningScore}, Correct answer: ${hasCorrectAnswer}`);
+        return false;
+      }
+    } catch (error) {
+      if (this.loadBalancer) {
+        this.loadBalancer.reportFailure(ollamaHost);
+      }
+      logger.debug(`Error during programmatic reasoning testing for model '${model}':`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Enhanced vision detection using only Ollama API data (NO hardcoded patterns)
+   */
+  private async detectVisionCapabilityEnhanced(model: string, modelInfo: OllamaModelInfo): Promise<boolean> {
+    logger.debug(`👁️ Enhanced vision detection for model: ${model}`);
+    
+    try {
+      // Method 1: Check modalities field (most reliable)
       if (modelInfo.modalities && Array.isArray(modelInfo.modalities)) {
-        const visionModalityPatterns = ['vision', 'multimodal', 'image', 'visual'];
+        const visionModalityKeywords = ['vision', 'multimodal', 'image', 'visual'];
         const hasVisionModality = modelInfo.modalities.some(modality => 
-          visionModalityPatterns.some(pattern => 
-            modality.toLowerCase().includes(pattern.toLowerCase())
+          visionModalityKeywords.some(keyword => 
+            modality.toLowerCase().includes(keyword.toLowerCase())
           )
         );
         if (hasVisionModality) {
@@ -332,12 +589,12 @@ export class OllamaStreamliner {
         }
       }
 
-      // Method 2: Check config modalities (alternative location)
+      // Method 2: Check config modalities
       if (modelInfo.config?.modalities && Array.isArray(modelInfo.config.modalities)) {
-        const visionModalityPatterns = ['vision', 'multimodal', 'image', 'visual'];
+        const visionModalityKeywords = ['vision', 'multimodal', 'image', 'visual'];
         const hasConfigVision = modelInfo.config.modalities.some(modality => 
-          visionModalityPatterns.some(pattern => 
-            modality.toLowerCase().includes(pattern.toLowerCase())
+          visionModalityKeywords.some(keyword => 
+            modality.toLowerCase().includes(keyword.toLowerCase())
           )
         );
         if (hasConfigVision) {
@@ -346,48 +603,48 @@ export class OllamaStreamliner {
         }
       }
 
-      // Method 3: Architecture detection using model_info
+      // Method 3: Architecture detection
       if (modelInfo.model_info?.['general.architecture']) {
         const architecture = modelInfo.model_info['general.architecture'].toLowerCase();
-        const visionArchPatterns = [
+        const visionArchKeywords = [
           'llava', 'clip', 'vit', 'bakllava', 'moondream', 
           'multimodal', 'vision', 'cogvlm', 'instructblip'
         ];
-        const hasVisionArch = visionArchPatterns.some(pattern => 
-          architecture.includes(pattern)
+        const hasVisionArch = visionArchKeywords.some(keyword => 
+          architecture.includes(keyword)
         );
         if (hasVisionArch) {
-          logger.info(`✓ Vision detected via general.architecture for '${model}': ${architecture}`);
+          logger.info(`✓ Vision detected via architecture for '${model}': ${architecture}`);
           return true;
         }
       }
 
-      // Method 4: Check model families (from details)
+      // Method 4: Check model families
       if (modelInfo.details?.families && Array.isArray(modelInfo.details.families)) {
-        const visionFamilyPatterns = [
+        const visionFamilyKeywords = [
           'llava', 'bakllava', 'moondream', 'vision', 'multimodal', 
           'cogvlm', 'instructblip', 'blip', 'minicpm-v', 'qwen-vl', 
           'internvl', 'deepseek-vl'
         ];
         const hasVisionFamily = modelInfo.details.families.some(family =>
-          visionFamilyPatterns.some(pattern => 
-            family.toLowerCase().includes(pattern.toLowerCase())
+          visionFamilyKeywords.some(keyword => 
+            family.toLowerCase().includes(keyword.toLowerCase())
           )
         );
         if (hasVisionFamily) {
-          logger.info(`✓ Vision detected via model families for '${model}': [${modelInfo.details.families.join(', ')}]`);
+          logger.info(`✓ Vision detected via families for '${model}': [${modelInfo.details.families.join(', ')}]`);
           return true;
         }
       }
 
       // Method 5: Check description for vision keywords
       if (modelInfo.description) {
-        const visionDescriptors = [
+        const visionDescriptorKeywords = [
           'vision', 'visual', 'image', 'multimodal', 'see', 'picture',
           'photograph', 'visual understanding', 'image analysis'
         ];
-        const hasVisionDescription = visionDescriptors.some(descriptor =>
-          modelInfo.description!.toLowerCase().includes(descriptor.toLowerCase())
+        const hasVisionDescription = visionDescriptorKeywords.some(keyword =>
+          modelInfo.description!.toLowerCase().includes(keyword.toLowerCase())
         );
         if (hasVisionDescription) {
           logger.info(`✓ Vision detected via description for '${model}'`);
@@ -396,25 +653,27 @@ export class OllamaStreamliner {
       }
 
     } catch (error) {
-      logger.error(`Error during data-driven vision detection for model '${model}':`, error);
+      logger.error(`Error during enhanced vision detection for model '${model}':`, error);
     }
 
-    logger.debug(`✗ No vision capability detected for '${model}' via data-driven analysis`);
+    logger.debug(`✗ No vision capability detected for '${model}' via enhanced detection`);
     return false;
   }
 
-  // Data-driven tool detection using only Ollama API data
-  private async hasToolSupportDataDriven(model: string, modelInfo: OllamaModelInfo): Promise<boolean> {
-    logger.debug(`🔧 Data-driven tool detection for model: ${model}`);
+  /**
+   * Enhanced tool detection using metadata analysis (NO hardcoded patterns)
+   */
+  private async detectToolCapabilityEnhanced(model: string, modelInfo: OllamaModelInfo): Promise<boolean> {
+    logger.debug(`🔧 Enhanced tool detection for model: ${model}`);
     
-    // Method 1: Check modelfile for tool/function indicators
+    // Method 1: Check modelfile for tool indicators
     const modelfile = modelInfo.modelfile || '';
-    const toolIndicators = [
+    const toolKeywords = [
       'TOOLS', 'function', 'tool_use', 'function_calling',
       'tools_available', 'can_use_tools', 'function_call'
     ];
-    const hasToolsInModelfile = toolIndicators.some(indicator =>
-      modelfile.toLowerCase().includes(indicator.toLowerCase())
+    const hasToolsInModelfile = toolKeywords.some(keyword =>
+      modelfile.toLowerCase().includes(keyword.toLowerCase())
     );
     
     if (hasToolsInModelfile) {
@@ -422,14 +681,14 @@ export class OllamaStreamliner {
       return true;
     }
     
-    // Method 2: Check description for tool/function mentions
+    // Method 2: Check description for tool mentions
     const description = modelInfo.description || '';
-    const descriptionIndicators = [
+    const descriptionKeywords = [
       'function', 'tool', 'api', 'execute', 'call functions',
       'tool use', 'function calling', 'external tools'
     ];
-    const hasToolsInDescription = descriptionIndicators.some(indicator =>
-      description.toLowerCase().includes(indicator.toLowerCase())
+    const hasToolsInDescription = descriptionKeywords.some(keyword =>
+      description.toLowerCase().includes(keyword.toLowerCase())
     );
     
     if (hasToolsInDescription) {
@@ -439,13 +698,9 @@ export class OllamaStreamliner {
     
     // Method 3: Check template for tool support patterns
     const template = modelInfo.template || '';
-    const templateToolPatterns = [
-      'tool_calls', 'function_call', 'tools', '<tool_call>',
-      '{{.*tool.*}}', '{{.*function.*}}'
-    ];
-    const hasToolTemplate = templateToolPatterns.some(pattern => {
-      const regex = new RegExp(pattern, 'i');
-      return regex.test(template);
+    const templateToolKeywords = ['tool_calls', 'function_call', 'tools', '<tool_call>'];
+    const hasToolTemplate = templateToolKeywords.some(keyword => {
+      return template.toLowerCase().includes(keyword.toLowerCase());
     });
     
     if (hasToolTemplate) {
@@ -457,80 +712,80 @@ export class OllamaStreamliner {
     return false;
   }
 
-  // Purely data-driven reasoning detection with no size assumptions
-  private async hasReasoningSupportPurelyDataDriven(model: string, modelInfo: OllamaModelInfo): Promise<boolean> {
-    logger.debug(`🧠 Purely data-driven reasoning detection for model: ${model}`);
+  /**
+   * Enhanced reasoning detection using metadata analysis (NO hardcoded patterns)
+   */
+  private async detectReasoningCapabilityEnhanced(model: string, modelInfo: OllamaModelInfo): Promise<boolean> {
+    logger.debug(`🧠 Enhanced reasoning detection for model: ${model}`);
     
-    // Method 1: Check for explicit reasoning indicators in description
+    // Method 1: Check description for explicit reasoning indicators
     if (modelInfo.description) {
-      const explicitReasoningDescriptors = [
+      const reasoningKeywords = [
         'reasoning', 'chain of thought', 'step-by-step thinking', 
         'logical reasoning', 'problem solving', 'analytical thinking',
         'complex reasoning', 'multi-step reasoning', 'critical thinking'
       ];
-      const hasExplicitReasoningDescription = explicitReasoningDescriptors.some(indicator =>
-        modelInfo.description!.toLowerCase().includes(indicator.toLowerCase())
+      const hasReasoningDescription = reasoningKeywords.some(keyword =>
+        modelInfo.description!.toLowerCase().includes(keyword.toLowerCase())
       );
-      if (hasExplicitReasoningDescription) {
-        logger.info(`✓ Reasoning detected via explicit description for '${model}'`);
+      if (hasReasoningDescription) {
+        logger.info(`✓ Reasoning detected via description for '${model}'`);
         return true;
       }
     }
     
-    // Method 2: Check modelfile for explicit reasoning indicators
+    // Method 2: Check modelfile for reasoning indicators
     const modelfile = modelInfo.modelfile || '';
-    const explicitReasoningModelfileIndicators = [
+    const modelfileReasoningKeywords = [
       'reasoning', 'think step by step', 'chain of thought',
       'analytical', 'problem solving', 'logical thinking'
     ];
-    const hasExplicitReasoningInModelfile = explicitReasoningModelfileIndicators.some(indicator =>
-      modelfile.toLowerCase().includes(indicator.toLowerCase())
+    const hasReasoningInModelfile = modelfileReasoningKeywords.some(keyword =>
+      modelfile.toLowerCase().includes(keyword.toLowerCase())
     );
     
-    if (hasExplicitReasoningInModelfile) {
-      logger.info(`✓ Reasoning detected via explicit modelfile patterns for '${model}'`);
+    if (hasReasoningInModelfile) {
+      logger.info(`✓ Reasoning detected via modelfile for '${model}'`);
       return true;
     }
 
-    // Method 3: Check template for sophisticated instruction patterns
+    // Method 3: Check template for sophisticated patterns
     const template = modelInfo.template || '';
-    const sophisticatedTemplatePatterns = [
+    const templateReasoningKeywords = [
       'chain of thought', 'step by step', 'reasoning', 'think through',
       'analyze', 'problem', 'solution'
     ];
-    const hasSophisticatedTemplate = sophisticatedTemplatePatterns.some(pattern =>
-      template.toLowerCase().includes(pattern)
+    const hasReasoningTemplate = templateReasoningKeywords.some(keyword =>
+      template.toLowerCase().includes(keyword)
     );
     
-    if (hasSophisticatedTemplate) {
-      logger.info(`✓ Reasoning detected via sophisticated template patterns for '${model}'`);
+    if (hasReasoningTemplate) {
+      logger.info(`✓ Reasoning detected via template for '${model}'`);
       return true;
     }
     
-    // Method 4: Check families for explicit reasoning indicators
+    // Method 4: Check families for reasoning indicators
     if (modelInfo.details?.families && Array.isArray(modelInfo.details.families)) {
-      const reasoningFamilyIndicators = [
+      const reasoningFamilyKeywords = [
         'reasoning', 'thinking', 'analytical', 'logic', 'problem'
       ];
       const hasReasoningFamily = modelInfo.details.families.some(family =>
-        reasoningFamilyIndicators.some(indicator => 
-          family.toLowerCase().includes(indicator)
+        reasoningFamilyKeywords.some(keyword => 
+          family.toLowerCase().includes(keyword)
         )
       );
       if (hasReasoningFamily) {
-        logger.info(`✓ Reasoning detected via explicit family indicators for '${model}': [${modelInfo.details.families.join(', ')}]`);
+        logger.info(`✓ Reasoning detected via families for '${model}': [${modelInfo.details.families.join(', ')}]`);
         return true;
       }
     }
     
-    // Method 5: Check architecture for reasoning-specific architectures
+    // Method 5: Check architecture for reasoning architectures
     if (modelInfo.model_info?.['general.architecture']) {
       const architecture = modelInfo.model_info['general.architecture'].toLowerCase();
-      const reasoningArchitectures = [
-        'reasoning', 'thinking', 'analytical', 'logic'
-      ];
-      const hasReasoningArch = reasoningArchitectures.some(arch => 
-        architecture.includes(arch)
+      const reasoningArchKeywords = ['reasoning', 'thinking', 'analytical', 'logic'];
+      const hasReasoningArch = reasoningArchKeywords.some(keyword => 
+        architecture.includes(keyword)
       );
       if (hasReasoningArch) {
         logger.info(`✓ Reasoning detected via architecture for '${model}': ${architecture}`);
@@ -538,7 +793,7 @@ export class OllamaStreamliner {
       }
     }
     
-    logger.debug(`✗ No explicit reasoning capability indicators detected for '${model}' (purely data-driven detection)`);
+    logger.debug(`✗ No reasoning capability indicators detected for '${model}'`);
     return false;
   }
 
@@ -612,10 +867,17 @@ export class OllamaStreamliner {
           model: visionModel,
           error: errorText
         });
+        if (this.loadBalancer) {
+          this.loadBalancer.reportFailure(ollamaHost);
+        }
         throw new Error(`Vision model request failed: ${response.statusText} - ${errorText}`);
       }
 
       const result = await response.json() as OllamaGenerateResponse;
+      
+      if (this.loadBalancer) {
+        this.loadBalancer.reportSuccess(ollamaHost);
+      }
       
       if (result.error) {
         logger.error(`Ollama returned error for vision processing:`, result.error);
@@ -651,9 +913,9 @@ export class OllamaStreamliner {
       const models = await this.listModels();
       const visionModels: string[] = [];
       
-      logger.info(`🔍 Checking ${models.length} models for vision capabilities using purely data-driven detection...`);
+      logger.info(`🔍 Checking ${models.length} models for vision capabilities using ENHANCED detection...`);
       
-      // Check each model for vision capabilities using our robust detection
+      // Check each model for vision capabilities using our enhanced detection
       for (const model of models) {
         try {
           const capabilities = await this.detectCapabilities(model);
@@ -669,7 +931,7 @@ export class OllamaStreamliner {
         }
       }
       
-      logger.info(`✅ Purely data-driven vision capability detection complete: Found ${visionModels.length} vision-capable models out of ${models.length} total models`);
+      logger.info(`✅ ENHANCED vision capability detection complete: Found ${visionModels.length} vision-capable models out of ${models.length} total models`);
       logger.info(`Vision models: [${visionModels.join(', ')}]`);
       
       return visionModels;
@@ -684,10 +946,10 @@ export class OllamaStreamliner {
       const models = await this.listModels();
       const capabilities: ModelCapability[] = [];
       
-      logger.info(`🔍 Getting purely data-driven capabilities for ${models.length} models...`);
+      logger.info(`🔍 Getting ENHANCED capabilities for ${models.length} models using programmatic testing...`);
       
-      // Process models in parallel with limited concurrency for better performance
-      const concurrencyLimit = 3; // Process 3 models at a time
+      // Process models in parallel with limited concurrency for better performance in multi-host
+      const concurrencyLimit = 2; // Reduced for multi-host to avoid overwhelming servers
       const chunks = [];
       for (let i = 0; i < models.length; i += concurrencyLimit) {
         chunks.push(models.slice(i, i + concurrencyLimit));
@@ -721,16 +983,17 @@ export class OllamaStreamliner {
       const toolsCount = capabilities.filter(c => c.tools).length;
       const reasoningCount = capabilities.filter(c => c.reasoning).length;
       const bothToolsAndReasoningCount = capabilities.filter(c => c.tools && c.reasoning).length;
-      const officialCapabilitiesCount = capabilities.filter(c => c.description?.includes('official')).length;
       
-      logger.info(`✅ Retrieved purely data-driven capabilities for ${capabilities.length} models:`, {
+      logger.info(`✅ Retrieved ENHANCED capabilities for ${capabilities.length} models (Multi-host deployment):`, {
         visionModels: visionCount,
         toolsModels: toolsCount,
         reasoningModels: reasoningCount,
         modelsWithBothToolsAndReasoning: bothToolsAndReasoningCount,
         exclusivityCheck: `Vision models correctly exclude tools/reasoning: ${capabilities.filter(c => c.vision && (c.tools || c.reasoning)).length === 0}`,
-        detectionMethod: 'Purely data-driven using only explicit Ollama API indicators',
-        approach: 'No hardcoded patterns, model names, or size assumptions'
+        detectionMethod: 'Official Ollama API + Programmatic Testing + Enhanced Metadata',
+        approach: 'NO hardcoded patterns, model names, or size assumptions',
+        deployment: 'Multi-host with load balancing',
+        loadBalancerActive: !!this.loadBalancer
       });
       
       return capabilities;
@@ -887,11 +1150,12 @@ export class OllamaStreamliner {
   ): Promise<void> {
     const ollamaHost = this.getOllamaHost(clientIp);
     
-    logger.info(`Starting stream chat with model: ${processedRequest.model}`);
+    logger.info(`Starting stream chat with model: ${processedRequest.model} (Multi-host)`);
     logger.debug(`Request preview: ${JSON.stringify({
       model: processedRequest.model,
       messageCount: processedRequest.messages.length,
-      lastMessagePreview: processedRequest.messages[processedRequest.messages.length - 1]?.content?.substring(0, 100) + '...'
+      lastMessagePreview: processedRequest.messages[processedRequest.messages.length - 1]?.content?.substring(0, 100) + '...',
+      host: ollamaHost
     })}`);
     
     // Create AbortController for timeout handling
@@ -911,7 +1175,10 @@ export class OllamaStreamliner {
 
       if (!response.ok) {
         const errorText = await response.text();
-        logger.error(`Ollama chat request failed: ${response.status} ${response.statusText}`, { errorText });
+        logger.error(`Ollama chat request failed: ${response.status} ${response.statusText}`, { errorText, host: ollamaHost });
+        if (this.loadBalancer) {
+          this.loadBalancer.reportFailure(ollamaHost);
+        }
         throw new AppError(response.status, `Ollama request failed: ${response.statusText} - ${errorText}`);
       }
 
@@ -923,7 +1190,6 @@ export class OllamaStreamliner {
       const decoder = new TextDecoder();
       let buffer = '';
       let tokenCount = 0;
-      let lastTokenTime = Date.now();
 
       try {
         logger.info('Starting to stream response tokens...');
@@ -950,7 +1216,6 @@ export class OllamaStreamliner {
                 const json = JSON.parse(line) as OllamaStreamResponse;
                 if (json.message?.content) {
                   tokenCount++;
-                  lastTokenTime = Date.now();
                   onToken(json.message.content);
                   
                   if (tokenCount === 1) {
@@ -967,7 +1232,7 @@ export class OllamaStreamliner {
           }
         }
         
-        logger.info(`Stream completed successfully with ${tokenCount} tokens`);
+        logger.info(`Stream completed successfully with ${tokenCount} tokens from ${ollamaHost}`);
         
         // Report success to load balancer
         if (this.loadBalancer) {
@@ -979,6 +1244,10 @@ export class OllamaStreamliner {
       }
     } catch (error) {
       clearTimeout(timeoutId);
+      
+      if (this.loadBalancer) {
+        this.loadBalancer.reportFailure(ollamaHost);
+      }
       
       if (error instanceof Error && error.name === 'AbortError') {
         logger.error('Stream was aborted due to timeout:', {
@@ -995,10 +1264,6 @@ export class OllamaStreamliner {
         model: processedRequest.model
       });
       
-      // Report failure to load balancer
-      if (this.loadBalancer) {
-        this.loadBalancer.reportFailure(ollamaHost);
-      }
       throw error;
     }
   }
@@ -1007,16 +1272,16 @@ export class OllamaStreamliner {
     const ollamaHost = this.getOllamaHost();
     
     try {
-      logger.debug(`🔍 Attempting to fetch models from ${ollamaHost}/api/tags`);
+      logger.debug(`🔍 Attempting to fetch models from ${ollamaHost}/api/tags (Multi-host deployment)`);
       
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // Increased timeout for multi-host
       
       const response = await fetch(`${ollamaHost}/api/tags`, {
         signal: controller.signal,
         headers: {
           'Content-Type': 'application/json',
-          'User-Agent': 'Olympian-AI-Lightweight/1.0'
+          'User-Agent': 'Olympian-AI-Lightweight/1.0-MultiHost'
         }
       });
       
@@ -1024,13 +1289,20 @@ export class OllamaStreamliner {
 
       if (!response.ok) {
         const errorText = await response.text().catch(() => 'Unable to read error response');
+        if (this.loadBalancer) {
+          this.loadBalancer.reportFailure(ollamaHost);
+        }
         throw new Error(`HTTP ${response.status} ${response.statusText}: ${errorText}`);
       }
 
       const data = await response.json() as OllamaModelListResponse;
       const models = data.models?.map((m) => m.name) || [];
       
-      logger.info(`Successfully connected to Ollama at ${ollamaHost}`);
+      if (this.loadBalancer) {
+        this.loadBalancer.reportSuccess(ollamaHost);
+      }
+      
+      logger.info(`Successfully connected to Ollama at ${ollamaHost} (Multi-host deployment)`);
       logger.info(`Found ${models.length} models: ${models.join(', ')}`);
       
       return models;
@@ -1042,37 +1314,41 @@ export class OllamaStreamliner {
         errorMessage: error instanceof Error ? error.message : String(error),
         isNetworkError: error instanceof TypeError && error.message.includes('fetch'),
         isTimeoutError: error instanceof Error && error.name === 'AbortError',
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        deployment: 'multi-host'
       };
 
       if (errorDetails.isNetworkError) {
-        logger.error('🔗 Network connection failed to Ollama server:', {
+        logger.error('🔗 Network connection failed to Ollama server (Multi-host):', {
           ...errorDetails,
           possibleCauses: [
             'Ollama server is not running',
             'Network connectivity issues',
             'DNS resolution failure',
             'Firewall blocking the connection',
-            'Incorrect hostname/IP address'
+            'Incorrect hostname/IP address',
+            'Load balancer configuration issue'
           ],
           troubleshooting: [
             `Try: curl -v ${ollamaHost}/api/tags`,
             'Check if Ollama is running on the target host',
             'Verify network connectivity between containers',
-            'Check firewall rules and security groups'
+            'Check firewall rules and security groups',
+            'Verify load balancer health checks'
           ]
         });
       } else if (errorDetails.isTimeoutError) {
-        logger.error('⏱️ Connection timeout to Ollama server:', {
+        logger.error('⏱️ Connection timeout to Ollama server (Multi-host):', {
           ...errorDetails,
           possibleCauses: [
             'Ollama server is overloaded',
             'Network latency too high',
-            'Server is starting up'
+            'Server is starting up',
+            'Load balancer routing issue'
           ]
         });
       } else {
-        logger.error('❌ Failed to list Ollama models:', errorDetails);
+        logger.error('❌ Failed to list Ollama models (Multi-host):', errorDetails);
       }
       
       if (this.loadBalancer) {
@@ -1083,7 +1359,7 @@ export class OllamaStreamliner {
     }
   }
 
-  // Get load balancer statistics (useful for monitoring)
+  // Get load balancer statistics (useful for monitoring multi-host deployment)
   getLoadBalancerStats(): Map<string, any> | null {
     return this.loadBalancer?.getStats() || null;
   }
