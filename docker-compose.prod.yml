@@ -70,6 +70,9 @@ services:
       SERVICE_DISCOVERY_ENABLED: ${SERVICE_DISCOVERY_ENABLED:-true}
       SERVICE_DISCOVERY_SUBNET: ${SERVICE_DISCOVERY_SUBNET:-192.168.1.0/24}
       
+      # Model capability configuration - CRITICAL for subproject 3
+      MODEL_CAPABILITY_MODE: ${MODEL_CAPABILITY_MODE:-automatic}
+      
       # Application settings
       NODE_ENV: production
       PORT: 4000
