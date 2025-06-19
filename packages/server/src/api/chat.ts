@@ -3,6 +3,7 @@ import { ObjectId, WithId } from 'mongodb';
 import { DatabaseService } from '../services/DatabaseService';
 import { OllamaStreamliner } from '../services/OllamaStreamliner';
 import { ChatMemoryService } from '../services/ChatMemoryService';
+import { modelProgressiveLoader } from '../services/ModelProgressiveLoader';
 import { AppError } from '../middleware/errorHandler';
 import { chatRateLimiter } from '../middleware/rateLimiter';
 import { z } from 'zod';
@@ -379,13 +380,17 @@ router.get('/search', async (req, res, next) => {
   }
 });
 
-// Get available models (excluding vision models)
-router.get('/models', async (_req, res, next) => {
+// Get available models (excluding vision models) - WITH INCREASED TIMEOUT AND PROGRESSIVE FALLBACK
+router.get('/models', async (req, res, next) => {
   try {
-    // Get all models and vision models
+    // Set increased timeout for model loading
+    req.setTimeout(300000); // 5 minutes
+    res.setTimeout(300000); // 5 minutes
+    
+    // Get all models and vision models with progressive fallback
     const [allModels, visionModels] = await Promise.all([
       streamliner.listModels(),
-      streamliner.getAvailableVisionModels()
+      getVisionModelsWithFallback()
     ]);
     
     // Filter out vision models from the regular models list
@@ -401,10 +406,15 @@ router.get('/models', async (_req, res, next) => {
   }
 });
 
-// Get available vision models
-router.get('/vision-models', async (_req, res, next) => {
+// Get available vision models - WITH INCREASED TIMEOUT AND PROGRESSIVE FALLBACK
+router.get('/vision-models', async (req, res, next) => {
   try {
-    const visionModels = await streamliner.getAvailableVisionModels();
+    // Set increased timeout for vision model loading
+    req.setTimeout(300000); // 5 minutes
+    res.setTimeout(300000); // 5 minutes
+    
+    const visionModels = await getVisionModelsWithFallback();
+    
     res.json({
       success: true,
       data: visionModels,
@@ -415,10 +425,70 @@ router.get('/vision-models', async (_req, res, next) => {
   }
 });
 
-// Get model capabilities
+// Helper function to get vision models with progressive fallback
+async function getVisionModelsWithFallback(): Promise<string[]> {
+  try {
+    // First, check if we have cached data from progressive loader
+    if (modelProgressiveLoader.hasCachedData()) {
+      const visionModels = modelProgressiveLoader.getVisionModels();
+      console.log(`✅ Using cached vision models from progressive loader (${visionModels.length} models)`);
+      return visionModels;
+    }
+    
+    // If currently loading progressively, return current vision models
+    if (modelProgressiveLoader.isCurrentlyLoading()) {
+      const visionModels = modelProgressiveLoader.getVisionModels();
+      console.log(`⏳ Progressive loading in progress, returning partial vision models (${visionModels.length} models so far)`);
+      return visionModels;
+    }
+    
+    // Fallback to original streamliner method
+    console.log('🔄 No cached data available, falling back to direct OllamaStreamliner method...');
+    console.warn('⚠️ This may take a long time with many models. Consider using progressive loading endpoints.');
+    
+    return await streamliner.getAvailableVisionModels();
+    
+  } catch (error) {
+    console.error('❌ Failed to get vision models:', error);
+    
+    // Try to return any partial vision models from progressive loader as last resort
+    const partialVisionModels = modelProgressiveLoader.getVisionModels();
+    if (partialVisionModels.length > 0) {
+      console.log(`🆘 Returning partial vision models as fallback (${partialVisionModels.length} models)`);
+      return partialVisionModels;
+    }
+    
+    throw error;
+  }
+}
+
+// Get model capabilities - WITH INCREASED TIMEOUT AND PROGRESSIVE FALLBACK
 router.get('/models/:name/capabilities', async (req, res, next) => {
   try {
-    const capabilities = await streamliner.detectCapabilities(req.params.name);
+    // Set increased timeout for capability detection
+    req.setTimeout(120000); // 2 minutes
+    res.setTimeout(120000); // 2 minutes
+    
+    const modelName = req.params.name;
+    
+    // First check if we have this model in progressive loader cache
+    const cachedCapabilities = modelProgressiveLoader.getCapabilities();
+    const cachedCapability = cachedCapabilities.find(cap => cap.name === modelName);
+    
+    if (cachedCapability) {
+      console.log(`✅ Using cached capability for model '${modelName}' from progressive loader`);
+      res.json({
+        success: true,
+        data: cachedCapability,
+        timestamp: new Date(),
+      });
+      return;
+    }
+    
+    // Fallback to direct detection
+    console.log(`🔍 No cached data for '${modelName}', detecting capabilities directly...`);
+    const capabilities = await streamliner.detectCapabilities(modelName);
+    
     res.json({
       success: true,
       data: capabilities,
