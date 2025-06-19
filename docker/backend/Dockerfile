@@ -52,8 +52,8 @@ ENV NODE_ENV=production \
 
 EXPOSE 4000
 
-# Improved health check with better error handling
-HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=5 \
-  CMD curl -f http://localhost:4000/api/health || exit 1
+# Optimized health check with lightweight and rational settings
+HEALTHCHECK --interval=20s --timeout=5s --start-period=45s --retries=3 \
+  CMD curl -f --max-time 3 --connect-timeout 2 http://localhost:4000/api/health || exit 1
 
 CMD ["node", "packages/server/dist/index.js"]
