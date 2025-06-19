@@ -56,65 +56,159 @@ app.use(errorHandler);
 // Start server
 const PORT = process.env.PORT || 4000;
 
+// Track service initialization status
+let serviceStatus = {
+  httpServer: false,
+  database: false,
+  websocket: false,
+  ollama: false,
+};
+
 async function start(): Promise<void> {
   try {
-    // Connect to MongoDB using deployment configuration
-    await dbService.connect();
-    logger.info('Connected to MongoDB');
+    logger.info('Starting server initialization...');
+    logger.info(`Deployment mode: ${deploymentConfig.mode}`);
+    logger.info(`MongoDB URI: ${deploymentConfig.mongodb.uri.replace(/\/\/[^:]+:[^@]+@/, '//***:***@')}`);
+    logger.info(`Ollama host: ${deploymentConfig.ollama.host}`);
 
-    // Start WebSocket service
-    wsService.initialize();
-    logger.info('WebSocket service initialized');
-
-    // Start HTTP server first - this allows health checks to pass even if Ollama is not available
+    // Start HTTP server first - this allows health checks to pass immediately
     httpServer.listen(PORT, () => {
-      logger.info(`Server running on port ${PORT}`);
-      logger.info(`Deployment mode: ${deploymentConfig.mode}`);
-      logger.info(`Ollama host: ${deploymentConfig.ollama.host}`);
+      serviceStatus.httpServer = true;
+      logger.info(`✅ HTTP Server running on port ${PORT}`);
       
       if (deploymentConfig.mode === 'multi-host') {
-        logger.info('=== MULTI-HOST VISION TROUBLESHOOTING ===');
-        logger.info('If vision models are not appearing:');
-        logger.info('1. Check Ollama connectivity: curl http://localhost:4000/api/health/vision');
-        logger.info('2. Install vision models on Ollama host: ollama pull llava:13b');
-        logger.info('3. Verify models: curl http://your-ollama-host:11434/api/tags');
-        logger.info('4. Restart this backend container after installing models');
-        logger.info('=========================================');
+        logger.info('🔧 Multi-host deployment detected');
+        logger.info('📋 External service dependencies:');
+        logger.info(`   - Ollama: ${deploymentConfig.ollama.host}`);
+        logger.info(`   - MongoDB: ${deploymentConfig.mongodb.uri.includes('mongodb://mongodb:') ? 'Containerized' : 'External'}`);
       }
     });
 
-    // Check Ollama health and vision models availability asynchronously
-    // This allows the server to start even if Ollama is temporarily unavailable
-    logger.info('Checking Ollama connectivity and vision models (non-blocking)...');
+    // Initialize database with enhanced error handling
+    try {
+      logger.info('🔄 Connecting to MongoDB...');
+      await dbService.connect();
+      serviceStatus.database = true;
+      logger.info('✅ Database connected successfully');
+    } catch (error) {
+      serviceStatus.database = false;
+      logger.error('❌ Database connection failed:', error);
+      
+      if (deploymentConfig.mode !== 'multi-host') {
+        // For same-host deployments, database failure is critical
+        throw error;
+      } else {
+        // For multi-host, log the error but continue startup
+        logger.warn('⚠️  Continuing startup without database in multi-host mode');
+        logger.warn('   Health checks will reflect database unavailability');
+      }
+    }
+
+    // Initialize WebSocket service
+    try {
+      wsService.initialize();
+      serviceStatus.websocket = true;
+      logger.info('✅ WebSocket service initialized');
+    } catch (error) {
+      serviceStatus.websocket = false;
+      logger.error('❌ WebSocket initialization failed:', error);
+      // Continue without WebSocket functionality
+    }
+
+    // Check Ollama health asynchronously (non-blocking)
+    logger.info('🔄 Checking Ollama connectivity (non-blocking)...');
     
     // Use setImmediate to ensure this runs after the server is fully started
     setImmediate(async () => {
       try {
         await ollamaHealthCheck.ensureVisionModelsAvailable();
-        logger.info('Ollama health check completed successfully');
+        serviceStatus.ollama = true;
+        logger.info('✅ Ollama health check completed successfully');
       } catch (error) {
-        logger.warn('Ollama health check failed during startup (this is non-blocking):', error);
-        logger.info('The server will continue to run. Check /api/health/vision for current status.');
+        serviceStatus.ollama = false;
+        logger.warn('⚠️  Ollama health check failed (non-blocking):', error);
+        logger.info('📋 The server will continue to run. Check /api/health/vision for current status.');
         
         if (deploymentConfig.mode === 'multi-host') {
-          logger.warn('Multi-host deployment: Ensure external Ollama service is running and accessible');
-          logger.warn(`Configured Ollama host: ${deploymentConfig.ollama.host}`);
+          logger.warn('🔧 Multi-host deployment troubleshooting:');
+          logger.warn(`   - Verify Ollama is running at: ${deploymentConfig.ollama.host}`);
+          logger.warn('   - Check network connectivity from container to external host');
+          logger.warn('   - Verify firewall settings allow connections on port 11434');
+          logger.warn(`   - Test manually: curl -f ${deploymentConfig.ollama.host}/api/version`);
         }
       }
     });
 
+    // Log final startup status
+    setTimeout(() => {
+      logger.info('🚀 Server initialization completed');
+      logger.info('📊 Service Status:');
+      logger.info(`   HTTP Server: ${serviceStatus.httpServer ? '✅ Running' : '❌ Failed'}`);
+      logger.info(`   Database: ${serviceStatus.database ? '✅ Connected' : '⚠️  Unavailable'}`);
+      logger.info(`   WebSocket: ${serviceStatus.websocket ? '✅ Active' : '⚠️  Unavailable'}`);
+      logger.info(`   Ollama: ${serviceStatus.ollama ? '✅ Connected' : '⚠️  Checking...'}`);
+      logger.info('🔍 Monitor health at: http://localhost:' + PORT + '/api/health');
+    }, 2000);
+
   } catch (error) {
-    logger.error('Failed to start server:', error);
-    process.exit(1);
+    logger.error('💥 Critical server startup failure:', error);
+    
+    // If we have a critical error and the HTTP server hasn't started, exit
+    if (!serviceStatus.httpServer) {
+      logger.error('🛑 Cannot start HTTP server - exiting');
+      process.exit(1);
+    } else {
+      logger.warn('⚠️  Server running with limited functionality due to startup errors');
+    }
   }
+}
+
+// Expose service status for health checks
+export function getServiceStatus() {
+  return serviceStatus;
 }
 
 start();
 
-// Graceful shutdown
-process.on('SIGTERM', async () => {
-  logger.info('SIGTERM received, shutting down gracefully');
-  await dbService.disconnect();
-  httpServer.close();
-  process.exit(0);
+// Enhanced graceful shutdown
+const gracefulShutdown = async (signal: string) => {
+  logger.info(`📤 ${signal} received, shutting down gracefully...`);
+  
+  try {
+    // Close HTTP server
+    await new Promise<void>((resolve) => {
+      httpServer.close((err) => {
+        if (err) {
+          logger.error('Error closing HTTP server:', err);
+        } else {
+          logger.info('✅ HTTP server closed');
+        }
+        resolve();
+      });
+    });
+
+    // Disconnect database
+    await dbService.disconnect();
+    
+    logger.info('✅ Graceful shutdown completed');
+    process.exit(0);
+  } catch (error) {
+    logger.error('❌ Error during graceful shutdown:', error);
+    process.exit(1);
+  }
+};
+
+// Handle shutdown signals
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+// Handle uncaught exceptions and rejections
+process.on('uncaughtException', (error) => {
+  logger.error('💥 Uncaught Exception:', error);
+  gracefulShutdown('uncaughtException');
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  logger.error('💥 Unhandled Rejection at:', promise, 'reason:', reason);
+  gracefulShutdown('unhandledRejection');
 });
