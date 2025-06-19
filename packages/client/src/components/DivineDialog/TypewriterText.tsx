@@ -7,13 +7,15 @@ interface TypewriterTextProps {
   speed?: number;
   onComplete?: () => void;
   className?: string;
+  isStreaming?: boolean; // NEW: indicates if content is currently being streamed
 }
 
 export function TypewriterText({ 
   content, 
   speed = 20, 
   onComplete,
-  className 
+  className,
+  isStreaming = false, // NEW: for streaming mode
 }: TypewriterTextProps) {
   const [displayedContent, setDisplayedContent] = useState('');
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -27,6 +29,14 @@ export function TypewriterText({
   }, [content]);
 
   useEffect(() => {
+    // For streaming mode, show content immediately with cursor
+    if (isStreaming) {
+      setDisplayedContent(content);
+      setIsTyping(true);
+      return;
+    }
+
+    // Original typewriter behavior for non-streaming content
     if (currentIndex < content.length) {
       const timeout = setTimeout(() => {
         setDisplayedContent(content.slice(0, currentIndex + 1));
@@ -38,7 +48,7 @@ export function TypewriterText({
       setIsTyping(false);
       onComplete?.();
     }
-  }, [currentIndex, content, speed, isTyping, onComplete]);
+  }, [currentIndex, content, speed, isTyping, onComplete, isStreaming]);
 
   return (
     <div className={cn("relative", className)}>
@@ -66,8 +76,8 @@ export function TypewriterText({
       >
         {displayedContent}
       </ReactMarkdown>
-      {isTyping && (
-        <span className="typewriter-cursor" aria-hidden="true">▌</span>
+      {(isTyping || isStreaming) && (
+        <span className="typewriter-cursor animate-pulse" aria-hidden="true">▌</span>
       )}
     </div>
   );
