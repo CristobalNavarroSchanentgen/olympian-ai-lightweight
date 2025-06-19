@@ -2,16 +2,16 @@
 .DEFAULT_GOAL := help
 
 # Colors for output
-CYAN := \033[36m
-GREEN := \033[32m
-YELLOW := \033[33m
-RED := \033[31m
-RESET := \033[0m
+CYAN := \\033[36m
+GREEN := \\033[32m
+YELLOW := \\033[33m
+RED := \\033[31m
+RESET := \\033[0m
 
 help: ## Show this help message
 	@echo "$(CYAN)Olympian AI Lightweight - Available Commands$(RESET)"
 	@echo ""
-	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make $(CYAN)<target>$(RESET)\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  $(CYAN)%-15s$(RESET) %s\n", $$1, $$2 } /^##@/ { printf "\n$(YELLOW)%s$(RESET)\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
+	@awk 'BEGIN {FS = ":.*##"; printf "\\nUsage:\\n  make $(CYAN)<target>$(RESET)\\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  $(CYAN)%-15s$(RESET) %s\\n", $$1, $$2 } /^##@/ { printf "\\n$(YELLOW)%s$(RESET)\\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
 
 ##@ 🚀 Quick Start
 
@@ -174,6 +174,11 @@ status: ## Show status of Docker containers
 	@echo ""
 	@echo "$(CYAN)📊 Same-Host-Existing Container Status:$(RESET)"
 	@docker-compose -f docker-compose.same-host-existing-ollama.yml ps
+
+diagnose: ## Run comprehensive diagnostics for multi-host deployment
+	@echo "$(CYAN)🔍 Running multi-host deployment diagnostics...$(RESET)"
+	@chmod +x scripts/diagnose-multi-host.sh
+	@./scripts/diagnose-multi-host.sh
 
 ##@ 🛠️  Development
 
