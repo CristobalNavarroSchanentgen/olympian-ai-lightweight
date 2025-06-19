@@ -82,8 +82,8 @@ services:
       # CORS settings
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:8080}
       
-      # Memory and performance tuning for vision processing
-      NODE_OPTIONS: "--max-old-space-size=2048 --optimize-for-size"
+      # Memory tuning for vision processing
+      NODE_OPTIONS: "--max-old-space-size=2048"
     volumes:
       - config-data:/config/.olympian-ai-lite
       - logs:/app/logs
