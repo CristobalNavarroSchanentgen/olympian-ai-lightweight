@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useChatStore } from '@/stores/useChatStore';
-import { api } from '@/services/api';
+import { api, StreamingEvent } from '@/services/api';
 import { ChatInput } from './ChatInput';
 import { MessageList } from './MessageList';
 import { ModelSelector } from './ModelSelector';
@@ -15,6 +15,7 @@ export function DivineDialog() {
     messages,
     selectedModel,
     selectedVisionModel,
+    modelCapabilities,
     fetchModels,
     addMessage,
     setCurrentConversation,
@@ -39,6 +40,12 @@ export function DivineDialog() {
 
   const handleNewConversation = () => {
     createConversation();
+  };
+
+  // Helper function to check if current model is basic (no capabilities)
+  const isBasicModel = () => {
+    if (!modelCapabilities) return false;
+    return !modelCapabilities.vision && !modelCapabilities.tools && !modelCapabilities.reasoning;
   };
 
   const handleSendMessage = async (content: string, images?: string[]) => {
@@ -70,35 +77,119 @@ export function DivineDialog() {
     setStreamedContent('');
 
     try {
-      // Send message via REST API with vision model if selected
-      const response = await api.sendMessage({
-        message: content,
-        model: selectedModel,
-        visionModel: selectedVisionModel || undefined,
-        conversationId: currentConversation?._id,
-        images,
-      });
+      // Check if we should use streaming for basic models
+      if (isBasicModel()) {
+        console.log('🚀 Using streaming for basic model:', selectedModel);
+        
+        // Use streaming API for basic models
+        await api.sendMessageStreaming(
+          {
+            message: content,
+            model: selectedModel,
+            visionModel: selectedVisionModel || undefined,
+            conversationId: currentConversation?._id,
+            images,
+          },
+          (event: StreamingEvent) => {
+            console.log('📡 Streaming event:', event.type, event);
+            
+            switch (event.type) {
+              case 'connected':
+                console.log('✅ Stream connected');
+                break;
+                
+              case 'conversation':
+                if (event.conversation && !currentConversation) {
+                  setCurrentConversation(event.conversation);
+                }
+                break;
+                
+              case 'thinking':
+                setIsThinking(event.isThinking || false);
+                break;
+                
+              case 'streaming_start':
+                setIsThinking(false);
+                setIsGenerating(true);
+                setStreamedContent('');
+                break;
+                
+              case 'token':
+                if (event.content) {
+                  setStreamedContent(event.content);
+                }
+                break;
+                
+              case 'streaming_end':
+                setIsGenerating(false);
+                break;
+                
+              case 'complete':
+                if (event.message && event.metadata) {
+                  // Add the complete assistant message to the store
+                  const assistantMessage: Message = {
+                    conversationId: currentConversation?._id || event.conversationId || '',
+                    role: 'assistant',
+                    content: event.message,
+                    metadata: event.metadata,
+                    createdAt: new Date(),
+                  };
+                  addMessage(assistantMessage);
+                }
+                setIsThinking(false);
+                setIsGenerating(false);
+                setStreamedContent('');
+                setHasImages(false);
+                break;
+                
+              case 'error':
+                console.error('❌ Streaming error:', event.error);
+                toast({
+                  title: 'Error',
+                  description: event.error || 'Streaming failed',
+                  variant: 'destructive',
+                });
+                setIsThinking(false);
+                setIsGenerating(false);
+                setStreamedContent('');
+                break;
+            }
+          },
+          modelCapabilities
+        );
+      } else {
+        console.log('🔄 Using traditional API for advanced model:', selectedModel);
+        
+        // Use traditional API for models with capabilities
+        const response = await api.sendMessage({
+          message: content,
+          model: selectedModel,
+          visionModel: selectedVisionModel || undefined,
+          conversationId: currentConversation?._id,
+          images,
+        });
 
-      // If this was a new conversation, update the current conversation
-      if (!currentConversation && response.conversation) {
-        setCurrentConversation(response.conversation);
+        // If this was a new conversation, update the current conversation
+        if (!currentConversation && response.conversation) {
+          setCurrentConversation(response.conversation);
+        }
+
+        // Add the assistant message to the store
+        const assistantMessage: Message = {
+          conversationId: response.conversationId,
+          role: 'assistant',
+          content: response.message,
+          metadata: response.metadata,
+          createdAt: new Date(),
+        };
+        addMessage(assistantMessage);
+
+        // Reset states
+        setIsThinking(false);
+        setIsGenerating(false);
+        setStreamedContent('');
+        setHasImages(false);
       }
-
-      // Add the assistant message to the store
-      const assistantMessage: Message = {
-        conversationId: response.conversationId,
-        role: 'assistant',
-        content: response.message,
-        metadata: response.metadata,
-        createdAt: new Date(),
-      };
-      addMessage(assistantMessage);
-
-      // Reset states
-      setIsThinking(false);
-      setIsGenerating(false);
-      setStreamedContent('');
-      setHasImages(false);
     } catch (error) {
       console.error('Error sending message:', error);
       
@@ -163,8 +254,13 @@ export function DivineDialog() {
             {currentConversation ? currentConversation.title : 'New Conversation'}
           </h3>
 
-          {/* Right side - Model selector */}
-          <div className="flex justify-end">
+          {/* Right side - Model selector with streaming indicator */}
+          <div className="flex items-center gap-2 justify-end">
+            {isBasicModel() && (
+              <div className="text-xs bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 px-2 py-1 rounded">
+                Streaming Enabled
+              </div>
+            )}
             <ModelSelector hasImages={hasImages} />
           </div>
         </div>
