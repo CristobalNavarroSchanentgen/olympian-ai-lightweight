@@ -1,0 +1,18 @@
+--- a/packages/server/src/services/OllamaStreamliner.ts
++++ b/packages/server/src/services/OllamaStreamliner.ts
+@@ -1632,6 +1632,14 @@ export class OllamaStreamliner {
+   }
+ 
+   async listModels(): Promise<string[]> {
++    // Check if we're in custom mode first - bypass API calls completely
++    if (this.deploymentConfig.modelCapability.mode === 'custom') {
++      const customModelNames = customModelCapabilityService.getAvailableModelNames();
++      logger.info(`🔧 Using custom predefined model list (NO API calls): [${customModelNames.join(', ')}]`);
++      logger.info(`📋 Custom mode - returning ${customModelNames.length} predefined models without Ollama connection`);
++      return customModelNames;
++    }
++
++    // Automatic mode - proceed with API call to Ollama
+     const ollamaHost = this.getOllamaHost();
+     
+     try {
