@@ -13,6 +13,20 @@ import {
   ModelCapability,
 } from '@olympian/shared';
 
+interface ProgressiveUpdate {
+  type: 'model_processed' | 'vision_model_found' | 'loading_complete' | 'error' | 'initial_state';
+  model?: string;
+  capability?: ModelCapability;
+  isVisionModel?: boolean;
+  progress?: {
+    current: number;
+    total: number;
+    percentage: number;
+  };
+  state?: any;
+  error?: string;
+}
+
 class ApiService {
   private client: AxiosInstance;
 
@@ -22,8 +36,8 @@ class ApiService {
       headers: {
         'Content-Type': 'application/json',
       },
-      // Default timeout for regular requests
-      timeout: 30000, // 30 seconds
+      // INCREASED DEFAULT TIMEOUT for model capability requests
+      timeout: 60000, // 60 seconds (increased from 30 seconds)
     });
 
     // Add response interceptor for error handling
@@ -166,11 +180,13 @@ class ApiService {
     return { messages: data.data || [], total: data.total };
   }
 
-  // Model API - Fixed to use chat endpoints with correct response format
+  // Model API - UPDATED WITH INCREASED TIMEOUTS AND PROGRESSIVE LOADING SUPPORT
   async getModels(): Promise<string[]> {
-    console.log('🌐 [API] getModels called - making request to /chat/models');
+    console.log('🌐 [API] getModels called - making request to /chat/models with increased timeout');
     try {
-      const response = await this.client.get<{ success: boolean; data: string[]; timestamp: string }>('/chat/models');
+      const response = await this.client.get<{ success: boolean; data: string[]; timestamp: string }>('/chat/models', {
+        timeout: 300000, // 5 minutes for model loading
+      });
       console.log('🌐 [API] getModels raw response:', {
         status: response.status,
         statusText: response.statusText,
@@ -211,9 +227,11 @@ class ApiService {
   }
 
   async getVisionModels(): Promise<string[]> {
-    console.log('🌐 [API] getVisionModels called - making request to /chat/vision-models');
+    console.log('🌐 [API] getVisionModels called - making request to /chat/vision-models with increased timeout');
     try {
-      const response = await this.client.get<{ success: boolean; data: string[]; timestamp: string }>('/chat/vision-models');
+      const response = await this.client.get<{ success: boolean; data: string[]; timestamp: string }>('/chat/vision-models', {
+        timeout: 300000, // 5 minutes for vision model detection
+      });
       console.log('🌐 [API] getVisionModels raw response:', {
         status: response.status,
         statusText: response.statusText,
@@ -255,7 +273,9 @@ class ApiService {
   async getModelCapabilities(model: string): Promise<ModelCapability> {
     console.log('🌐 [API] getModelCapabilities called with model:', model);
     try {
-      const response = await this.client.get<{ success: boolean; data: ModelCapability; timestamp: string }>(`/chat/models/${model}/capabilities`);
+      const response = await this.client.get<{ success: boolean; data: ModelCapability; timestamp: string }>(`/chat/models/${model}/capabilities`, {
+        timeout: 120000, // 2 minutes for individual model capability detection
+      });
       console.log('🌐 [API] getModelCapabilities raw response:', {
         status: response.status,
         statusText: response.statusText,
@@ -287,8 +307,147 @@ class ApiService {
   }
 
   async getAllModelCapabilities(): Promise<ModelCapability[]> {
-    const { data } = await this.client.get<{ capabilities: ModelCapability[] }>('/models/capabilities');
-    return data.capabilities || [];
+    console.log('🌐 [API] getAllModelCapabilities called with increased timeout');
+    try {
+      const { data } = await this.client.get<{ capabilities: ModelCapability[] }>('/models/capabilities', {
+        timeout: 300000, // 5 minutes for all model capabilities
+      });
+      return data.capabilities || [];
+    } catch (error) {
+      console.error('❌ [API] getAllModelCapabilities error:', error);
+      throw error;
+    }
+  }
+
+  // PROGRESSIVE LOADING API - NEW ENDPOINTS FOR ROLLING RELEASE
+  
+  /**
+   * Start progressive model capability loading
+   */
+  async startProgressiveLoading(forceReload = false): Promise<any> {
+    console.log('🌐 [API] startProgressiveLoading called:', { forceReload });
+    try {
+      const { data } = await this.client.post('/progressive/models/capabilities/start', { forceReload }, {
+        timeout: 10000, // Quick start, actual loading happens in background
+      });
+      console.log('✅ [API] startProgressiveLoading response:', data);
+      return data;
+    } catch (error) {
+      console.error('❌ [API] startProgressiveLoading error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create EventSource for progressive loading updates
+   */
+  createProgressiveLoadingStream(onUpdate: (update: ProgressiveUpdate) => void, onError?: (error: Event) => void): EventSource {
+    console.log('🌐 [API] Creating progressive loading EventSource...');
+    
+    const eventSource = new EventSource('/api/progressive/models/capabilities/stream');
+    
+    eventSource.onmessage = (event) => {
+      try {
+        const update: ProgressiveUpdate = JSON.parse(event.data);
+        console.log('📡 [API] Received progressive update:', update.type, update.progress);
+        onUpdate(update);
+      } catch (error) {
+        console.error('❌ [API] Failed to parse progressive update:', error);
+      }
+    };
+    
+    eventSource.onerror = (error) => {
+      console.error('❌ [API] Progressive loading stream error:', error);
+      if (onError) {
+        onError(error);
+      }
+    };
+    
+    eventSource.onopen = () => {
+      console.log('✅ [API] Progressive loading stream connected');
+    };
+    
+    return eventSource;
+  }
+
+  /**
+   * Get current progressive loading state
+   */
+  async getProgressiveLoadingState(): Promise<any> {
+    console.log('🌐 [API] getProgressiveLoadingState called');
+    try {
+      const { data } = await this.client.get('/progressive/models/capabilities/state');
+      return data;
+    } catch (error) {
+      console.error('❌ [API] getProgressiveLoadingState error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get vision models from progressive loader (fast cached access)
+   */
+  async getProgressiveVisionModels(): Promise<string[]> {
+    console.log('🌐 [API] getProgressiveVisionModels called');
+    try {
+      const { data } = await this.client.get<{ success: boolean; data: string[]; cached: boolean; isLoading?: boolean }>('/progressive/models/vision');
+      console.log('✅ [API] getProgressiveVisionModels response:', {
+        modelCount: data.data?.length,
+        cached: data.cached,
+        isLoading: data.isLoading
+      });
+      return data.data || [];
+    } catch (error) {
+      console.error('❌ [API] getProgressiveVisionModels error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get all model capabilities from progressive loader (fast cached access)
+   */
+  async getProgressiveModelCapabilities(): Promise<ModelCapability[]> {
+    console.log('🌐 [API] getProgressiveModelCapabilities called');
+    try {
+      const { data } = await this.client.get<{ success: boolean; data: ModelCapability[]; cached: boolean; isLoading?: boolean }>('/progressive/models/capabilities');
+      console.log('✅ [API] getProgressiveModelCapabilities response:', {
+        capabilityCount: data.data?.length,
+        cached: data.cached,
+        isLoading: data.isLoading
+      });
+      return data.data || [];
+    } catch (error) {
+      console.error('❌ [API] getProgressiveModelCapabilities error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Clear progressive loading cache
+   */
+  async clearProgressiveCache(): Promise<void> {
+    console.log('🌐 [API] clearProgressiveCache called');
+    try {
+      await this.client.delete('/progressive/models/capabilities/cache');
+      console.log('✅ [API] Progressive cache cleared');
+    } catch (error) {
+      console.error('❌ [API] clearProgressiveCache error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get progressive loading statistics
+   */
+  async getProgressiveStats(): Promise<any> {
+    console.log('🌐 [API] getProgressiveStats called');
+    try {
+      const { data } = await this.client.get('/progressive/models/capabilities/stats');
+      return data;
+    } catch (error) {
+      console.error('❌ [API] getProgressiveStats error:', error);
+      throw error;
+    }
   }
 
   // Config API
