@@ -1348,6 +1348,14 @@ export class OllamaStreamliner {
   }
 
   async listModels(): Promise<string[]> {
+    // CRITICAL: In custom mode, return predefined model list WITHOUT any API calls
+    if (this.deploymentConfig.modelCapability.mode === 'custom') {
+      const customModels = customModelCapabilityService.getAvailableModelNames();
+      logger.info(`🔧 Using custom predefined model list (NO API calls): [${customModels.join(', ')}]`);
+      return customModels;
+    }
+
+    // Automatic mode - make API call to list models
     const ollamaHost = this.getOllamaHost();
     
     try {
