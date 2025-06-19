@@ -144,18 +144,16 @@ class ApiService {
       images?: string[];
     },
     onEvent: (event: StreamingEvent) => void,
-    capabilities?: ModelCapability | null
+    capabilities?: ModelCapability | null | undefined
   ): Promise<void> {
     return new Promise((resolve, reject) => {
       // Check if model is basic before attempting to stream
-      if (!this.isBasicModel(capabilities)) {
+      // Handle undefined by treating it as null
+      const normalizedCapabilities = capabilities === undefined ? null : capabilities;
+      if (!this.isBasicModel(normalizedCapabilities)) {
         reject(new Error('Streaming is only available for basic models (models without vision, tools, or reasoning capabilities)'));
         return;
       }
-
-      const eventSource = new EventSource('/api/chat/stream', {
-        // Note: EventSource doesn't support POST directly, so we'll use a different approach
-      });
 
       // For now, let's use fetch with ReadableStream since EventSource doesn't support POST
       this.streamWithFetch(params, onEvent)
