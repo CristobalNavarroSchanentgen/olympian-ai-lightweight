@@ -100,13 +100,13 @@ services:
         reservations:
           memory: 1G
           cpus: '1.0'
-    # Enhanced health check with more resilient timing for multi-host deployments
+    # Optimized health check - lightweight and rational for multi-host deployments
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4000/api/health"]
-      interval: 30s
-      timeout: 15s
-      retries: 6
-      start_period: 120s  # Extended startup time for external service dependencies
+      test: ["CMD", "curl", "-f", "--max-time", "3", "--connect-timeout", "2", "http://localhost:4000/api/health"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 45s
     # Add extra_hosts to allow backend to access host services and custom DNS
     extra_hosts:
       - "host.docker.internal:host-gateway"
