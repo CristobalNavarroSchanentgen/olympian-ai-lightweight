@@ -17,15 +17,25 @@ services:
       BACKEND_HOST: backend
       BACKEND_PORT: 4000
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     networks:
       - olympian-network
+    # Resource limits for frontend
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.5'
+        reservations:
+          memory: 128M
+          cpus: '0.25'
     healthcheck:
-      test: ["CMD", "/healthcheck.sh"]
+      test: ["/healthcheck.sh"]
       interval: 30s
-      timeout: 5s
+      timeout: 10s
       retries: 3
-      start_period: 10s
+      start_period: 15s
     # Add extra_hosts for custom DNS resolution
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -72,17 +82,30 @@ services:
       
       # CORS settings
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:8080}
+      
+      # Memory and performance tuning for vision processing
+      NODE_OPTIONS: "--max-old-space-size=2048 --optimize-for-size"
     volumes:
       - config-data:/config/.olympian-ai-lite
       - logs:/app/logs
     depends_on:
-      - mongodb
+      mongodb:
+        condition: service_healthy
+    # Resource limits for backend (increased for vision processing)
+    deploy:
+      resources:
+        limits:
+          memory: 3G
+          cpus: '2.0'
+        reservations:
+          memory: 1G
+          cpus: '1.0'
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:4000/api/health"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 15s
+      interval: 45s
+      timeout: 10s
+      retries: 5
+      start_period: 90s  # Increased startup time for vision model loading
     # Add extra_hosts to allow backend to access host services and custom DNS
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -99,12 +122,21 @@ services:
       MONGO_INITDB_DATABASE: olympian_ai_lite
     networks:
       - olympian-network
+    # Resource limits for MongoDB
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
+        reservations:
+          memory: 512M
+          cpus: '0.5'
     healthcheck:
       test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
 
   # Example MCP server (optional)
   mcp-filesystem:
@@ -117,12 +149,21 @@ services:
       - mcp-data:/data
     networks:
       - olympian-network
+    # Resource limits for MCP server
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.5'
+        reservations:
+          memory: 128M
+          cpus: '0.25'
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000", "||", "exit", "1"]
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 10s
+      start_period: 15s
 
 volumes:
   config-data:
