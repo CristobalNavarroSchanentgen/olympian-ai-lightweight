@@ -2,7 +2,6 @@ import { Message } from '@olympian/shared';
 import { MessageItem } from './MessageItem';
 import { TypewriterText } from './TypewriterText';
 import { Spinner } from '@/components/ui/spinner';
-import { Bot } from 'lucide-react';
 
 interface MessageListProps {
   messages: Message[];
@@ -20,7 +19,6 @@ export function MessageList({
   if (messages.length === 0 && !isThinking && !isGenerating) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-center">
-        <Bot className="h-12 w-12 text-muted-foreground mb-4" />
         <h3 className="text-lg font-semibold mb-2">Start a conversation</h3>
         <p className="text-sm text-muted-foreground max-w-md">
           Select a model and send a message to begin. You can include images by dragging them into the input area.
@@ -42,9 +40,6 @@ export function MessageList({
       {/* Thinking State */}
       {isThinking && (
         <div className="flex items-start gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground">
-            <Bot className="h-5 w-5" />
-          </div>
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-1">
               <span className="text-sm font-medium">Assistant</span>
@@ -63,9 +58,6 @@ export function MessageList({
       {/* Streaming Content with Typewriter Effect */}
       {(isGenerating || streamedContent) && (
         <div className="flex items-start gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground">
-            <Bot className="h-5 w-5" />
-          </div>
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-1">
               <span className="text-sm font-medium">Assistant</span>
