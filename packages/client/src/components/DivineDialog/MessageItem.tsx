@@ -24,20 +24,23 @@ export function MessageItem({ message, isLatest = false }: MessageItemProps) {
   return (
     <div className={cn('flex flex-col', isUser && 'items-end')}>
       <div className={cn('w-full', isUser && 'flex flex-col items-end')}>
-        <div className="flex items-center gap-2 mb-1">
-          <span className="text-sm font-medium">
+        <div className="flex items-center gap-2 mb-2">
+          <span className={cn(
+            'text-xs font-medium',
+            isUser ? 'text-gray-400' : 'text-gray-300'
+          )}>
             {isUser ? 'You' : 'Assistant'}
           </span>
-          <span className="text-xs text-muted-foreground">
+          <span className="text-xs text-gray-500">
             {format(new Date(message.createdAt), 'HH:mm')}
           </span>
           {message.metadata?.model && (
-            <span className="text-xs text-muted-foreground">
+            <span className="text-xs text-gray-500">
               • {message.metadata.model}
             </span>
           )}
           {message.metadata?.tokens && (
-            <span className="text-xs text-muted-foreground">
+            <span className="text-xs text-gray-500">
               • {message.metadata.tokens} tokens
             </span>
           )}
@@ -45,9 +48,7 @@ export function MessageItem({ message, isLatest = false }: MessageItemProps) {
         
         <div
           className={cn(
-            'rounded-lg p-3',
-            isUser ? 'bg-secondary' : 'bg-muted',
-            isUser && 'max-w-[80%]'
+            isUser ? 'bg-gray-800 rounded-2xl px-4 py-3 max-w-[80%]' : 'w-full'
           )}
         >
           {/* Images */}
@@ -66,7 +67,7 @@ export function MessageItem({ message, isLatest = false }: MessageItemProps) {
           
           {/* Content */}
           {isUser ? (
-            <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+            <p className="text-sm text-white/90">{message.content}</p>
           ) : (
             <>
               {!hasTyped && isLatest ? (
@@ -77,17 +78,17 @@ export function MessageItem({ message, isLatest = false }: MessageItemProps) {
                 />
               ) : (
                 <ReactMarkdown
-                  className="prose prose-sm dark:prose-invert max-w-none"
+                  className="prose prose-invert prose-sm max-w-none prose-p:leading-relaxed prose-pre:bg-gray-800 prose-pre:border prose-pre:border-gray-700"
                   components={{
                     pre: ({ node, ...props }) => (
-                      <pre className="overflow-x-auto rounded-lg bg-background p-3" {...props} />
+                      <pre className="overflow-x-auto rounded-lg bg-gray-800 border border-gray-700 p-3 my-2" {...props} />
                     ),
                     code: ({ node, children, className, ...props }) => {
                       const match = /language-(\w+)/.exec(className || '');
                       const isInline = !match;
                       
                       return isInline ? (
-                        <code className="rounded bg-background px-1 py-0.5" {...props}>
+                        <code className="rounded bg-gray-800 px-1 py-0.5 text-sm" {...props}>
                           {children}
                         </code>
                       ) : (
@@ -106,7 +107,7 @@ export function MessageItem({ message, isLatest = false }: MessageItemProps) {
           
           {/* Error */}
           {message.metadata?.error && (
-            <div className="mt-2 text-sm text-destructive">
+            <div className="mt-2 text-sm text-red-400">
               Error: {message.metadata.error}
             </div>
           )}
