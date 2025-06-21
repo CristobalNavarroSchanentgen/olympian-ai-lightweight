@@ -154,17 +154,21 @@ export function DivineDialog() {
                 
               case 'complete':
                 // Create the final message using accumulated content
+                // Mark as streamed to skip typewriter effect
                 if (event.metadata) {
                   const assistantMessage: Message = {
                     conversationId: currentConversation?._id || event.conversationId || '',
                     role: 'assistant',
                     content: accumulatedContentRef.current || event.message || '',
-                    metadata: event.metadata,
+                    metadata: {
+                      ...event.metadata,
+                      wasStreamed: true, // Mark this message as having been displayed via streaming
+                    },
                     createdAt: new Date(),
                   };
                   
                   // Immediately add the message and clear streaming content
-                  // This avoids any flash of content
+                  // This avoids any flash of content since wasStreamed=true skips typewriter
                   addMessage(assistantMessage);
                   setStreamedContent('');
                   setIsGenerating(false);
@@ -209,11 +213,12 @@ export function DivineDialog() {
         }
 
         // Add the assistant message to the store
+        // Don't mark as streamed since these will use typewriter effect
         const assistantMessage: Message = {
           conversationId: response.conversationId,
           role: 'assistant',
           content: response.message,
-          metadata: response.metadata,
+          metadata: response.metadata, // Keep original metadata without wasStreamed flag
           createdAt: new Date(),
         };
         addMessage(assistantMessage);
