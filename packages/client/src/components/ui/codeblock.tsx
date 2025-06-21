@@ -3,7 +3,6 @@ import { Check, Copy } from 'lucide-react';
 import { Button } from './button';
 import { cn } from '@/lib/utils';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 interface CodeBlockProps {
   children: React.ReactNode;
@@ -28,6 +27,200 @@ const getTextContent = (children: React.ReactNode): string => {
     return getTextContent((children as any).props.children);
   }
   return String(children || '');
+};
+
+// Custom dark theme optimized for the Multi-host deployment styling
+const customDarkTheme = {
+  'code[class*="language-"]': {
+    color: '#f8fafc',
+    background: 'transparent',
+    fontFamily: 'Consolas, Monaco, "Andale Mono", "Ubuntu Mono", monospace',
+    fontSize: '0.875rem',
+    textAlign: 'left' as const,
+    whiteSpace: 'pre' as const,
+    wordSpacing: 'normal',
+    wordBreak: 'normal' as const,
+    wordWrap: 'normal' as const,
+    lineHeight: '1.5',
+    MozTabSize: '4',
+    OTabSize: '4',
+    tabSize: '4',
+    WebkitHyphens: 'none',
+    MozHyphens: 'none',
+    msHyphens: 'none',
+    hyphens: 'none' as const,
+  },
+  'pre[class*="language-"]': {
+    color: '#f8fafc',
+    background: '#1f2937',
+    fontFamily: 'Consolas, Monaco, "Andale Mono", "Ubuntu Mono", monospace',
+    fontSize: '0.875rem',
+    textAlign: 'left' as const,
+    whiteSpace: 'pre' as const,
+    wordSpacing: 'normal',
+    wordBreak: 'normal' as const,
+    wordWrap: 'normal' as const,
+    lineHeight: '1.5',
+    MozTabSize: '4',
+    OTabSize: '4',
+    tabSize: '4',
+    WebkitHyphens: 'none',
+    MozHyphens: 'none',
+    msHyphens: 'none',
+    hyphens: 'none' as const,
+    padding: '0.75rem',
+    margin: '0.5rem 0',
+    overflow: 'auto',
+    borderRadius: '0.5rem',
+    border: '1px solid #374151',
+  },
+  // Token styles - these actually work!
+  comment: {
+    color: '#6b7280',
+    fontStyle: 'italic',
+  },
+  prolog: {
+    color: '#6b7280',
+  },
+  doctype: {
+    color: '#6b7280',
+  },
+  cdata: {
+    color: '#6b7280',
+  },
+  punctuation: {
+    color: '#d1d5db',
+  },
+  '.namespace': {
+    opacity: '0.7',
+  },
+  property: {
+    color: '#10b981',
+  },
+  tag: {
+    color: '#f472b6',
+  },
+  constant: {
+    color: '#a78bfa',
+  },
+  symbol: {
+    color: '#a78bfa',
+  },
+  deleted: {
+    color: '#ef4444',
+  },
+  boolean: {
+    color: '#a78bfa',
+  },
+  number: {
+    color: '#f59e0b',
+  },
+  selector: {
+    color: '#10b981',
+  },
+  'attr-name': {
+    color: '#10b981',
+  },
+  string: {
+    color: '#84cc16',
+  },
+  char: {
+    color: '#84cc16',
+  },
+  builtin: {
+    color: '#06b6d4',
+  },
+  inserted: {
+    color: '#10b981',
+  },
+  operator: {
+    color: '#f472b6',
+  },
+  entity: {
+    color: '#f59e0b',
+    cursor: 'help',
+  },
+  url: {
+    color: '#06b6d4',
+  },
+  '.language-css .token.string': {
+    color: '#84cc16',
+  },
+  '.style .token.string': {
+    color: '#84cc16',
+  },
+  variable: {
+    color: '#f8fafc',
+  },
+  atrule: {
+    color: '#84cc16',
+  },
+  'attr-value': {
+    color: '#84cc16',
+  },
+  function: {
+    color: '#06b6d4',
+  },
+  'class-name': {
+    color: '#fbbf24',
+  },
+  keyword: {
+    color: '#f472b6',
+    fontWeight: 'bold',
+  },
+  regex: {
+    color: '#84cc16',
+  },
+  important: {
+    color: '#ef4444',
+    fontWeight: 'bold',
+  },
+  bold: {
+    fontWeight: 'bold',
+  },
+  italic: {
+    fontStyle: 'italic',
+  },
+  // Language-specific enhancements
+  '.token.function-name': {
+    color: '#06b6d4',
+  },
+  '.token.method': {
+    color: '#06b6d4',
+  },
+  '.token.parameter': {
+    color: '#f8fafc',
+  },
+  '.token.literal-property': {
+    color: '#10b981',
+  },
+  '.token.module': {
+    color: '#a78bfa',
+  },
+  '.token.decorator': {
+    color: '#fbbf24',
+  },
+  '.token.annotation': {
+    color: '#fbbf24',
+  },
+  '.token.generic': {
+    color: '#a78bfa',
+  },
+  '.token.arrow': {
+    color: '#f472b6',
+  },
+  '.token.spread': {
+    color: '#f472b6',
+  },
+  '.token.template-string': {
+    color: '#84cc16',
+  },
+  '.token.interpolation': {
+    color: '#f8fafc',
+  },
+  '.token.interpolation-punctuation': {
+    color: '#f472b6',
+  },
 };
 
 export function CodeBlock({ children, className, language }: CodeBlockProps) {
@@ -59,124 +252,11 @@ export function CodeBlock({ children, className, language }: CodeBlockProps) {
     }
   };
 
-  // Enhanced oneDark theme with better contrast and consistency
-  const enhancedOneDarkStyle = {
-    ...oneDark,
-    'pre[class*="language-"]': {
-      ...oneDark['pre[class*="language-"]'],
-      background: '#1f2937', // gray-800 to match existing theme
-      border: '1px solid #374151', // gray-700 border
-      borderRadius: '0.5rem',
-      margin: '0.5rem 0',
-      padding: '0.75rem',
-      fontSize: '0.875rem',
-      lineHeight: '1.5',
-      overflow: 'auto',
-    },
-    'code[class*="language-"]': {
-      ...oneDark['code[class*="language-"]'],
-      background: 'transparent',
-      fontSize: '0.875rem',
-      lineHeight: '1.5',
-      color: '#f8f8f2', // Ensure base text color is visible
-    },
-    // Enhanced token colors for better visibility
-    'token.comment': {
-      color: '#6272a4',
-      fontStyle: 'italic',
-    },
-    'token.prolog': {
-      color: '#6272a4',
-    },
-    'token.doctype': {
-      color: '#6272a4',
-    },
-    'token.cdata': {
-      color: '#6272a4',
-    },
-    'token.punctuation': {
-      color: '#f8f8f2',
-    },
-    'token.property': {
-      color: '#50fa7b',
-    },
-    'token.tag': {
-      color: '#ff79c6',
-    },
-    'token.constant': {
-      color: '#bd93f9',
-    },
-    'token.symbol': {
-      color: '#bd93f9',
-    },
-    'token.deleted': {
-      color: '#ff5555',
-    },
-    'token.boolean': {
-      color: '#bd93f9',
-    },
-    'token.number': {
-      color: '#bd93f9',
-    },
-    'token.selector': {
-      color: '#50fa7b',
-    },
-    'token.attr-name': {
-      color: '#50fa7b',
-    },
-    'token.string': {
-      color: '#f1fa8c',
-    },
-    'token.char': {
-      color: '#f1fa8c',
-    },
-    'token.builtin': {
-      color: '#8be9fd',
-    },
-    'token.inserted': {
-      color: '#50fa7b',
-    },
-    'token.operator': {
-      color: '#ff79c6',
-    },
-    'token.entity': {
-      color: '#f8f8f2',
-    },
-    'token.url': {
-      color: '#8be9fd',
-    },
-    'token.variable': {
-      color: '#f8f8f2',
-    },
-    'token.atrule': {
-      color: '#f1fa8c',
-    },
-    'token.attr-value': {
-      color: '#f1fa8c',
-    },
-    'token.function': {
-      color: '#8be9fd',
-    },
-    'token.class-name': {
-      color: '#8be9fd',
-    },
-    'token.keyword': {
-      color: '#ff79c6',
-    },
-    'token.regex': {
-      color: '#f1fa8c',
-    },
-    'token.important': {
-      color: '#ff5555',
-      fontWeight: 'bold',
-    },
-  };
-
   return (
     <div className="relative group">
       <SyntaxHighlighter
         language={detectedLanguage}
-        style={enhancedOneDarkStyle}
+        style={customDarkTheme}
         PreTag={({ children, ...props }) => (
           <pre {...props} ref={codeRef}>
             {children}
