@@ -109,11 +109,11 @@ export function ChatInput({ onSendMessage, onCancel, isDisabled, isGenerating }:
               <img
                 src={img.preview}
                 alt={`Upload ${index + 1}`}
-                className="h-20 w-20 object-cover rounded-lg border"
+                className="h-20 w-20 object-cover rounded-lg border border-gray-700"
               />
               <button
                 onClick={() => removeImage(index)}
-                className="absolute -top-2 -right-2 bg-destructive text-destructive-foreground rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
                 aria-label={`Remove image ${index + 1}`}
               >
                 <X className="h-3 w-3" />
@@ -128,8 +128,8 @@ export function ChatInput({ onSendMessage, onCancel, isDisabled, isGenerating }:
         <input {...getInputProps()} />
         
         {isDragActive && (
-          <div className="absolute inset-0 bg-primary/10 border-2 border-dashed border-primary rounded-lg flex items-center justify-center z-10">
-            <p className="text-primary font-medium">Drop images here...</p>
+          <div className="absolute inset-0 bg-blue-500/10 border-2 border-dashed border-blue-500 rounded-lg flex items-center justify-center z-10">
+            <p className="text-blue-400 font-medium">Drop images here...</p>
           </div>
         )}
 
@@ -141,7 +141,7 @@ export function ChatInput({ onSendMessage, onCancel, isDisabled, isGenerating }:
               onChange={(e) => setMessage(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Type your message... (Shift+Enter for new line)"
-              className="resize-none pr-10"
+              className="resize-none pr-10 bg-gray-800 border-gray-700 text-white placeholder:text-gray-500 focus:border-gray-600"
               rows={3}
               disabled={isDisabled}
             />
@@ -162,7 +162,7 @@ export function ChatInput({ onSendMessage, onCancel, isDisabled, isGenerating }:
               type="button"
               variant="ghost"
               size="icon"
-              className="absolute bottom-2 right-2 h-8 w-8"
+              className="absolute bottom-2 right-2 h-8 w-8 text-gray-400 hover:text-white hover:bg-gray-700"
               disabled={isDisabled}
               onClick={handleImageButtonClick}
               aria-label="Upload images"
@@ -175,7 +175,7 @@ export function ChatInput({ onSendMessage, onCancel, isDisabled, isGenerating }:
             <Button
               onClick={onCancel}
               variant="destructive"
-              className="self-end"
+              className="self-end bg-red-600 hover:bg-red-700"
             >
               <X className="mr-2 h-4 w-4" />
               Cancel
@@ -184,7 +184,7 @@ export function ChatInput({ onSendMessage, onCancel, isDisabled, isGenerating }:
             <Button
               onClick={handleSend}
               disabled={isDisabled || (!message.trim() && images.length === 0)}
-              className="self-end"
+              className="self-end bg-blue-600 hover:bg-blue-700 text-white"
             >
               <Send className="mr-2 h-4 w-4" />
               Send
