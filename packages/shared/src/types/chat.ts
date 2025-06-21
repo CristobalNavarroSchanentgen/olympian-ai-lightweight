@@ -23,7 +23,6 @@ export interface MessageMetadata {
   model?: string;
   error?: string;
   visionModel?: string; // Vision model used for image processing
-  wasStreamed?: boolean; // Track if message was displayed via streaming to skip typewriter effect
 }
 
 export interface ChatRequest {
