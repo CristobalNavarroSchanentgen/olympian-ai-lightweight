@@ -82,7 +82,7 @@ export function MessageItem({ message, isLatest = false }: MessageItemProps) {
                 <ReactMarkdown
                   className="prose prose-invert prose-sm max-w-none prose-p:leading-relaxed prose-pre:bg-gray-800 prose-pre:border prose-pre:border-gray-700"
                   components={{
-                    pre: ({ node, children, className, ...props }) => {
+                    pre: ({ node, children, className }) => {
                       // Use our custom CodeBlock component for all pre elements
                       // ReactMarkdown typically renders code blocks as <pre><code>...</code></pre>
                       return (
