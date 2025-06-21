@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { cn } from '@/lib/utils';
 
@@ -7,7 +7,7 @@ interface TypewriterTextProps {
   speed?: number;
   onComplete?: () => void;
   className?: string;
-  isStreaming?: boolean; // NEW: indicates if content is currently being streamed
+  isStreaming?: boolean; // indicates if content is currently being streamed
 }
 
 export function TypewriterText({ 
@@ -15,24 +15,39 @@ export function TypewriterText({
   speed = 20, 
   onComplete,
   className,
-  isStreaming = false, // NEW: for streaming mode
+  isStreaming = false,
 }: TypewriterTextProps) {
   const [displayedContent, setDisplayedContent] = useState('');
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isTyping, setIsTyping] = useState(true);
+  const lastStreamedIndexRef = useRef(0);
 
   useEffect(() => {
-    // Reset when content changes
+    // When content changes in streaming mode, continue from where we left off
+    if (isStreaming) {
+      // During streaming, only show the new content that hasn't been displayed yet
+      const newContent = content.slice(0, lastStreamedIndexRef.current + 1);
+      setDisplayedContent(newContent);
+      
+      // Update our tracking of what's been shown
+      if (content.length > lastStreamedIndexRef.current) {
+        lastStreamedIndexRef.current = content.length;
+      }
+      
+      setIsTyping(true);
+      return;
+    }
+    
+    // For non-streaming mode (final typewriter effect), reset everything
     setDisplayedContent('');
     setCurrentIndex(0);
     setIsTyping(true);
-  }, [content]);
+    lastStreamedIndexRef.current = 0;
+  }, [content, isStreaming]);
 
   useEffect(() => {
-    // For streaming mode, show content immediately with cursor
+    // Skip typewriter effect during streaming - content is already displayed progressively
     if (isStreaming) {
-      setDisplayedContent(content);
-      setIsTyping(true);
       return;
     }
 
@@ -49,6 +64,18 @@ export function TypewriterText({
       onComplete?.();
     }
   }, [currentIndex, content, speed, isTyping, onComplete, isStreaming]);
+
+  // During streaming, progressively show content as it arrives
+  useEffect(() => {
+    if (isStreaming && content.length > displayedContent.length) {
+      // Smoothly add new characters during streaming
+      const timeout = setTimeout(() => {
+        setDisplayedContent(content.slice(0, displayedContent.length + 1));
+      }, 5); // Fast display during streaming
+      
+      return () => clearTimeout(timeout);
+    }
+  }, [content, displayedContent, isStreaming]);
 
   return (
     <div className={cn("relative", className)}>
