@@ -59,32 +59,124 @@ export function CodeBlock({ children, className, language }: CodeBlockProps) {
     }
   };
 
-  // Custom style based on oneDark but with improvements for better readability
-  const customOneDarkStyle = {
+  // Enhanced oneDark theme with better contrast and consistency
+  const enhancedOneDarkStyle = {
     ...oneDark,
     'pre[class*="language-"]': {
       ...oneDark['pre[class*="language-"]'],
-      background: 'rgb(31, 41, 55)', // gray-800 to match existing theme
-      border: '1px solid rgb(55, 65, 81)', // gray-700 border
+      background: '#1f2937', // gray-800 to match existing theme
+      border: '1px solid #374151', // gray-700 border
       borderRadius: '0.5rem',
       margin: '0.5rem 0',
       padding: '0.75rem',
       fontSize: '0.875rem',
       lineHeight: '1.5',
+      overflow: 'auto',
     },
     'code[class*="language-"]': {
       ...oneDark['code[class*="language-"]'],
       background: 'transparent',
       fontSize: '0.875rem',
       lineHeight: '1.5',
-    }
+      color: '#f8f8f2', // Ensure base text color is visible
+    },
+    // Enhanced token colors for better visibility
+    'token.comment': {
+      color: '#6272a4',
+      fontStyle: 'italic',
+    },
+    'token.prolog': {
+      color: '#6272a4',
+    },
+    'token.doctype': {
+      color: '#6272a4',
+    },
+    'token.cdata': {
+      color: '#6272a4',
+    },
+    'token.punctuation': {
+      color: '#f8f8f2',
+    },
+    'token.property': {
+      color: '#50fa7b',
+    },
+    'token.tag': {
+      color: '#ff79c6',
+    },
+    'token.constant': {
+      color: '#bd93f9',
+    },
+    'token.symbol': {
+      color: '#bd93f9',
+    },
+    'token.deleted': {
+      color: '#ff5555',
+    },
+    'token.boolean': {
+      color: '#bd93f9',
+    },
+    'token.number': {
+      color: '#bd93f9',
+    },
+    'token.selector': {
+      color: '#50fa7b',
+    },
+    'token.attr-name': {
+      color: '#50fa7b',
+    },
+    'token.string': {
+      color: '#f1fa8c',
+    },
+    'token.char': {
+      color: '#f1fa8c',
+    },
+    'token.builtin': {
+      color: '#8be9fd',
+    },
+    'token.inserted': {
+      color: '#50fa7b',
+    },
+    'token.operator': {
+      color: '#ff79c6',
+    },
+    'token.entity': {
+      color: '#f8f8f2',
+    },
+    'token.url': {
+      color: '#8be9fd',
+    },
+    'token.variable': {
+      color: '#f8f8f2',
+    },
+    'token.atrule': {
+      color: '#f1fa8c',
+    },
+    'token.attr-value': {
+      color: '#f1fa8c',
+    },
+    'token.function': {
+      color: '#8be9fd',
+    },
+    'token.class-name': {
+      color: '#8be9fd',
+    },
+    'token.keyword': {
+      color: '#ff79c6',
+    },
+    'token.regex': {
+      color: '#f1fa8c',
+    },
+    'token.important': {
+      color: '#ff5555',
+      fontWeight: 'bold',
+    },
   };
 
   return (
     <div className="relative group">
       <SyntaxHighlighter
         language={detectedLanguage}
-        style={customOneDarkStyle}
+        style={enhancedOneDarkStyle}
         PreTag={({ children, ...props }) => (
           <pre {...props} ref={codeRef}>
             {children}
@@ -94,8 +186,8 @@ export function CodeBlock({ children, className, language }: CodeBlockProps) {
         wrapLines={true}
         customStyle={{
           margin: '0.5rem 0',
-          background: 'rgb(31, 41, 55)',
-          border: '1px solid rgb(55, 65, 81)',
+          background: '#1f2937',
+          border: '1px solid #374151',
           borderRadius: '0.5rem',
           padding: '0.75rem',
         }}
