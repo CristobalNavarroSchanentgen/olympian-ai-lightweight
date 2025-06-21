@@ -8,7 +8,7 @@ interface MessageListProps {
   streamedContent: string;
   isThinking: boolean;
   isGenerating: boolean;
-  isHiding?: boolean; // NEW: For fade-out transition
+  isTransitioning?: boolean;
 }
 
 export function MessageList({
@@ -16,7 +16,7 @@ export function MessageList({
   streamedContent,
   isThinking,
   isGenerating,
-  isHiding = false,
+  isTransitioning = false,
 }: MessageListProps) {
   if (messages.length === 0 && !isThinking && !isGenerating) {
     return (
@@ -55,13 +55,9 @@ export function MessageList({
         </div>
       )}
       
-      {/* Streaming Content with Typewriter Effect - With fade-out transition */}
-      {(isGenerating || streamedContent) && (
-        <div 
-          className={`flex flex-col items-center transition-opacity duration-200 ${
-            isHiding ? 'opacity-0' : 'opacity-100'
-          }`}
-        >
+      {/* Streaming Content with Typewriter Effect - Hide during transition */}
+      {(isGenerating || (streamedContent && !isTransitioning)) && (
+        <div className="flex flex-col items-center">
           <div className="w-full max-w-4xl flex flex-col items-center">
             <div className="flex items-center gap-2 mb-2">
               <span className="text-xs font-medium text-gray-300">Assistant</span>
