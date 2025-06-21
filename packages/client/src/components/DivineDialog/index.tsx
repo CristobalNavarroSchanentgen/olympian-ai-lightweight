@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useChatStore } from '@/stores/useChatStore';
-import { api, StreamingEvent } from '@/services/api';
+import { api } from '@/services/api';
 import { ChatInput } from './ChatInput';
 import { MessageList } from './MessageList';
 import { ModelSelector } from './ModelSelector';
@@ -15,7 +15,6 @@ export function DivineDialog() {
     messages,
     selectedModel,
     selectedVisionModel,
-    modelCapabilities,
     fetchModels,
     addMessage,
     setCurrentConversation,
@@ -23,14 +22,8 @@ export function DivineDialog() {
   } = useChatStore();
   
   const [isThinking, setIsThinking] = useState(false);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [streamedContent, setStreamedContent] = useState('');
   const [hasImages, setHasImages] = useState(false);
-  const [isTransitioning, setIsTransitioning] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const abortControllerRef = useRef<AbortController | null>(null);
-  const pendingMessageRef = useRef<Message | null>(null);
-  const accumulatedContentRef = useRef<string>('');
 
   useEffect(() => {
     fetchModels();
@@ -39,32 +32,10 @@ export function DivineDialog() {
   useEffect(() => {
     // Auto-scroll to bottom when new messages arrive
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, streamedContent]);
+  }, [messages]);
 
   const handleNewConversation = () => {
     createConversation();
-  };
-
-  // Helper function to check if current model is basic (no capabilities)
-  // Fixed for subproject 3: Handle null modelCapabilities by defaulting to base model for streaming
-  const isBasicModel = () => {
-    // If modelCapabilities is null (capability detection failed), default to base model
-    // This is the correct behavior for subproject 3 multi-host deployment
-    if (!modelCapabilities) {
-      console.log('🔄 [DivineDialog] modelCapabilities is null, defaulting to basic model for streaming compatibility');
-      return true;
-    }
-    
-    const isBasic = !modelCapabilities.vision && !modelCapabilities.tools && !modelCapabilities.reasoning;
-    console.log('🔍 [DivineDialog] Model capability check:', {
-      model: selectedModel,
-      vision: modelCapabilities.vision,
-      tools: modelCapabilities.tools,
-      reasoning: modelCapabilities.reasoning,
-      isBasic
-    });
-    
-    return isBasic;
   };
 
   const handleSendMessage = async (content: string, images?: string[]) => {
@@ -90,145 +61,37 @@ export function DivineDialog() {
     };
     addMessage(userMessage);
 
-    // Set loading states and reset accumulated content
+    // Set loading state
     setIsThinking(true);
-    setIsGenerating(false);
-    setStreamedContent('');
-    setIsTransitioning(false);
-    pendingMessageRef.current = null;
-    accumulatedContentRef.current = '';
 
     try {
-      // Check if we should use streaming for basic models
-      if (isBasicModel()) {
-        console.log('🚀 Using streaming for basic model:', selectedModel);
-        
-        // Use streaming API for basic models
-        await api.sendMessageStreaming(
-          {
-            message: content,
-            model: selectedModel,
-            visionModel: selectedVisionModel || undefined,
-            conversationId: currentConversation?._id,
-            images,
-          },
-          (event: StreamingEvent) => {
-            console.log('📡 Streaming event:', event.type);
-            
-            switch (event.type) {
-              case 'connected':
-                console.log('✅ Stream connected');
-                break;
-                
-              case 'conversation':
-                if (event.conversation && !currentConversation) {
-                  setCurrentConversation(event.conversation);
-                }
-                break;
-                
-              case 'thinking':
-                setIsThinking(event.isThinking || false);
-                break;
-                
-              case 'streaming_start':
-                setIsThinking(false);
-                setIsGenerating(true);
-                setStreamedContent('');
-                accumulatedContentRef.current = '';
-                setIsTransitioning(false);
-                break;
-                
-              case 'token':
-                if (event.token) {
-                  // Accumulate tokens for the final message
-                  accumulatedContentRef.current += event.token;
-                  // Update streamed content to show real-time streaming
-                  setStreamedContent(accumulatedContentRef.current);
-                }
-                break;
-                
-              case 'streaming_end':
-                // Mark that streaming has ended but keep showing the content
-                setIsGenerating(false);
-                break;
-                
-              case 'complete':
-                // Create the final message using accumulated content
-                // Mark as streamed to skip typewriter effect
-                if (event.metadata) {
-                  const assistantMessage: Message = {
-                    conversationId: currentConversation?._id || event.conversationId || '',
-                    role: 'assistant',
-                    content: accumulatedContentRef.current || event.message || '',
-                    metadata: {
-                      ...event.metadata,
-                      wasStreamed: true, // Mark this message as having been displayed via streaming
-                    },
-                    createdAt: new Date(),
-                  };
-                  
-                  // Immediately add the message and clear streaming content
-                  // This avoids any flash of content since wasStreamed=true skips typewriter
-                  addMessage(assistantMessage);
-                  setStreamedContent('');
-                  setIsGenerating(false);
-                  setIsThinking(false);
-                  setHasImages(false);
-                  accumulatedContentRef.current = '';
-                }
-                break;
-                
-              case 'error':
-                console.error('❌ Streaming error:', event.error);
-                toast({
-                  title: 'Error',
-                  description: event.error || 'Streaming failed',
-                  variant: 'destructive',
-                });
-                setIsThinking(false);
-                setIsGenerating(false);
-                setStreamedContent('');
-                setIsTransitioning(false);
-                accumulatedContentRef.current = '';
-                break;
-            }
-          },
-          modelCapabilities
-        );
-      } else {
-        console.log('🔄 Using traditional API for advanced model:', selectedModel);
-        
-        // Use traditional API for models with capabilities
-        const response = await api.sendMessage({
-          message: content,
-          model: selectedModel,
-          visionModel: selectedVisionModel || undefined,
-          conversationId: currentConversation?._id,
-          images,
-        });
+      // Use traditional API for all models
+      const response = await api.sendMessage({
+        message: content,
+        model: selectedModel,
+        visionModel: selectedVisionModel || undefined,
+        conversationId: currentConversation?._id,
+        images,
+      });
 
-        // If this was a new conversation, update the current conversation
-        if (!currentConversation && response.conversation) {
-          setCurrentConversation(response.conversation);
-        }
-
-        // Add the assistant message to the store
-        // Don't mark as streamed since these will use typewriter effect
-        const assistantMessage: Message = {
-          conversationId: response.conversationId,
-          role: 'assistant',
-          content: response.message,
-          metadata: response.metadata, // Keep original metadata without wasStreamed flag
-          createdAt: new Date(),
-        };
-        addMessage(assistantMessage);
-
-        // Reset states
-        setIsThinking(false);
-        setIsGenerating(false);
-        setStreamedContent('');
-        setHasImages(false);
+      // If this was a new conversation, update the current conversation
+      if (!currentConversation && response.conversation) {
+        setCurrentConversation(response.conversation);
       }
+
+      // Add the assistant message to the store
+      const assistantMessage: Message = {
+        conversationId: response.conversationId,
+        role: 'assistant',
+        content: response.message,
+        metadata: response.metadata,
+        createdAt: new Date(),
+      };
+      addMessage(assistantMessage);
+
+      // Reset states
+      setIsThinking(false);
+      setHasImages(false);
     } catch (error) {
       console.error('Error sending message:', error);
       
@@ -257,23 +120,7 @@ export function DivineDialog() {
       }
       
       setIsThinking(false);
-      setIsGenerating(false);
-      setStreamedContent('');
-      setIsTransitioning(false);
-      accumulatedContentRef.current = '';
     }
-  };
-
-  const handleCancelGeneration = () => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-      abortControllerRef.current = null;
-    }
-    setIsThinking(false);
-    setIsGenerating(false);
-    setStreamedContent('');
-    setIsTransitioning(false);
-    accumulatedContentRef.current = '';
   };
 
   return (
@@ -297,13 +144,8 @@ export function DivineDialog() {
             {currentConversation ? currentConversation.title : 'New Conversation'}
           </h3>
 
-          {/* Right side - Model selector with streaming indicator */}
+          {/* Right side - Model selector */}
           <div className="flex items-center gap-2 justify-end">
-            {isBasicModel() && (
-              <div className="text-xs bg-green-900/30 text-green-400 px-2 py-1 rounded">
-                Streaming Enabled
-              </div>
-            )}
             <ModelSelector hasImages={hasImages} />
           </div>
         </div>
@@ -313,10 +155,10 @@ export function DivineDialog() {
       <div className="flex-1 overflow-y-auto p-4 bg-gray-900">
         <MessageList
           messages={messages}
-          streamedContent={streamedContent}
+          streamedContent=""
           isThinking={isThinking}
-          isGenerating={isGenerating}
-          isTransitioning={isTransitioning}
+          isGenerating={false}
+          isTransitioning={false}
         />
         <div ref={messagesEndRef} />
       </div>
@@ -325,9 +167,9 @@ export function DivineDialog() {
       <div className="border-t border-gray-800 p-4 flex-shrink-0 bg-gray-900/80 backdrop-blur-sm">
         <ChatInput
           onSendMessage={handleSendMessage}
-          onCancel={handleCancelGeneration}
-          isDisabled={isThinking || isGenerating || isTransitioning}
-          isGenerating={isGenerating}
+          onCancel={() => {}}
+          isDisabled={isThinking}
+          isGenerating={false}
         />
       </div>
     </div>
