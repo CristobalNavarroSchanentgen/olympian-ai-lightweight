@@ -8,6 +8,7 @@ interface MessageListProps {
   streamedContent: string;
   isThinking: boolean;
   isGenerating: boolean;
+  isTransitioning?: boolean;
 }
 
 export function MessageList({
@@ -15,6 +16,7 @@ export function MessageList({
   streamedContent,
   isThinking,
   isGenerating,
+  isTransitioning = false,
 }: MessageListProps) {
   if (messages.length === 0 && !isThinking && !isGenerating) {
     return (
@@ -53,8 +55,8 @@ export function MessageList({
         </div>
       )}
       
-      {/* Streaming Content with Typewriter Effect */}
-      {(isGenerating || streamedContent) && (
+      {/* Streaming Content with Typewriter Effect - Only show if not transitioning */}
+      {(isGenerating || streamedContent) && !isTransitioning && (
         <div className="flex flex-col items-center">
           <div className="w-full max-w-4xl flex flex-col items-center">
             <div className="flex items-center gap-2 mb-2">
