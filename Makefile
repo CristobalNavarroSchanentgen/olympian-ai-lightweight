@@ -1,4 +1,4 @@
-.PHONY: help setup build start stop restart logs logs-backend logs-frontend clean install dev test lint auto-build auto-build-same auto-build-same-existing auto-build-multi fix-streaming-rebuild generate-build-args
+.PHONY: help setup build start stop restart logs logs-backend logs-frontend clean install dev test lint auto-build auto-build-same auto-build-same-existing auto-build-multi fix-streaming-rebuild generate-build-args dev-multi up-dev-multi
 .DEFAULT_GOAL := help
 
 # Colors for output
@@ -63,6 +63,11 @@ build-prod-clean: generate-build-args ## Build the application for production (n
 	@echo "$(CYAN)🏗️  Building application for production (clean build)...$(RESET)"
 	@echo "$(YELLOW)Using build args: $(DOCKER_BUILD_ENV)$(RESET)"
 	@env $(DOCKER_BUILD_ENV) docker-compose -f docker-compose.prod.yml build --no-cache
+
+build-dev: generate-build-args ## Build development environment for multi-host with hot reloading
+	@echo "$(CYAN)🏗️  Building development environment for multi-host...$(RESET)"
+	@echo "$(YELLOW)Note: Frontend will use hot reloading, only backend needs building$(RESET)"
+	@env $(DOCKER_BUILD_ENV) docker-compose -f docker-compose.dev.yml build
 
 build-same-host: generate-build-args ## Build for same-host with Ollama container (no cache)
 	@echo "$(CYAN)🏗️  Building for same-host with Ollama container (clean build)...$(RESET)"
@@ -134,6 +139,19 @@ up-prod: ## Start production environment with Docker
 	@echo "$(GREEN)✅ Production environment started!$(RESET)"
 	@echo "$(CYAN)Access the application at: http://localhost:8080$(RESET)"
 
+up-dev-multi: generate-build-args ## Start development environment for multi-host with hot reloading
+	@echo "$(CYAN)🐳 Starting development environment for multi-host...$(RESET)"
+	@echo "$(YELLOW)Frontend will use hot reloading - changes will be reflected immediately!$(RESET)"
+	@env $(DOCKER_BUILD_ENV) docker-compose -f docker-compose.dev.yml up -d
+	@echo "$(GREEN)✅ Development environment started with hot reloading!$(RESET)"
+	@echo "$(CYAN)Access the application at: http://localhost:8080$(RESET)"
+	@echo "$(YELLOW)Frontend dev server: http://localhost:5173$(RESET)"
+	@echo ""
+	@echo "$(CYAN)Tips for development mode:$(RESET)"
+	@echo "  - Frontend changes will hot reload automatically"
+	@echo "  - Backend changes require: $(CYAN)make rebuild-backend$(RESET)"
+	@echo "  - View logs: $(CYAN)make logs-dev$(RESET)"
+
 up-same-host: ## Start same-host environment with Ollama container
 	@echo "$(CYAN)🐳 Starting same-host environment with Ollama container...$(RESET)"
 	@docker-compose -f docker-compose.same-host.yml up -d
@@ -153,6 +171,7 @@ stop: ## Stop Docker containers
 	@echo "$(CYAN)🛑 Stopping containers...$(RESET)"
 	@docker-compose down
 	@docker-compose -f docker-compose.prod.yml down 2>/dev/null || true
+	@docker-compose -f docker-compose.dev.yml down 2>/dev/null || true
 	@docker-compose -f docker-compose.same-host.yml down 2>/dev/null || true
 	@docker-compose -f docker-compose.same-host-existing-ollama.yml down 2>/dev/null || true
 	@echo "$(GREEN)✅ Containers stopped!$(RESET)"
@@ -164,6 +183,12 @@ restart-prod: ## Restart the production environment
 	@docker-compose -f docker-compose.prod.yml down
 	@docker-compose -f docker-compose.prod.yml up -d
 	@echo "$(GREEN)✅ Production environment restarted!$(RESET)"
+
+restart-dev-multi: ## Restart development environment for multi-host
+	@echo "$(CYAN)🔄 Restarting development environment...$(RESET)"
+	@docker-compose -f docker-compose.dev.yml down
+	@make up-dev-multi
+	@echo "$(GREEN)✅ Development environment restarted!$(RESET)"
 
 restart-same-host: ## Restart same-host environment with Ollama container
 	@echo "$(CYAN)🔄 Restarting same-host environment...$(RESET)"
@@ -182,6 +207,9 @@ restart-same-host-existing: ## Restart same-host environment with existing Ollam
 logs: ## Show logs from all services
 	@docker-compose logs -f
 
+logs-dev: ## Show logs from development services
+	@docker-compose -f docker-compose.dev.yml logs -f
+
 logs-backend: ## Show logs from backend service (auto-detects which deployment)
 	@echo "$(CYAN)📋 Showing backend logs...$(RESET)"
 	@if docker ps --format "table {{.Names}}" | grep -q "olympian-backend"; then \
@@ -191,6 +219,8 @@ logs-backend: ## Show logs from backend service (auto-detects which deployment)
 			docker-compose -f docker-compose.same-host-existing-ollama.yml logs -f backend; \
 		elif docker-compose -f docker-compose.prod.yml ps backend >/dev/null 2>&1; then \
 			docker-compose -f docker-compose.prod.yml logs -f backend; \
+		elif docker-compose -f docker-compose.dev.yml ps backend >/dev/null 2>&1; then \
+			docker-compose -f docker-compose.dev.yml logs -f backend; \
 		else \
 			docker logs -f olympian-backend; \
 		fi \
@@ -204,6 +234,14 @@ logs-frontend: ## Show logs from frontend service
 		docker logs -f olympian-frontend; \
 	else \
 		echo "$(RED)❌ Frontend container is not running!$(RESET)"; \
+	fi
+
+logs-frontend-dev: ## Show logs from frontend development service
+	@echo "$(CYAN)📋 Showing frontend development logs...$(RESET)"
+	@if docker ps --format "table {{.Names}}" | grep -q "olympian-frontend-dev"; then \
+		docker logs -f olympian-frontend-dev; \
+	else \
+		echo "$(RED)❌ Frontend development container is not running!$(RESET)"; \
 	fi
 
 logs-mongodb: ## Show logs from MongoDB service
@@ -220,6 +258,9 @@ status: ## Show status of Docker containers
 	@echo ""
 	@echo "$(CYAN)📊 Production Container Status:$(RESET)"
 	@docker-compose -f docker-compose.prod.yml ps
+	@echo ""
+	@echo "$(CYAN)📊 Development Container Status:$(RESET)"
+	@docker-compose -f docker-compose.dev.yml ps
 	@echo ""
 	@echo "$(CYAN)📊 Same-Host Container Status:$(RESET)"
 	@docker-compose -f docker-compose.same-host.yml ps
@@ -243,6 +284,8 @@ dev: ## Start development servers locally (without Docker)
 	@echo "$(CYAN)🛠️  Starting development servers...$(RESET)"
 	@npm run dev
 
+dev-multi: up-dev-multi ## Start multi-host development with hot reloading (alias for up-dev-multi)
+
 install: ## Install dependencies
 	@echo "$(CYAN)📦 Installing dependencies...$(RESET)"
 	@npm install
@@ -262,6 +305,7 @@ clean: ## Clean up Docker resources
 	@echo "$(CYAN)🧹 Cleaning up Docker resources...$(RESET)"
 	@docker-compose down -v --remove-orphans
 	@docker-compose -f docker-compose.prod.yml down -v --remove-orphans 2>/dev/null || true
+	@docker-compose -f docker-compose.dev.yml down -v --remove-orphans 2>/dev/null || true
 	@docker-compose -f docker-compose.same-host.yml down -v --remove-orphans 2>/dev/null || true
 	@docker-compose -f docker-compose.same-host-existing-ollama.yml down -v --remove-orphans 2>/dev/null || true
 	@docker system prune -f
@@ -272,6 +316,7 @@ clean-all: ## Clean up everything including images and volumes
 	@read -p "Are you sure? (y/N): " confirm && [ "$$confirm" = "y" ]
 	@docker-compose down -v --remove-orphans --rmi all
 	@docker-compose -f docker-compose.prod.yml down -v --remove-orphans --rmi all 2>/dev/null || true
+	@docker-compose -f docker-compose.dev.yml down -v --remove-orphans --rmi all 2>/dev/null || true
 	@docker-compose -f docker-compose.same-host.yml down -v --remove-orphans --rmi all 2>/dev/null || true
 	@docker-compose -f docker-compose.same-host-existing-ollama.yml down -v --remove-orphans --rmi all 2>/dev/null || true
 	@docker system prune -af --volumes
@@ -407,9 +452,9 @@ env-docker-multi-interactive: ## Interactive multi-host environment configuratio
 	@echo "$(CYAN)🌐 Setting up CORS for multi-host...$(RESET)"
 	@APP_PORT=$$(grep "^APP_PORT=" .env 2>/dev/null | cut -d'=' -f2 || echo "8080"); \
 	if grep -q "^ALLOWED_ORIGINS=" .env; then \
-		sed -i.bak "s|^ALLOWED_ORIGINS=.*|ALLOWED_ORIGINS=http://localhost:$$APP_PORT|" .env; \
+		sed -i.bak "s|^ALLOWED_ORIGINS=.*|ALLOWED_ORIGINS=http://localhost:$$APP_PORT,http://localhost:5173|" .env; \
 	else \
-		echo "ALLOWED_ORIGINS=http://localhost:$$APP_PORT" >> .env; \
+		echo "ALLOWED_ORIGINS=http://localhost:$$APP_PORT,http://localhost:5173" >> .env; \
 	fi
 	@rm -f .env.bak
 	@echo ""
@@ -419,3 +464,7 @@ env-docker-multi-interactive: ## Interactive multi-host environment configuratio
 	@grep "^MONGODB_URI=" .env | head -1 | sed 's/^/  /'
 	@grep "^MODEL_CAPABILITY_MODE=" .env | sed 's/^/  /'
 	@grep "^ALLOWED_ORIGINS=" .env | sed 's/^/  /'
+	@echo ""
+	@echo "$(CYAN)📚 Development Mode Available:$(RESET)"
+	@echo "  For development with hot reloading, use: $(CYAN)make dev-multi$(RESET)"
+	@echo "  This allows you to edit React components and see changes immediately!"
