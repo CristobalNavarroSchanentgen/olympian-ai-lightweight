@@ -13,20 +13,13 @@ interface MessageItemProps {
 export function MessageItem({ message, isLatest = false }: MessageItemProps) {
   const isUser = message.role === 'user';
   const [hasTyped, setHasTyped] = useState(!isLatest || isUser);
-  
-  // Skip typewriter effect if message was already displayed via streaming
-  const wasStreamed = message.metadata?.wasStreamed || false;
-  const shouldSkipTypewriter = wasStreamed || !isLatest || isUser;
 
-  // Reset typing state when message changes, but skip if was streamed
+  // Reset typing state when message changes
   useEffect(() => {
-    if (isLatest && !isUser && !wasStreamed) {
+    if (isLatest && !isUser) {
       setHasTyped(false);
-    } else if (wasStreamed) {
-      // If message was streamed, mark as already typed to show immediately
-      setHasTyped(true);
     }
-  }, [message._id, isLatest, isUser, wasStreamed]);
+  }, [message._id, isLatest, isUser]);
 
   return (
     <div className="flex flex-col items-center">
@@ -78,7 +71,7 @@ export function MessageItem({ message, isLatest = false }: MessageItemProps) {
             <p className="text-sm text-white/90">{message.content}</p>
           ) : (
             <>
-              {!hasTyped && !shouldSkipTypewriter ? (
+              {!hasTyped ? (
                 <TypewriterText
                   content={message.content}
                   speed={15}
