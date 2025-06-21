@@ -1,0 +1,158 @@
+# Development docker-compose configuration for multi-host deployment
+# This version uses volume mounts for hot reloading during development
+
+services:
+  # Frontend development with hot reloading
+  frontend-dev:
+    image: node:20-alpine
+    container_name: olympian-frontend-dev
+    working_dir: /app
+    command: sh -c "npm install && npm run dev:client"
+    ports:
+      - "${APP_PORT:-8080}:5173"
+    environment:
+      NODE_ENV: development
+      VITE_API_URL: http://localhost:4000
+    volumes:
+      - ./package.json:/app/package.json
+      - ./package-lock.json:/app/package-lock.json
+      - ./tsconfig.json:/app/tsconfig.json
+      - ./packages/client:/app/packages/client
+      - ./packages/shared:/app/packages/shared
+      - /app/node_modules
+      - /app/packages/client/node_modules
+      - /app/packages/shared/node_modules
+    networks:
+      - olympian-network
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:5173"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile
+      args:
+        BUILD_DATE: ${BUILD_DATE:-$(date -u +"%Y-%m-%dT%H:%M:%SZ")}
+        GIT_COMMIT: ${GIT_COMMIT:-$(git rev-parse --short HEAD 2>/dev/null || echo "no-git")}
+        CACHE_BUST: ${CACHE_BUST:-$(date +%s)}
+    container_name: olympian-backend
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    networks:
+      - olympian-network
+    environment:
+      # Deployment mode
+      DEPLOYMENT_MODE: ${DEPLOYMENT_MODE:-multi-host}
+      
+      # Docker environment indicator
+      RUNNING_IN_DOCKER: "true"
+      
+      # External services (configured in .env)
+      MONGODB_URI: ${MONGODB_URI:-mongodb://mongodb:27017/olympian_ai_lite}
+      OLLAMA_HOST: ${OLLAMA_HOST}
+      
+      # Optional: Multiple hosts for load balancing
+      OLLAMA_HOSTS: ${OLLAMA_HOSTS:-}
+      MCP_HOSTS: ${MCP_HOSTS:-}
+      
+      # Service discovery settings
+      SERVICE_DISCOVERY_ENABLED: ${SERVICE_DISCOVERY_ENABLED:-true}
+      SERVICE_DISCOVERY_SUBNET: ${SERVICE_DISCOVERY_SUBNET:-192.168.1.0/24}
+      
+      # Model capability configuration - CRITICAL for subproject 3
+      MODEL_CAPABILITY_MODE: ${MODEL_CAPABILITY_MODE:-automatic}
+      
+      # Application settings
+      NODE_ENV: production
+      PORT: 4000
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      
+      # Security
+      JWT_SECRET: ${JWT_SECRET}
+      SESSION_SECRET: ${SESSION_SECRET}
+      
+      # CORS settings - allow dev server
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:8080,http://localhost:5173}
+      
+      # Memory tuning for vision processing
+      NODE_OPTIONS: "--max-old-space-size=2048"
+    volumes:
+      - config-data:/config/.olympian-ai-lite
+      - logs:/app/logs
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 3G
+          cpus: '2.0'
+        reservations:
+          memory: 1G
+          cpus: '1.0'
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # MongoDB service
+  mongodb:
+    image: mongo:7
+    container_name: olympian-mongodb
+    restart: unless-stopped
+    volumes:
+      - mongodb-data:/data/db
+    environment:
+      MONGO_INITDB_DATABASE: olympian_ai_lite
+    networks:
+      - olympian-network
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
+        reservations:
+          memory: 512M
+          cpus: '0.5'
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # Optional MCP server
+  mcp-filesystem:
+    image: node:20-alpine
+    container_name: olympian-mcp-filesystem
+    restart: unless-stopped
+    working_dir: /app
+    command: npx -y @modelcontextprotocol/server-filesystem /data
+    volumes:
+      - mcp-data:/data
+    networks:
+      - olympian-network
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.5'
+        reservations:
+          memory: 128M
+          cpus: '0.25'
+
+volumes:
+  config-data:
+  logs:
+  mongodb-data:
+  mcp-data:
+
+networks:
+  olympian-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
