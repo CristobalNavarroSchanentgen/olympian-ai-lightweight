@@ -1,4 +1,4 @@
-.PHONY: help setup build start stop restart logs logs-backend logs-frontend clean install dev test lint
+.PHONY: help setup build start stop restart logs logs-backend logs-frontend clean install dev test lint auto-build auto-build-same auto-build-same-existing auto-build-multi
 .DEFAULT_GOAL := help
 
 # Colors for output
@@ -67,6 +67,35 @@ rebuild-backend: ## Rebuild only the backend container (no cache)
 	@docker-compose -f docker-compose.prod.yml build --no-cache backend
 	@docker-compose -f docker-compose.prod.yml up -d backend
 	@echo "$(GREEN)✅ Backend rebuilt and restarted!$(RESET)"
+
+##@ 🎯 Auto-Build with Cache Invalidation
+
+auto-build-same: ## Auto-build same-host deployment with cache invalidation
+	@echo "$(CYAN)🎯 Auto-building same-host deployment with cache invalidation...$(RESET)"
+	@chmod +x scripts/auto-build.sh
+	@./scripts/auto-build.sh same-host
+
+auto-build-same-existing: ## Auto-build same-host-existing deployment with cache invalidation
+	@echo "$(CYAN)🎯 Auto-building same-host-existing deployment with cache invalidation...$(RESET)"
+	@chmod +x scripts/auto-build.sh
+	@./scripts/auto-build.sh same-host-existing
+
+auto-build-multi: ## Auto-build multi-host deployment with cache invalidation
+	@echo "$(CYAN)🎯 Auto-building multi-host deployment with cache invalidation...$(RESET)"
+	@chmod +x scripts/auto-build.sh
+	@./scripts/auto-build.sh multi-host
+
+auto-build: auto-build-multi ## Alias for auto-build-multi (default)
+
+auto-build-no-cache: ## Auto-build with forced cache invalidation (multi-host)
+	@echo "$(CYAN)🎯 Auto-building with forced cache invalidation...$(RESET)"
+	@chmod +x scripts/auto-build.sh
+	@./scripts/auto-build.sh multi-host --no-cache
+
+auto-build-dry-run: ## Show what would be built without building (multi-host)
+	@echo "$(CYAN)🎯 Auto-build dry run...$(RESET)"
+	@chmod +x scripts/auto-build.sh
+	@./scripts/auto-build.sh multi-host --dry-run
 
 ##@ 🐳 Docker Commands
 
