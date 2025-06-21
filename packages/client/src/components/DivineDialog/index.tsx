@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, startTransition } from 'react';
 import { useChatStore } from '@/stores/useChatStore';
 import { api, StreamingEvent } from '@/services/api';
 import { ChatInput } from './ChatInput';
@@ -26,6 +26,7 @@ export function DivineDialog() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [streamedContent, setStreamedContent] = useState('');
   const [hasImages, setHasImages] = useState(false);
+  const [isTransitioning, setIsTransitioning] = useState(false);
   const [pendingMessage, setPendingMessage] = useState<Message | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -39,13 +40,19 @@ export function DivineDialog() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, streamedContent]);
 
-  // Handle pending message after streaming content is cleared
+  // Handle the transition from streaming to final message
   useEffect(() => {
-    if (pendingMessage && streamedContent === '') {
-      addMessage(pendingMessage);
-      setPendingMessage(null);
+    if (isTransitioning && pendingMessage && !streamedContent) {
+      // Use a small delay to ensure the streaming content is fully cleared from the UI
+      const transitionTimeout = setTimeout(() => {
+        addMessage(pendingMessage);
+        setPendingMessage(null);
+        setIsTransitioning(false);
+      }, 16); // One frame delay to ensure clean transition
+      
+      return () => clearTimeout(transitionTimeout);
     }
-  }, [pendingMessage, streamedContent, addMessage]);
+  }, [isTransitioning, pendingMessage, streamedContent, addMessage]);
 
   const handleNewConversation = () => {
     createConversation();
@@ -84,6 +91,7 @@ export function DivineDialog() {
     setIsThinking(true);
     setIsGenerating(false);
     setStreamedContent('');
+    setIsTransitioning(false);
 
     try {
       // Check if we should use streaming for basic models
@@ -121,6 +129,7 @@ export function DivineDialog() {
                 setIsThinking(false);
                 setIsGenerating(true);
                 setStreamedContent('');
+                setIsTransitioning(false);
                 break;
                 
               case 'token':
@@ -135,7 +144,6 @@ export function DivineDialog() {
                 
               case 'complete':
                 if (event.message && event.metadata) {
-                  // Store the message to be added after streaming content is cleared
                   const assistantMessage: Message = {
                     conversationId: currentConversation?._id || event.conversationId || '',
                     role: 'assistant',
@@ -144,13 +152,17 @@ export function DivineDialog() {
                     createdAt: new Date(),
                   };
                   
-                  // Clear streamed content first, then add message via useEffect
-                  setStreamedContent('');
-                  setPendingMessage(assistantMessage);
+                  // Use startTransition to batch the state updates and prevent race conditions
+                  startTransition(() => {
+                    // First, initiate the transition and clear streaming content
+                    setIsTransitioning(true);
+                    setStreamedContent('');
+                    setPendingMessage(assistantMessage);
+                    setIsThinking(false);
+                    setIsGenerating(false);
+                    setHasImages(false);
+                  });
                 }
-                setIsThinking(false);
-                setIsGenerating(false);
-                setHasImages(false);
                 break;
                 
               case 'error':
@@ -163,6 +175,7 @@ export function DivineDialog() {
                 setIsThinking(false);
                 setIsGenerating(false);
                 setStreamedContent('');
+                setIsTransitioning(false);
                 break;
             }
           },
@@ -231,6 +244,7 @@ export function DivineDialog() {
       setIsThinking(false);
       setIsGenerating(false);
       setStreamedContent('');
+      setIsTransitioning(false);
     }
   };
 
@@ -242,6 +256,7 @@ export function DivineDialog() {
     setIsThinking(false);
     setIsGenerating(false);
     setStreamedContent('');
+    setIsTransitioning(false);
   };
 
   return (
@@ -284,6 +299,7 @@ export function DivineDialog() {
           streamedContent={streamedContent}
           isThinking={isThinking}
           isGenerating={isGenerating}
+          isTransitioning={isTransitioning}
         />
         <div ref={messagesEndRef} />
       </div>
