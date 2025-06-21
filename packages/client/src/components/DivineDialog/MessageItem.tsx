@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Message } from '@olympian/shared';
 import { format } from 'date-fns';
-import { User, Bot } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { cn } from '@/lib/utils';
 import { TypewriterText } from './TypewriterText';
@@ -23,17 +22,8 @@ export function MessageItem({ message, isLatest = false }: MessageItemProps) {
   }, [message._id, isLatest, isUser]);
 
   return (
-    <div className={cn('flex items-start gap-3', isUser && 'flex-row-reverse')}>
-      <div
-        className={cn(
-          'flex h-8 w-8 items-center justify-center rounded-full',
-          isUser ? 'bg-secondary' : 'bg-primary text-primary-foreground'
-        )}
-      >
-        {isUser ? <User className="h-5 w-5" /> : <Bot className="h-5 w-5" />}
-      </div>
-      
-      <div className={cn('flex-1', isUser && 'flex flex-col items-end')}>
+    <div className={cn('flex flex-col', isUser && 'items-end')}>
+      <div className={cn('w-full', isUser && 'flex flex-col items-end')}>
         <div className="flex items-center gap-2 mb-1">
           <span className="text-sm font-medium">
             {isUser ? 'You' : 'Assistant'}
