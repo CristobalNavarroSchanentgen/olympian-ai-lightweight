@@ -30,6 +30,7 @@ export function DivineDialog() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const pendingMessageRef = useRef<Message | null>(null);
+  const accumulatedContentRef = useRef<string>('');
 
   useEffect(() => {
     fetchModels();
@@ -89,12 +90,13 @@ export function DivineDialog() {
     };
     addMessage(userMessage);
 
-    // Set loading states
+    // Set loading states and reset accumulated content
     setIsThinking(true);
     setIsGenerating(false);
     setStreamedContent('');
     setIsTransitioning(false);
     pendingMessageRef.current = null;
+    accumulatedContentRef.current = '';
 
     try {
       // Check if we should use streaming for basic models
@@ -132,48 +134,43 @@ export function DivineDialog() {
                 setIsThinking(false);
                 setIsGenerating(true);
                 setStreamedContent('');
+                accumulatedContentRef.current = '';
                 setIsTransitioning(false);
                 break;
                 
               case 'token':
-                if (event.content) {
-                  setStreamedContent(event.content);
+                if (event.token) {
+                  // Accumulate tokens for the final message
+                  accumulatedContentRef.current += event.token;
+                  // Update streamed content to show real-time streaming
+                  setStreamedContent(accumulatedContentRef.current);
                 }
                 break;
                 
               case 'streaming_end':
-                // Don't set isGenerating to false here - wait for complete event
+                // Mark that streaming has ended but keep showing the content
+                setIsGenerating(false);
                 break;
                 
               case 'complete':
-                if (event.message && event.metadata) {
+                // Create the final message using accumulated content
+                if (event.metadata) {
                   const assistantMessage: Message = {
                     conversationId: currentConversation?._id || event.conversationId || '',
                     role: 'assistant',
-                    content: event.message,
+                    content: accumulatedContentRef.current || event.message || '',
                     metadata: event.metadata,
                     createdAt: new Date(),
                   };
                   
-                  // Store the message to add after transition
-                  pendingMessageRef.current = assistantMessage;
-                  
-                  // Start transition immediately
-                  setIsTransitioning(true);
+                  // Immediately add the message and clear streaming content
+                  // This avoids any flash of content
+                  addMessage(assistantMessage);
+                  setStreamedContent('');
                   setIsGenerating(false);
                   setIsThinking(false);
                   setHasImages(false);
-                  
-                  // Clear streamed content and add final message after a minimal delay
-                  // This prevents any flash of complete content
-                  setTimeout(() => {
-                    setStreamedContent('');
-                    if (pendingMessageRef.current) {
-                      addMessage(pendingMessageRef.current);
-                      pendingMessageRef.current = null;
-                    }
-                    setIsTransitioning(false);
-                  }, 50); // Minimal delay to ensure smooth transition
+                  accumulatedContentRef.current = '';
                 }
                 break;
                 
@@ -188,6 +185,7 @@ export function DivineDialog() {
                 setIsGenerating(false);
                 setStreamedContent('');
                 setIsTransitioning(false);
+                accumulatedContentRef.current = '';
                 break;
             }
           },
@@ -257,6 +255,7 @@ export function DivineDialog() {
       setIsGenerating(false);
       setStreamedContent('');
       setIsTransitioning(false);
+      accumulatedContentRef.current = '';
     }
   };
 
@@ -269,6 +268,7 @@ export function DivineDialog() {
     setIsGenerating(false);
     setStreamedContent('');
     setIsTransitioning(false);
+    accumulatedContentRef.current = '';
   };
 
   return (
