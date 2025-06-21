@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Check, Copy } from 'lucide-react';
 import { Button } from './button';
 import { cn } from '@/lib/utils';
@@ -11,11 +11,10 @@ interface CodeBlockProps {
 
 export function CodeBlock({ children, className, language }: CodeBlockProps) {
   const [isCopied, setIsCopied] = useState(false);
+  const codeRef = useRef<HTMLElement>(null);
 
   const copyToClipboard = async () => {
-    // Extract text content from the code element
-    const codeElement = document.querySelector('.code-block-content');
-    const textContent = codeElement?.textContent || '';
+    const textContent = codeRef.current?.textContent || '';
     
     try {
       await navigator.clipboard.writeText(textContent);
@@ -41,7 +40,7 @@ export function CodeBlock({ children, className, language }: CodeBlockProps) {
         "overflow-x-auto rounded-lg bg-gray-800 border border-gray-700 p-3 my-2",
         className
       )}>
-        <code className={cn("code-block-content", className)}>
+        <code ref={codeRef} className={className}>
           {children}
         </code>
       </pre>
