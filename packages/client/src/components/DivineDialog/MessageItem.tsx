@@ -82,31 +82,13 @@ export function MessageItem({ message, isLatest = false }: MessageItemProps) {
                 <ReactMarkdown
                   className="prose prose-invert prose-sm max-w-none prose-p:leading-relaxed prose-pre:bg-gray-800 prose-pre:border prose-pre:border-gray-700"
                   components={{
-                    pre: ({ node, children, ...props }) => {
-                      // Check if this pre contains a code element
-                      const codeChild = Array.isArray(children) 
-                        ? children.find(child => 
-                            typeof child === 'object' && 
-                            child !== null && 
-                            'type' in child && 
-                            child.type === 'code'
-                          )
-                        : null;
-                      
-                      if (codeChild) {
-                        // Use our custom CodeBlock component for code blocks
-                        return (
-                          <CodeBlock className={props.className}>
-                            {children}
-                          </CodeBlock>
-                        );
-                      }
-                      
-                      // Fallback to regular pre for other content
+                    pre: ({ node, children, className, ...props }) => {
+                      // Use our custom CodeBlock component for all pre elements
+                      // ReactMarkdown typically renders code blocks as <pre><code>...</code></pre>
                       return (
-                        <pre className="overflow-x-auto rounded-lg bg-gray-800 border border-gray-700 p-3 my-2" {...props}>
+                        <CodeBlock className={className}>
                           {children}
-                        </pre>
+                        </CodeBlock>
                       );
                     },
                     code: ({ node, children, className, ...props }) => {
@@ -118,6 +100,7 @@ export function MessageItem({ message, isLatest = false }: MessageItemProps) {
                           {children}
                         </code>
                       ) : (
+                        // For code blocks, let the parent pre element handle the rendering
                         <code className={className} {...props}>
                           {children}
                         </code>
