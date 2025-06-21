@@ -2,7 +2,16 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 
-# Copy package files
+# Build arguments for cache busting
+ARG BUILD_DATE
+ARG GIT_COMMIT
+ARG CACHE_BUST
+
+# Label the image with build info
+LABEL build_date=${BUILD_DATE}
+LABEL git_commit=${GIT_COMMIT}
+
+# Copy package files first (for better caching when only deps change)
 COPY package*.json ./
 COPY packages/shared/package*.json ./packages/shared/
 COPY packages/client/package*.json ./packages/client/
@@ -10,26 +19,51 @@ COPY packages/client/package*.json ./packages/client/
 # Install dependencies
 RUN npm install
 
-# Copy source files
+# Copy configuration files
 COPY tsconfig.json ./
+
+# Cache bust point - this will invalidate cache when source files change
+RUN echo "Build Date: ${BUILD_DATE}" > /tmp/build_info && \
+    echo "Git Commit: ${GIT_COMMIT}" >> /tmp/build_info && \
+    echo "Cache Bust: ${CACHE_BUST}" >> /tmp/build_info && \
+    cat /tmp/build_info
+
+# Copy source files (this layer will be rebuilt when source changes)
 COPY packages/shared ./packages/shared
 COPY packages/client ./packages/client
 
 # Build shared package first
 RUN npm run build:shared
 
-# Build client and verify output
+# Build client with enhanced verification
 RUN npm run build:client && \
+    echo "=== Build Info ===" && \
+    cat /tmp/build_info && \
     echo "=== Verifying build output ===" && \
     ls -la packages/client/dist/ && \
     echo "=== Content of built index.html ===" && \
-    head -5 packages/client/dist/index.html
+    head -5 packages/client/dist/index.html && \
+    echo "=== Checking for MessageItem without icons ===" && \
+    if find packages/client/dist -name "*.js" -exec grep -l "User.*Bot.*lucide" {} \; | head -1; then \
+        echo "WARNING: Found potential icon references in built files"; \
+    else \
+        echo "✓ No icon references found in built files"; \
+    fi
 
 # Production stage
 FROM nginx:alpine
 
-# Install curl for health checks
-RUN apk add --no-cache curl
+# Install curl and other utilities for health checks and debugging
+RUN apk add --no-cache curl grep
+
+# Build arguments for production stage
+ARG BUILD_DATE
+ARG GIT_COMMIT
+
+# Label the production image
+LABEL build_date=${BUILD_DATE}
+LABEL git_commit=${GIT_COMMIT}
+LABEL description="Olympian AI Lightweight Frontend"
 
 # Remove ALL default nginx files and configurations
 RUN rm -rf /etc/nginx/conf.d/* && \
@@ -49,13 +83,22 @@ RUN chmod +x /docker-entrypoint.sh
 # Copy built frontend files from the correct location
 COPY --from=builder /app/packages/client/dist /usr/share/nginx/html
 
-# Verify deployment
+# Copy build info for debugging
+COPY --from=builder /tmp/build_info /usr/share/nginx/html/build_info.txt
+
+# Verify deployment with enhanced checks
 RUN echo "=== Final verification ===" && \
+    echo "Build Date: ${BUILD_DATE}" && \
+    echo "Git Commit: ${GIT_COMMIT}" && \
+    echo "" && \
     echo "Nginx config:" && \
     head -10 /etc/nginx/nginx.conf && \
     echo "" && \
     echo "Static files:" && \
     ls -la /usr/share/nginx/html/ && \
+    echo "" && \
+    echo "Build info:" && \
+    cat /usr/share/nginx/html/build_info.txt && \
     echo "" && \
     echo "Index.html check:" && \
     if [ -f /usr/share/nginx/html/index.html ]; then \
@@ -66,9 +109,16 @@ RUN echo "=== Final verification ===" && \
         fi; \
     else \
         echo "ERROR: index.html missing!" && exit 1; \
+    fi && \
+    echo "" && \
+    echo "Icon reference check:" && \
+    if find /usr/share/nginx/html -name "*.js" -exec grep -l "User.*Bot.*lucide\|lucide.*User.*Bot" {} \; 2>/dev/null | head -1; then \
+        echo "WARNING: Found potential icon references in built files"; \
+    else \
+        echo "✓ No problematic icon references found"; \
     fi
 
-# Health check
+# Health check with build info
 RUN echo '#!/bin/sh\ncurl -sf http://localhost/ || exit 1' > /healthcheck.sh && chmod +x /healthcheck.sh
 
 EXPOSE 80
