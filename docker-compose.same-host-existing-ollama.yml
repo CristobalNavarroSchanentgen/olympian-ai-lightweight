@@ -8,6 +8,10 @@ services:
     build:
       context: .
       dockerfile: docker/frontend/Dockerfile
+      args:
+        BUILD_DATE: ${BUILD_DATE:-}
+        GIT_COMMIT: ${GIT_COMMIT:-}
+        CACHE_BUST: ${CACHE_BUST:-}
     container_name: olympian-frontend
     restart: unless-stopped
     ports:
