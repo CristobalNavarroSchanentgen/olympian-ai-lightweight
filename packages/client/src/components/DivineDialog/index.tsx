@@ -135,10 +135,15 @@ export function DivineDialog() {
                     createdAt: new Date(),
                   };
                   addMessage(assistantMessage);
+                  
+                  // Add a small delay before clearing streamed content
+                  // This prevents the brief glimpse of content before typewriter effect
+                  setTimeout(() => {
+                    setStreamedContent('');
+                  }, 50);
                 }
                 setIsThinking(false);
                 setIsGenerating(false);
-                setStreamedContent('');
                 setHasImages(false);
                 break;
                 
