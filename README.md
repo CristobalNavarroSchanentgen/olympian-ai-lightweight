@@ -13,6 +13,17 @@ A minimalist MCP client application focused on seamless Ollama integration with 
 - **Ollama Streamliner**: Intelligent request handling based on model capabilities
 - **Automatic Nginx Configuration**: Zero-config nginx setup with environment-based routing
 
+## What's New: Development Mode with Hot Reloading 🔥
+
+The latest version includes a development mode for multi-host deployment that provides hot reloading for React components:
+
+- **🚀 Hot Reloading**: Edit React components and see changes instantly
+- **📦 Volume Mounts**: Source files mounted directly into containers
+- **🔧 Automatic Cache Busting**: Production builds always reflect latest changes
+- **💡 Smart Build System**: Detects source file changes automatically
+
+**📚 Documentation**: [Docker Build Caching Guide](docs/DOCKER_BUILD_CACHING.md) - Complete guide to development workflow
+
 ## What's New: Vision Capabilities 🎨
 
 The latest version includes comprehensive vision support for processing images with AI models:
@@ -105,6 +116,15 @@ make quick-docker-same-existing
 make quick-docker-multi
 ```
 
+#### Option D: Development Mode with Hot Reloading (NEW!)
+
+```bash
+# For multi-host development with hot reloading
+make dev-multi
+
+# This provides instant updates for React component changes!
+```
+
 ## 🎯 Key Make Commands
 
 ### Quick Start Commands
@@ -113,6 +133,7 @@ make quick-dev                    # Development setup + start
 make quick-docker-dev             # Docker dev setup + start
 make quick-docker-same            # Production same-host with Ollama
 make quick-docker-same-existing   # Production with existing Ollama
+make dev-multi                    # Development mode with hot reloading (NEW!)
 ```
 
 ### Docker Operations
@@ -123,6 +144,8 @@ make docker-same-existing         # Deploy with existing Ollama
 make docker-multi                 # Deploy multi-host setup
 make docker-down                  # Stop all containers
 make docker-restart               # Restart containers
+make rebuild-frontend             # Rebuild only frontend (NEW!)
+make rebuild-backend              # Rebuild only backend (NEW!)
 ```
 
 ### Nginx Management
@@ -138,6 +161,7 @@ make health-check-dev             # Check dev services
 make show-status                  # Show container status
 make logs-frontend                # View frontend/nginx logs
 make logs-backend                 # View backend logs
+make logs-frontend-dev            # View frontend dev server logs (NEW!)
 ```
 
 ### Utilities
@@ -195,6 +219,7 @@ make apply-secrets                # Generate new secrets
 ### Development
 ```bash
 make dev                          # Start development servers
+make dev-multi                    # Start multi-host dev with hot reloading
 make build                        # Build all packages
 make test                         # Run tests
 make lint                         # Run linter
@@ -234,6 +259,7 @@ make db-restore                   # Restore MongoDB
    - Development: http://localhost:3000 (frontend) + http://localhost:4000 (backend)
    - Docker Dev: http://localhost:3000
    - Production: http://localhost:8080 (or your configured APP_PORT)
+   - Dev Mode: http://localhost:8080 (app) + http://localhost:5173 (Vite dev server)
 
 2. **Auto-discover connections**: The app automatically scans for Ollama, MCP servers, and MongoDB
 
@@ -332,6 +358,7 @@ All deployments are handled through make commands:
 ```bash
 make quick-dev                    # Local development
 make quick-docker-dev             # Docker development
+make dev-multi                    # Multi-host dev with hot reloading (NEW!)
 ```
 
 ### 🐳 Production Same-Host
@@ -369,6 +396,14 @@ make docker-restart
 # Full reset (careful!)
 make reset-all
 ```
+
+### Development Mode Issues
+
+See the comprehensive [Docker Build Caching Guide](docs/DOCKER_BUILD_CACHING.md) for:
+- How to use development mode effectively
+- Troubleshooting hot reloading issues
+- Understanding the build cache system
+- Best practices for development workflow
 
 ### Nginx Issues
 ```bash
@@ -436,6 +471,7 @@ curl -X POST http://localhost:8080/api/chat/conversations/{conversationId}/clear
 olympian-ai-lightweight/
 ├── Makefile                      # 🎯 All commands (use this!)
 ├── docker-compose.yml            # Development Docker setup
+├── docker-compose.dev.yml        # 🔥 Development mode with hot reloading
 ├── docker-compose.*.yml          # Various deployment configs
 ├── packages/
 │   ├── client/                   # React frontend
@@ -456,8 +492,10 @@ olympian-ai-lightweight/
 │   ├── CHAT_MEMORY.md                      # Chat memory documentation
 │   ├── VISION_CAPABILITIES.md              # Vision features user guide
 │   ├── VISION_DETECTION_TECHNICAL.md       # 🔬 Technical implementation details
-│   └── MULTI_HOST_VISION_TROUBLESHOOTING.md # 🔍 Multi-host vision fixes
+│   ├── MULTI_HOST_VISION_TROUBLESHOOTING.md # 🔍 Multi-host vision fixes
+│   └── DOCKER_BUILD_CACHING.md             # 🔥 Docker caching & dev guide
 └── scripts/                      # Helper scripts
+    └── generate-build-args.sh    # 🔧 Auto cache-busting script
 ```
 
 ## Security Features
@@ -466,7 +504,7 @@ olympian-ai-lightweight/
 - **🛡️ Configuration Validation** - Nginx config tested before starting
 - **📊 Security Status** - `make show-env` shows security status
 - **🔄 Secret Rotation** - `make apply-secrets` for new secrets
-- **🚫 Git Protection** - `.env` is gitignored
+- **🚫 Git Protection** - `.env` and `.env.build` are gitignored
 
 ## Documentation
 
@@ -477,6 +515,7 @@ olympian-ai-lightweight/
 - [Vision Capabilities (User Guide)](docs/VISION_CAPABILITIES.md)
 - [Vision Detection Technical](docs/VISION_DETECTION_TECHNICAL.md) - Technical deep dive
 - [Multi-Host Vision Troubleshooting](docs/MULTI_HOST_VISION_TROUBLESHOOTING.md) - Fix vision issues
+- [Docker Build Caching Guide](docs/DOCKER_BUILD_CACHING.md) - Development workflow & caching
 - [Docker Deployment Guide](docker/README.md)
 - [Contributing Guide](CONTRIBUTING.md)
 
