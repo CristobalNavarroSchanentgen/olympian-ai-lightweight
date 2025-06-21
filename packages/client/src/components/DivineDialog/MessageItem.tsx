@@ -4,6 +4,7 @@ import { format } from 'date-fns';
 import ReactMarkdown from 'react-markdown';
 import { cn } from '@/lib/utils';
 import { TypewriterText } from './TypewriterText';
+import { CodeBlock } from '../ui/codeblock';
 
 interface MessageItemProps {
   message: Message;
@@ -81,9 +82,33 @@ export function MessageItem({ message, isLatest = false }: MessageItemProps) {
                 <ReactMarkdown
                   className="prose prose-invert prose-sm max-w-none prose-p:leading-relaxed prose-pre:bg-gray-800 prose-pre:border prose-pre:border-gray-700"
                   components={{
-                    pre: ({ node, ...props }) => (
-                      <pre className="overflow-x-auto rounded-lg bg-gray-800 border border-gray-700 p-3 my-2" {...props} />
-                    ),
+                    pre: ({ node, children, ...props }) => {
+                      // Check if this pre contains a code element
+                      const codeChild = Array.isArray(children) 
+                        ? children.find(child => 
+                            typeof child === 'object' && 
+                            child !== null && 
+                            'type' in child && 
+                            child.type === 'code'
+                          )
+                        : null;
+                      
+                      if (codeChild) {
+                        // Use our custom CodeBlock component for code blocks
+                        return (
+                          <CodeBlock className={props.className}>
+                            {children}
+                          </CodeBlock>
+                        );
+                      }
+                      
+                      // Fallback to regular pre for other content
+                      return (
+                        <pre className="overflow-x-auto rounded-lg bg-gray-800 border border-gray-700 p-3 my-2" {...props}>
+                          {children}
+                        </pre>
+                      );
+                    },
                     code: ({ node, children, className, ...props }) => {
                       const match = /language-(\w+)/.exec(className || '');
                       const isInline = !match;
