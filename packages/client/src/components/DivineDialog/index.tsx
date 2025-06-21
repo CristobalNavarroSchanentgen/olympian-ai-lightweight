@@ -26,6 +26,7 @@ export function DivineDialog() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [streamedContent, setStreamedContent] = useState('');
   const [hasImages, setHasImages] = useState(false);
+  const [pendingMessage, setPendingMessage] = useState<Message | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -37,6 +38,14 @@ export function DivineDialog() {
     // Auto-scroll to bottom when new messages arrive
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, streamedContent]);
+
+  // Handle pending message after streaming content is cleared
+  useEffect(() => {
+    if (pendingMessage && streamedContent === '') {
+      addMessage(pendingMessage);
+      setPendingMessage(null);
+    }
+  }, [pendingMessage, streamedContent, addMessage]);
 
   const handleNewConversation = () => {
     createConversation();
@@ -126,7 +135,7 @@ export function DivineDialog() {
                 
               case 'complete':
                 if (event.message && event.metadata) {
-                  // Add the complete assistant message to the store
+                  // Store the message to be added after streaming content is cleared
                   const assistantMessage: Message = {
                     conversationId: currentConversation?._id || event.conversationId || '',
                     role: 'assistant',
@@ -134,13 +143,10 @@ export function DivineDialog() {
                     metadata: event.metadata,
                     createdAt: new Date(),
                   };
-                  addMessage(assistantMessage);
                   
-                  // Add a small delay before clearing streamed content
-                  // This prevents the brief glimpse of content before typewriter effect
-                  setTimeout(() => {
-                    setStreamedContent('');
-                  }, 50);
+                  // Clear streamed content first, then add message via useEffect
+                  setStreamedContent('');
+                  setPendingMessage(assistantMessage);
                 }
                 setIsThinking(false);
                 setIsGenerating(false);
