@@ -59,9 +59,25 @@ export function DivineDialog() {
   };
 
   // Helper function to check if current model is basic (no capabilities)
+  // Fixed for subproject 3: Handle null modelCapabilities by defaulting to base model for streaming
   const isBasicModel = () => {
-    if (!modelCapabilities) return false;
-    return !modelCapabilities.vision && !modelCapabilities.tools && !modelCapabilities.reasoning;
+    // If modelCapabilities is null (capability detection failed), default to base model
+    // This is the correct behavior for subproject 3 multi-host deployment
+    if (!modelCapabilities) {
+      console.log('🔄 [DivineDialog] modelCapabilities is null, defaulting to basic model for streaming compatibility');
+      return true;
+    }
+    
+    const isBasic = !modelCapabilities.vision && !modelCapabilities.tools && !modelCapabilities.reasoning;
+    console.log('🔍 [DivineDialog] Model capability check:', {
+      model: selectedModel,
+      vision: modelCapabilities.vision,
+      tools: modelCapabilities.tools,
+      reasoning: modelCapabilities.reasoning,
+      isBasic
+    });
+    
+    return isBasic;
   };
 
   const handleSendMessage = async (content: string, images?: string[]) => {
