@@ -1,4 +1,4 @@
-.PHONY: help setup build start stop restart logs logs-backend logs-frontend clean install dev test lint auto-build auto-build-same auto-build-same-existing auto-build-multi
+.PHONY: help setup build start stop restart logs logs-backend logs-frontend clean install dev test lint auto-build auto-build-same auto-build-same-existing auto-build-multi fix-streaming-rebuild
 .DEFAULT_GOAL := help
 
 # Colors for output
@@ -67,6 +67,11 @@ rebuild-backend: ## Rebuild only the backend container (no cache)
 	@docker-compose -f docker-compose.prod.yml build --no-cache backend
 	@docker-compose -f docker-compose.prod.yml up -d backend
 	@echo "$(GREEN)✅ Backend rebuilt and restarted!$(RESET)"
+
+fix-streaming-rebuild: ## Fix base model streaming issue and rebuild containers
+	@echo "$(CYAN)🔧 Fixing streaming issue and rebuilding containers...$(RESET)"
+	@chmod +x scripts/fix-streaming-rebuild.sh
+	@./scripts/fix-streaming-rebuild.sh
 
 ##@ 🎯 Auto-Build with Cache Invalidation
 
