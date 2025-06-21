@@ -39,8 +39,8 @@ export function MessageList({
       
       {/* Thinking State */}
       {isThinking && (
-        <div className="flex items-start gap-3">
-          <div className="flex-1">
+        <div className="flex flex-col items-center">
+          <div className="w-full max-w-4xl flex flex-col items-center">
             <div className="flex items-center gap-2 mb-2">
               <span className="text-xs font-medium text-gray-300">Assistant</span>
               <span className="text-xs text-gray-500">thinking...</span>
@@ -55,27 +55,29 @@ export function MessageList({
       
       {/* Streaming Content with Typewriter Effect */}
       {(isGenerating || streamedContent) && (
-        <div className="flex items-start gap-3">
-          <div className="flex-1">
+        <div className="flex flex-col items-center">
+          <div className="w-full max-w-4xl flex flex-col items-center">
             <div className="flex items-center gap-2 mb-2">
               <span className="text-xs font-medium text-gray-300">Assistant</span>
               <span className="text-xs text-gray-500">
                 {isGenerating ? 'streaming...' : 'typing...'}
               </span>
             </div>
-            {streamedContent ? (
-              <TypewriterText
-                content={streamedContent}
-                speed={5} // Faster speed for streaming (5ms per character)
-                isStreaming={isGenerating} // Pass streaming state
-                className="prose prose-invert prose-sm max-w-none prose-p:leading-relaxed"
-              />
-            ) : (
-              <div className="flex items-center gap-2 text-sm text-gray-400">
-                <Spinner size="sm" />
-                <span>Generating response...</span>
-              </div>
-            )}
+            <div className="w-full max-w-3xl">
+              {streamedContent ? (
+                <TypewriterText
+                  content={streamedContent}
+                  speed={5} // Faster speed for streaming (5ms per character)
+                  isStreaming={isGenerating} // Pass streaming state
+                  className="prose prose-invert prose-sm max-w-none prose-p:leading-relaxed"
+                />
+              ) : (
+                <div className="flex items-center gap-2 text-sm text-gray-400">
+                  <Spinner size="sm" />
+                  <span>Generating response...</span>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
