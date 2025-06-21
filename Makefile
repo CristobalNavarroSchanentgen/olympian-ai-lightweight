@@ -1,4 +1,4 @@
-.PHONY: help setup build start stop restart logs logs-backend logs-frontend clean install dev test lint auto-build auto-build-same auto-build-same-existing auto-build-multi fix-streaming-rebuild generate-build-args dev-multi up-dev-multi
+.PHONY: help setup build start stop restart logs logs-backend logs-frontend clean install dev test lint auto-build auto-build-same auto-build-same-existing auto-build-multi fix-streaming-rebuild generate-build-args dev-multi up-dev-multi clean-build-multi ultra-clean-multi build-prod-ultra-clean
 .DEFAULT_GOAL := help
 
 # Colors for output
@@ -39,7 +39,7 @@ setup: ## Install dependencies and create .env from template
 
 quick-docker-same: build-same-host up-same-host ## Quick setup for same-host Docker deployment with Ollama container (forces clean rebuild)
 
-quick-docker-multi: env-docker-multi-interactive build-prod-clean up-prod ## Quick setup for multi-host Docker deployment (forces clean rebuild)
+quick-docker-multi: env-docker-multi-interactive build-prod-ultra-clean up-prod ## Quick setup for multi-host Docker deployment (forces ultra-clean rebuild to prevent layer corruption)
 
 quick-docker-same-existing: build-same-host-existing up-same-host-existing ## Quick setup for same-host Docker deployment with existing Ollama (forces clean rebuild)
 
@@ -63,6 +63,13 @@ build-prod-clean: generate-build-args ## Build the application for production (n
 	@echo "$(CYAN)🏗️  Building application for production (clean build)...$(RESET)"
 	@echo "$(YELLOW)Using build args: $(DOCKER_BUILD_ENV)$(RESET)"
 	@env $(DOCKER_BUILD_ENV) docker-compose -f docker-compose.prod.yml build --no-cache
+
+build-prod-ultra-clean: clean-build-multi generate-build-args ## Ultra-clean build for multi-host deployment (prevents Docker layer corruption)
+	@echo "$(CYAN)🔧 Ultra-clean build for multi-host deployment...$(RESET)"
+	@echo "$(YELLOW)This build removes all cached layers and forces complete rebuild$(RESET)"
+	@echo "$(YELLOW)Using build args: $(DOCKER_BUILD_ENV)$(RESET)"
+	@env $(DOCKER_BUILD_ENV) docker-compose -f docker-compose.prod.yml build --no-cache --pull
+	@echo "$(GREEN)✅ Ultra-clean build completed - Docker layer corruption prevented!$(RESET)"
 
 build-dev: generate-build-args ## Build development environment for multi-host with hot reloading
 	@echo "$(CYAN)🏗️  Building development environment for multi-host...$(RESET)"
@@ -310,6 +317,22 @@ clean: ## Clean up Docker resources
 	@docker-compose -f docker-compose.same-host-existing-ollama.yml down -v --remove-orphans 2>/dev/null || true
 	@docker system prune -f
 	@echo "$(GREEN)✅ Cleanup complete!$(RESET)"
+
+clean-build-multi: ## Ultra-clean for multi-host deployment (removes all cached layers and build artifacts)
+	@echo "$(CYAN)🧹 Ultra-clean for multi-host deployment...$(RESET)"
+	@echo "$(YELLOW)⚠️  This will remove Docker images, build cache, and intermediate containers for multi-host deployment$(RESET)"
+	@docker-compose -f docker-compose.prod.yml down -v --remove-orphans 2>/dev/null || true
+	@echo "$(CYAN)Removing multi-host specific images...$(RESET)"
+	@docker images | grep -E "(olympian|multi|prod)" | awk '{print $$3}' | xargs -r docker rmi -f 2>/dev/null || true
+	@echo "$(CYAN)Cleaning build cache...$(RESET)"
+	@docker builder prune -af 2>/dev/null || true
+	@echo "$(CYAN)Removing intermediate containers...$(RESET)"
+	@docker container prune -f 2>/dev/null || true
+	@echo "$(CYAN)Cleaning build artifacts...$(RESET)"
+	@rm -f .env.build 2>/dev/null || true
+	@echo "$(GREEN)✅ Ultra-clean for multi-host deployment complete!$(RESET)"
+
+ultra-clean-multi: clean-build-multi ## Alias for clean-build-multi - prevents Docker layer corruption
 
 clean-all: ## Clean up everything including images and volumes
 	@echo "$(RED)⚠️  This will remove ALL Docker images and volumes!$(RESET)"
