@@ -2,22 +2,57 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 
-# Copy workspace files
+# Build arguments for cache busting
+ARG BUILD_DATE
+ARG GIT_COMMIT
+ARG CACHE_BUST
+
+# Label the image with build info
+LABEL build_date=${BUILD_DATE}
+LABEL git_commit=${GIT_COMMIT}
+
+# Copy package files first (for better caching when only deps change)
 COPY package*.json ./
-COPY tsconfig.json ./
-COPY packages/shared ./packages/shared
-COPY packages/server ./packages/server
+COPY packages/shared/package*.json ./packages/shared/
+COPY packages/server/package*.json ./packages/server/
 
 # Install dependencies
 RUN npm install --workspace=packages/shared --workspace=packages/server
 
-# Build
-RUN npm run build:shared
-RUN npm run build:server
+# Copy configuration files
+COPY tsconfig.json ./
+
+# Cache bust point - this will invalidate cache when source files change
+RUN echo "Build Date: ${BUILD_DATE}" > /tmp/build_info && \
+    echo "Git Commit: ${GIT_COMMIT}" >> /tmp/build_info && \
+    echo "Cache Bust: ${CACHE_BUST}" >> /tmp/build_info && \
+    cat /tmp/build_info
+
+# Copy source files (this layer will be rebuilt when source changes)
+COPY packages/shared ./packages/shared
+COPY packages/server ./packages/server
+
+# Build with enhanced verification
+RUN npm run build:shared && \
+    npm run build:server && \
+    echo "=== Backend Build Info ===" && \
+    cat /tmp/build_info && \
+    echo "=== Verifying build output ===" && \
+    ls -la packages/server/dist/ packages/shared/dist/ && \
+    echo "✓ Backend build completed successfully"
 
 # Production stage
 FROM node:20-alpine
 WORKDIR /app
+
+# Build arguments for production stage
+ARG BUILD_DATE
+ARG GIT_COMMIT
+
+# Label the production image
+LABEL build_date=${BUILD_DATE}
+LABEL git_commit=${GIT_COMMIT}
+LABEL description="Olympian AI Lightweight Backend"
 
 # Install curl for debugging (keeping for manual health checks if needed)
 RUN apk add --no-cache curl
@@ -27,12 +62,32 @@ COPY package*.json ./
 COPY packages/server/package*.json ./packages/server/
 RUN npm install --production --workspace=packages/server
 
-# Copy built files
+# Copy built files from build stage
 COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
 COPY --from=builder /app/packages/server/dist ./packages/server/dist
 
+# Copy build info for debugging
+COPY --from=builder /tmp/build_info /app/build_info.txt
+
 # Create config directory
 RUN mkdir -p /config/.olympian-ai-lite
+
+# Verify deployment with enhanced checks
+RUN echo "=== Final Backend Verification ===" && \
+    echo "Build Date: ${BUILD_DATE}" && \
+    echo "Git Commit: ${GIT_COMMIT}" && \
+    echo "" && \
+    echo "Built files:" && \
+    ls -la packages/server/dist/ packages/shared/dist/ && \
+    echo "" && \
+    echo "Build info:" && \
+    cat /app/build_info.txt && \
+    echo "" && \
+    if [ -f packages/server/dist/index.js ]; then \
+        echo "✓ Backend build confirmed"; \
+    else \
+        echo "ERROR: Backend build missing!" && exit 1; \
+    fi
 
 # Environment configuration for different deployment scenarios
 # These can be overridden at runtime
