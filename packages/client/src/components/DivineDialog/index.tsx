@@ -26,10 +26,10 @@ export function DivineDialog() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [streamedContent, setStreamedContent] = useState('');
   const [hasImages, setHasImages] = useState(false);
-  const [isHiding, setIsHiding] = useState(false); // NEW: For smooth transition
-  const [pendingMessage, setPendingMessage] = useState<Message | null>(null);
+  const [isTransitioning, setIsTransitioning] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const pendingMessageRef = useRef<Message | null>(null);
 
   useEffect(() => {
     fetchModels();
@@ -39,23 +39,6 @@ export function DivineDialog() {
     // Auto-scroll to bottom when new messages arrive
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, streamedContent]);
-
-  // Handle the smooth transition from streaming to final message
-  useEffect(() => {
-    if (isHiding && pendingMessage) {
-      // Wait for the fade-out animation to complete
-      const hideTimeout = setTimeout(() => {
-        // Clear the streamed content
-        setStreamedContent('');
-        // Add the final message
-        addMessage(pendingMessage);
-        setPendingMessage(null);
-        setIsHiding(false);
-      }, 200); // Match the CSS transition duration
-      
-      return () => clearTimeout(hideTimeout);
-    }
-  }, [isHiding, pendingMessage, addMessage]);
 
   const handleNewConversation = () => {
     createConversation();
@@ -110,8 +93,8 @@ export function DivineDialog() {
     setIsThinking(true);
     setIsGenerating(false);
     setStreamedContent('');
-    setIsHiding(false);
-    setPendingMessage(null);
+    setIsTransitioning(false);
+    pendingMessageRef.current = null;
 
     try {
       // Check if we should use streaming for basic models
@@ -128,7 +111,7 @@ export function DivineDialog() {
             images,
           },
           (event: StreamingEvent) => {
-            console.log('📡 Streaming event:', event.type, event);
+            console.log('📡 Streaming event:', event.type);
             
             switch (event.type) {
               case 'connected':
@@ -149,7 +132,7 @@ export function DivineDialog() {
                 setIsThinking(false);
                 setIsGenerating(true);
                 setStreamedContent('');
-                setIsHiding(false);
+                setIsTransitioning(false);
                 break;
                 
               case 'token':
@@ -159,7 +142,7 @@ export function DivineDialog() {
                 break;
                 
               case 'streaming_end':
-                setIsGenerating(false);
+                // Don't set isGenerating to false here - wait for complete event
                 break;
                 
               case 'complete':
@@ -172,14 +155,25 @@ export function DivineDialog() {
                     createdAt: new Date(),
                   };
                   
-                  // Start the smooth transition
+                  // Store the message to add after transition
+                  pendingMessageRef.current = assistantMessage;
+                  
+                  // Start transition immediately
+                  setIsTransitioning(true);
                   setIsGenerating(false);
                   setIsThinking(false);
                   setHasImages(false);
                   
-                  // Set pending message and trigger hiding animation
-                  setPendingMessage(assistantMessage);
-                  setIsHiding(true); // This will trigger the fade-out
+                  // Clear streamed content and add final message after a minimal delay
+                  // This prevents any flash of complete content
+                  setTimeout(() => {
+                    setStreamedContent('');
+                    if (pendingMessageRef.current) {
+                      addMessage(pendingMessageRef.current);
+                      pendingMessageRef.current = null;
+                    }
+                    setIsTransitioning(false);
+                  }, 50); // Minimal delay to ensure smooth transition
                 }
                 break;
                 
@@ -193,7 +187,7 @@ export function DivineDialog() {
                 setIsThinking(false);
                 setIsGenerating(false);
                 setStreamedContent('');
-                setIsHiding(false);
+                setIsTransitioning(false);
                 break;
             }
           },
@@ -262,7 +256,7 @@ export function DivineDialog() {
       setIsThinking(false);
       setIsGenerating(false);
       setStreamedContent('');
-      setIsHiding(false);
+      setIsTransitioning(false);
     }
   };
 
@@ -274,7 +268,7 @@ export function DivineDialog() {
     setIsThinking(false);
     setIsGenerating(false);
     setStreamedContent('');
-    setIsHiding(false);
+    setIsTransitioning(false);
   };
 
   return (
@@ -317,7 +311,7 @@ export function DivineDialog() {
           streamedContent={streamedContent}
           isThinking={isThinking}
           isGenerating={isGenerating}
-          isHiding={isHiding}
+          isTransitioning={isTransitioning}
         />
         <div ref={messagesEndRef} />
       </div>
@@ -327,7 +321,7 @@ export function DivineDialog() {
         <ChatInput
           onSendMessage={handleSendMessage}
           onCancel={handleCancelGeneration}
-          isDisabled={isThinking || isGenerating}
+          isDisabled={isThinking || isGenerating || isTransitioning}
           isGenerating={isGenerating}
         />
       </div>
