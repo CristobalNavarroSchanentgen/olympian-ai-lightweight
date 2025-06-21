@@ -150,17 +150,8 @@ router.post('/stream', async (req, res, next) => {
         conversationId: convId 
       })}\n\n`);
 
-      // Save user message BEFORE processing to ensure it's in history
-      const userMessage: MessageDoc = {
-        conversationId: convId,
-        role: 'user' as const,
-        content: message,
-        images,
-        createdAt: new Date(),
-      };
-      await db.messages.insertOne(userMessage as any);
-
-      // Process the request with conversation history
+      // Process the request WITHOUT saving the user message first
+      // This prevents duplicate messages in the conversation history
       const processedRequest = await streamliner.processRequest({
         content: message,
         model,
@@ -194,6 +185,17 @@ router.post('/stream', async (req, res, next) => {
       // Send streaming end
       res.write(`data: ${JSON.stringify({ type: 'streaming_end' })}\n\n`);
 
+      // NOW save both messages AFTER the response is generated
+      // This ensures the conversation history is correct for the next request
+      const userMessage: MessageDoc = {
+        conversationId: convId,
+        role: 'user' as const,
+        content: message,
+        images,
+        createdAt: new Date(),
+      };
+      await db.messages.insertOne(userMessage as any);
+
       // Save assistant message
       const assistantMessage: MessageDoc = {
         conversationId: convId,
@@ -222,7 +224,8 @@ router.post('/stream', async (req, res, next) => {
       res.write(`data: ${JSON.stringify({ 
         type: 'complete',
         message: assistantContent,
-        metadata: assistantMessage.metadata 
+        metadata: assistantMessage.metadata,
+        conversationId: convId 
       })}\n\n`);
 
     } catch (streamError) {
@@ -281,17 +284,7 @@ router.post('/send', async (req, res, next) => {
       });
     }
 
-    // Save user message BEFORE processing to ensure it's in history
-    const userMessage: MessageDoc = {
-      conversationId: convId,
-      role: 'user' as const,
-      content: message,
-      images,
-      createdAt: new Date(),
-    };
-    await db.messages.insertOne(userMessage as any);
-
-    // Process the request with conversation history
+    // Process the request WITHOUT saving the user message first
     const processedRequest = await streamliner.processRequest({
       content: message,
       model,
@@ -309,6 +302,16 @@ router.post('/send', async (req, res, next) => {
       assistantContent += token;
       tokenCount++;
     });
+
+    // Save both messages AFTER generating the response
+    const userMessage: MessageDoc = {
+      conversationId: convId,
+      role: 'user' as const,
+      content: message,
+      images,
+      createdAt: new Date(),
+    };
+    await db.messages.insertOne(userMessage as any);
 
     // Save assistant message
     const assistantMessage: MessageDoc = {
