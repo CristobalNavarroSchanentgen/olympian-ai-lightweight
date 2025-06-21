@@ -2,6 +2,8 @@ import { useState, useRef } from 'react';
 import { Check, Copy } from 'lucide-react';
 import { Button } from './button';
 import { cn } from '@/lib/utils';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 interface CodeBlockProps {
   children: React.ReactNode;
@@ -9,12 +11,35 @@ interface CodeBlockProps {
   language?: string;
 }
 
-export function CodeBlock({ children, className, language: _language }: CodeBlockProps) {
+// Extract language from className (e.g., "language-javascript" -> "javascript")
+const extractLanguage = (className?: string): string => {
+  if (!className) return 'text';
+  const match = className.match(/language-(\w+)/);
+  return match ? match[1] : 'text';
+};
+
+// Get the text content from children
+const getTextContent = (children: React.ReactNode): string => {
+  if (typeof children === 'string') return children;
+  if (Array.isArray(children)) {
+    return children.map(child => getTextContent(child)).join('');
+  }
+  if (children && typeof children === 'object' && 'props' in children) {
+    return getTextContent((children as any).props.children);
+  }
+  return String(children || '');
+};
+
+export function CodeBlock({ children, className, language }: CodeBlockProps) {
   const [isCopied, setIsCopied] = useState(false);
   const codeRef = useRef<HTMLElement>(null);
+  
+  // Extract language from className or use provided language
+  const detectedLanguage = language || extractLanguage(className);
+  const codeContent = getTextContent(children);
 
   const copyToClipboard = async () => {
-    const textContent = codeRef.current?.textContent || '';
+    const textContent = codeRef.current?.textContent || codeContent;
     
     try {
       await navigator.clipboard.writeText(textContent);
@@ -34,16 +59,49 @@ export function CodeBlock({ children, className, language: _language }: CodeBloc
     }
   };
 
+  // Custom style based on oneDark but with improvements for better readability
+  const customOneDarkStyle = {
+    ...oneDark,
+    'pre[class*="language-"]': {
+      ...oneDark['pre[class*="language-"]'],
+      background: 'rgb(31, 41, 55)', // gray-800 to match existing theme
+      border: '1px solid rgb(55, 65, 81)', // gray-700 border
+      borderRadius: '0.5rem',
+      margin: '0.5rem 0',
+      padding: '0.75rem',
+      fontSize: '0.875rem',
+      lineHeight: '1.5',
+    },
+    'code[class*="language-"]': {
+      ...oneDark['code[class*="language-"]'],
+      background: 'transparent',
+      fontSize: '0.875rem',
+      lineHeight: '1.5',
+    }
+  };
+
   return (
     <div className="relative group">
-      <pre className={cn(
-        "overflow-x-auto rounded-lg bg-gray-800 border border-gray-700 p-3 my-2",
-        className
-      )}>
-        <code ref={codeRef} className={className}>
-          {children}
-        </code>
-      </pre>
+      <SyntaxHighlighter
+        language={detectedLanguage}
+        style={customOneDarkStyle}
+        PreTag={({ children, ...props }) => (
+          <pre {...props} ref={codeRef}>
+            {children}
+          </pre>
+        )}
+        showLineNumbers={false}
+        wrapLines={true}
+        customStyle={{
+          margin: '0.5rem 0',
+          background: 'rgb(31, 41, 55)',
+          border: '1px solid rgb(55, 65, 81)',
+          borderRadius: '0.5rem',
+          padding: '0.75rem',
+        }}
+      >
+        {codeContent}
+      </SyntaxHighlighter>
       
       {/* Copy button positioned in the bottom right */}
       <Button
