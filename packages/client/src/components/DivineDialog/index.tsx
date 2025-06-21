@@ -234,30 +234,30 @@ export function DivineDialog() {
   };
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col bg-gray-900">
       {/* Header */}
-      <div className="border-b px-4 py-2 flex-shrink-0 bg-background">
+      <div className="border-b border-gray-800 px-4 py-2 flex-shrink-0 bg-gray-900/80 backdrop-blur-sm">
         <div className="flex items-center justify-between">
           {/* Left side - New button */}
           <Button
             variant="ghost"
             size="sm"
             onClick={handleNewConversation}
-            className="flex items-center gap-2"
+            className="flex items-center gap-2 text-gray-300 hover:text-white hover:bg-gray-800"
           >
             <Plus className="h-4 w-4" />
             New
           </Button>
 
           {/* Center - Conversation title */}
-          <h3 className="text-lg font-semibold text-center flex-1">
+          <h3 className="text-lg font-semibold text-center flex-1 text-white">
             {currentConversation ? currentConversation.title : 'New Conversation'}
           </h3>
 
           {/* Right side - Model selector with streaming indicator */}
           <div className="flex items-center gap-2 justify-end">
             {isBasicModel() && (
-              <div className="text-xs bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 px-2 py-1 rounded">
+              <div className="text-xs bg-green-900/30 text-green-400 px-2 py-1 rounded">
                 Streaming Enabled
               </div>
             )}
@@ -267,7 +267,7 @@ export function DivineDialog() {
       </div>
 
       {/* Messages - This takes all available space */}
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex-1 overflow-y-auto p-4 bg-gray-900">
         <MessageList
           messages={messages}
           streamedContent={streamedContent}
@@ -278,7 +278,7 @@ export function DivineDialog() {
       </div>
 
       {/* Input - Fixed at bottom */}
-      <div className="border-t p-4 flex-shrink-0 bg-background">
+      <div className="border-t border-gray-800 p-4 flex-shrink-0 bg-gray-900/80 backdrop-blur-sm">
         <ChatInput
           onSendMessage={handleSendMessage}
           onCancel={handleCancelGeneration}
