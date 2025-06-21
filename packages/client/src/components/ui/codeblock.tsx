@@ -9,7 +9,7 @@ interface CodeBlockProps {
   language?: string;
 }
 
-export function CodeBlock({ children, className, language }: CodeBlockProps) {
+export function CodeBlock({ children, className, language: _language }: CodeBlockProps) {
   const [isCopied, setIsCopied] = useState(false);
   const codeRef = useRef<HTMLElement>(null);
 
