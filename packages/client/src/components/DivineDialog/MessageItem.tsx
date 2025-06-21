@@ -22,8 +22,8 @@ export function MessageItem({ message, isLatest = false }: MessageItemProps) {
   }, [message._id, isLatest, isUser]);
 
   return (
-    <div className={cn('flex flex-col', isUser && 'items-end')}>
-      <div className={cn('w-full', isUser && 'flex flex-col items-end')}>
+    <div className="flex flex-col items-center">
+      <div className="w-full max-w-4xl flex flex-col items-center">
         <div className="flex items-center gap-2 mb-2">
           <span className={cn(
             'text-xs font-medium',
@@ -48,7 +48,8 @@ export function MessageItem({ message, isLatest = false }: MessageItemProps) {
         
         <div
           className={cn(
-            isUser ? 'bg-gray-800 rounded-2xl px-4 py-3 max-w-[80%]' : 'w-full'
+            'w-full max-w-3xl',
+            isUser ? 'bg-gray-800 rounded-2xl px-4 py-3' : ''
           )}
         >
           {/* Images */}
