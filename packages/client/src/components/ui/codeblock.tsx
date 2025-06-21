@@ -3,6 +3,7 @@ import { Check, Copy } from 'lucide-react';
 import { Button } from './button';
 import { cn } from '@/lib/utils';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import type { CSSProperties } from 'react';
 
 interface CodeBlockProps {
   children: React.ReactNode;
@@ -29,18 +30,27 @@ const getTextContent = (children: React.ReactNode): string => {
   return String(children || '');
 };
 
+// Type for vendor-prefixed CSS properties
+interface VendorPrefixedCSSProperties extends CSSProperties {
+  MozTabSize?: string | number;
+  OTabSize?: string | number;
+  WebkitHyphens?: 'none' | 'manual' | 'auto';
+  MozHyphens?: 'none' | 'manual' | 'auto';
+  msHyphens?: 'none' | 'manual' | 'auto';
+}
+
 // Custom dark theme optimized for the Multi-host deployment styling
-const customDarkTheme = {
+const customDarkTheme: { [key: string]: VendorPrefixedCSSProperties } = {
   'code[class*="language-"]': {
     color: '#f8fafc',
     background: 'transparent',
     fontFamily: 'Consolas, Monaco, "Andale Mono", "Ubuntu Mono", monospace',
     fontSize: '0.875rem',
-    textAlign: 'left' as const,
-    whiteSpace: 'pre' as const,
+    textAlign: 'left',
+    whiteSpace: 'pre',
     wordSpacing: 'normal',
-    wordBreak: 'normal' as const,
-    wordWrap: 'normal' as const,
+    wordBreak: 'normal',
+    wordWrap: 'normal',
     lineHeight: '1.5',
     MozTabSize: '4',
     OTabSize: '4',
@@ -48,18 +58,18 @@ const customDarkTheme = {
     WebkitHyphens: 'none',
     MozHyphens: 'none',
     msHyphens: 'none',
-    hyphens: 'none' as const,
+    hyphens: 'none',
   },
   'pre[class*="language-"]': {
     color: '#f8fafc',
     background: '#1f2937',
     fontFamily: 'Consolas, Monaco, "Andale Mono", "Ubuntu Mono", monospace',
     fontSize: '0.875rem',
-    textAlign: 'left' as const,
-    whiteSpace: 'pre' as const,
+    textAlign: 'left',
+    whiteSpace: 'pre',
     wordSpacing: 'normal',
-    wordBreak: 'normal' as const,
-    wordWrap: 'normal' as const,
+    wordBreak: 'normal',
+    wordWrap: 'normal',
     lineHeight: '1.5',
     MozTabSize: '4',
     OTabSize: '4',
@@ -67,7 +77,7 @@ const customDarkTheme = {
     WebkitHyphens: 'none',
     MozHyphens: 'none',
     msHyphens: 'none',
-    hyphens: 'none' as const,
+    hyphens: 'none',
     padding: '0.75rem',
     margin: '0.5rem 0',
     overflow: 'auto',
