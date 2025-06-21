@@ -1,4 +1,4 @@
-.PHONY: help setup build start stop restart logs logs-backend logs-frontend clean install dev test lint auto-build auto-build-same auto-build-same-existing auto-build-multi fix-streaming-rebuild
+.PHONY: help setup build start stop restart logs logs-backend logs-frontend clean install dev test lint auto-build auto-build-same auto-build-same-existing auto-build-multi fix-streaming-rebuild generate-build-args
 .DEFAULT_GOAL := help
 
 # Colors for output
@@ -7,6 +7,10 @@ GREEN := \\033[32m
 YELLOW := \\033[33m
 RED := \\033[31m
 RESET := \\033[0m
+
+# Auto-generate build args before any docker-compose command
+# This ensures source code changes always trigger rebuilds
+DOCKER_BUILD_ENV := $(shell chmod +x scripts/generate-build-args.sh && ./scripts/generate-build-args.sh > /dev/null 2>&1 && cat .env.build 2>/dev/null | grep -E '^(BUILD_DATE|GIT_COMMIT|CACHE_BUST)=' | xargs)
 
 help: ## Show this help message
 	@echo "$(CYAN)Olympian AI Lightweight - Available Commands$(RESET)"
@@ -41,32 +45,46 @@ quick-docker-same-existing: build-same-host-existing up-same-host-existing ## Qu
 
 ##@ 🏗️  Building
 
+# Helper target to generate build args
+generate-build-args:
+	@chmod +x scripts/generate-build-args.sh
+	@./scripts/generate-build-args.sh
+
 build: ## Build the application for development
 	@echo "$(CYAN)🏗️  Building application for development...$(RESET)"
 	@npm run build
 
-build-prod: ## Build the application for production
+build-prod: generate-build-args ## Build the application for production (with auto cache-busting)
 	@echo "$(CYAN)🏗️  Building application for production...$(RESET)"
-	@docker-compose -f docker-compose.prod.yml build
+	@echo "$(YELLOW)Using build args: $(DOCKER_BUILD_ENV)$(RESET)"
+	@env $(DOCKER_BUILD_ENV) docker-compose -f docker-compose.prod.yml build
 
-build-prod-clean: ## Build the application for production (no cache)
+build-prod-clean: generate-build-args ## Build the application for production (no cache)
 	@echo "$(CYAN)🏗️  Building application for production (clean build)...$(RESET)"
-	@docker-compose -f docker-compose.prod.yml build --no-cache
+	@echo "$(YELLOW)Using build args: $(DOCKER_BUILD_ENV)$(RESET)"
+	@env $(DOCKER_BUILD_ENV) docker-compose -f docker-compose.prod.yml build --no-cache
 
-build-same-host: ## Build for same-host with Ollama container (no cache)
+build-same-host: generate-build-args ## Build for same-host with Ollama container (no cache)
 	@echo "$(CYAN)🏗️  Building for same-host with Ollama container (clean build)...$(RESET)"
-	@docker-compose -f docker-compose.same-host.yml build --no-cache
+	@env $(DOCKER_BUILD_ENV) docker-compose -f docker-compose.same-host.yml build --no-cache
 
-build-same-host-existing: ## Build for same-host with existing Ollama (no cache)
+build-same-host-existing: generate-build-args ## Build for same-host with existing Ollama (no cache)
 	@echo "$(CYAN)🏗️  Building for same-host with existing Ollama (clean build)...$(RESET)"
-	@docker-compose -f docker-compose.same-host-existing-ollama.yml build --no-cache
+	@env $(DOCKER_BUILD_ENV) docker-compose -f docker-compose.same-host-existing-ollama.yml build --no-cache
 
-rebuild-backend: ## Rebuild only the backend container (no cache)
+rebuild-backend: generate-build-args ## Rebuild only the backend container (no cache)
 	@echo "$(CYAN)🔄 Rebuilding backend container...$(RESET)"
 	@docker-compose -f docker-compose.prod.yml stop backend
-	@docker-compose -f docker-compose.prod.yml build --no-cache backend
+	@env $(DOCKER_BUILD_ENV) docker-compose -f docker-compose.prod.yml build --no-cache backend
 	@docker-compose -f docker-compose.prod.yml up -d backend
 	@echo "$(GREEN)✅ Backend rebuilt and restarted!$(RESET)"
+
+rebuild-frontend: generate-build-args ## Rebuild only the frontend container (no cache)
+	@echo "$(CYAN)🔄 Rebuilding frontend container...$(RESET)"
+	@docker-compose -f docker-compose.prod.yml stop frontend
+	@env $(DOCKER_BUILD_ENV) docker-compose -f docker-compose.prod.yml build --no-cache frontend
+	@docker-compose -f docker-compose.prod.yml up -d frontend
+	@echo "$(GREEN)✅ Frontend rebuilt and restarted!$(RESET)"
 
 fix-streaming-rebuild: ## Fix base model streaming issue and rebuild containers
 	@echo "$(CYAN)🔧 Fixing streaming issue and rebuilding containers...$(RESET)"
