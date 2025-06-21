@@ -1,7 +1,7 @@
 import { Message } from '@olympian/shared';
 import { MessageItem } from './MessageItem';
-import { TypewriterText } from './TypewriterText';
 import { Spinner } from '@/components/ui/spinner';
+import ReactMarkdown from 'react-markdown';
 
 interface MessageListProps {
   messages: Message[];
@@ -55,24 +55,46 @@ export function MessageList({
         </div>
       )}
       
-      {/* Streaming Content with Typewriter Effect - Hide during transition */}
-      {(isGenerating || (streamedContent && !isTransitioning)) && (
+      {/* Streaming Content - Display directly without typewriter effect */}
+      {(isGenerating || streamedContent) && !isTransitioning && (
         <div className="flex flex-col items-center">
           <div className="w-full max-w-4xl flex flex-col items-center">
             <div className="flex items-center gap-2 mb-2">
               <span className="text-xs font-medium text-gray-300">Assistant</span>
               <span className="text-xs text-gray-500">
-                {isGenerating ? 'streaming...' : 'typing...'}
+                {isGenerating ? 'streaming...' : 'complete'}
               </span>
             </div>
             <div className="w-full max-w-3xl">
               {streamedContent ? (
-                <TypewriterText
-                  content={streamedContent}
-                  speed={5} // Faster speed for streaming (5ms per character)
-                  isStreaming={isGenerating} // Pass streaming state
-                  className="prose prose-invert prose-sm max-w-none prose-p:leading-relaxed"
-                />
+                <div className="prose prose-invert prose-sm max-w-none prose-p:leading-relaxed">
+                  <ReactMarkdown
+                    components={{
+                      pre: ({ node, ...props }) => (
+                        <pre className="overflow-x-auto rounded-lg bg-background p-3" {...props} />
+                      ),
+                      code: ({ node, children, className, ...props }) => {
+                        const match = /language-(\w+)/.exec(className || '');
+                        const isInline = !match;
+                        
+                        return isInline ? (
+                          <code className="rounded bg-background px-1 py-0.5" {...props}>
+                            {children}
+                          </code>
+                        ) : (
+                          <code className={className} {...props}>
+                            {children}
+                          </code>
+                        );
+                      },
+                    }}
+                  >
+                    {streamedContent}
+                  </ReactMarkdown>
+                  {isGenerating && (
+                    <span className="typewriter-cursor animate-pulse ml-1" aria-hidden="true">▌</span>
+                  )}
+                </div>
               ) : (
                 <div className="flex items-center gap-2 text-sm text-gray-400">
                   <Spinner size="sm" />
