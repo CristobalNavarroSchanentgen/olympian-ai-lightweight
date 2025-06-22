@@ -77,55 +77,55 @@ export function ArtifactList({ artifacts, onSelectArtifact, onClose }: ArtifactL
   );
 
   return (
-    <div className=\"h-full flex flex-col\">
+    <div className="h-full flex flex-col">
       {/* Header */}
-      <div className=\"border-b border-border p-4 flex-shrink-0\">
-        <div className=\"flex items-center gap-2\">
-          <Button variant=\"ghost\" size=\"sm\" onClick={onClose}>
-            <ArrowLeft className=\"h-4 w-4\" />
+      <div className="border-b border-border p-4 flex-shrink-0">
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" size="sm" onClick={onClose}>
+            <ArrowLeft className="h-4 w-4" />
           </Button>
-          <h3 className=\"font-medium\">All Artifacts ({artifacts.length})</h3>
+          <h3 className="font-medium">All Artifacts ({artifacts.length})</h3>
         </div>
       </div>
 
       {/* Artifact List */}
-      <div className=\"flex-1 overflow-y-auto p-4 space-y-3\">
+      <div className="flex-1 overflow-y-auto p-4 space-y-3">
         {sortedArtifacts.map((artifact) => {
           const IconComponent = getArtifactIcon(artifact.type);
           
           return (
             <Card 
               key={artifact.id}
-              className=\"p-4 cursor-pointer hover:bg-muted/50 transition-colors\"
+              className="p-4 cursor-pointer hover:bg-muted/50 transition-colors"
               onClick={() => onSelectArtifact(artifact)}
             >
-              <div className=\"flex items-start gap-3\">
-                <div className=\"flex-shrink-0 mt-1\">
-                  <IconComponent className=\"h-5 w-5 text-muted-foreground\" />
+              <div className="flex items-start gap-3">
+                <div className="flex-shrink-0 mt-1">
+                  <IconComponent className="h-5 w-5 text-muted-foreground" />
                 </div>
                 
-                <div className=\"flex-1 min-w-0\">
-                  <div className=\"flex items-center gap-2 mb-1\">
-                    <h4 className=\"font-medium truncate\">{artifact.title}</h4>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <h4 className="font-medium truncate">{artifact.title}</h4>
                     <span className={`text-xs px-2 py-1 rounded-full capitalize ${getTypeColor(artifact.type)}`}>
                       {artifact.type}
                     </span>
                   </div>
                   
-                  <div className=\"flex items-center gap-4 text-sm text-muted-foreground mb-2\">
+                  <div className="flex items-center gap-4 text-sm text-muted-foreground mb-2">
                     {artifact.language && (
                       <span>{artifact.language}</span>
                     )}
                     <span>v{artifact.version}</span>
-                    <div className=\"flex items-center gap-1\">
-                      <Calendar className=\"h-3 w-3\" />
+                    <div className="flex items-center gap-1">
+                      <Calendar className="h-3 w-3" />
                       {formatDate(artifact.updatedAt)}
                     </div>
                   </div>
                   
                   {/* Content Preview */}
-                  <div className=\"text-xs text-muted-foreground bg-muted/30 p-2 rounded font-mono\">
-                    <div className=\"line-clamp-2 whitespace-pre-wrap\">
+                  <div className="text-xs text-muted-foreground bg-muted/30 p-2 rounded font-mono">
+                    <div className="line-clamp-2 whitespace-pre-wrap">
                       {artifact.content.substring(0, 100)}
                       {artifact.content.length > 100 && '...'}
                     </div>
@@ -137,10 +137,10 @@ export function ArtifactList({ artifacts, onSelectArtifact, onClose }: ArtifactL
         })}
         
         {artifacts.length === 0 && (
-          <div className=\"text-center py-8\">
-            <FileText className=\"h-12 w-12 mx-auto mb-4 text-muted-foreground\" />
-            <h3 className=\"text-lg font-medium mb-2\">No artifacts yet</h3>
-            <p className=\"text-sm text-muted-foreground\">
+          <div className="text-center py-8">
+            <FileText className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+            <h3 className="text-lg font-medium mb-2">No artifacts yet</h3>
+            <p className="text-sm text-muted-foreground">
               Start a conversation and ask the AI to create code, documents, or other content.
             </p>
           </div>
