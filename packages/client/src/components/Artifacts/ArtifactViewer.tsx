@@ -7,7 +7,7 @@ import { AlertCircle, Save, X } from 'lucide-react';
 import { toast } from '@/hooks/useToast';
 import CodeMirror from '@uiw/react-codemirror';
 import { oneDark } from '@codemirror/theme-one-dark';
-import { loadLanguage } from '@uiw/codemirror-extensions-langs';
+import { loadLanguage, langNames } from '@uiw/codemirror-extensions-langs';
 import { javascript } from '@codemirror/lang-javascript';
 import { python } from '@codemirror/lang-python';
 import { html } from '@codemirror/lang-html';
@@ -22,23 +22,6 @@ import 'highlight.js/styles/github-dark-dimmed.css';
 interface ArtifactViewerProps {
   artifact: Artifact;
 }
-
-// Valid language names that loadLanguage supports
-const VALID_LANGUAGES = [
-  'go', 'html', 'q', 'ruby', 'd', 'r', 'mermaid', 'json', 'markdown', 
-  'javascript', 'jsx', 'typescript', 'tsx', 'python', 'css', 'xml',
-  'apl', 'asciiArmor', 'asterisk', 'brainfuck', 'cobol', 'cLike',
-  'clojure', 'cmake', 'coffeeScript', 'commonLisp', 'cpp', 'crystal',
-  'csharp', 'dart', 'diff', 'dockerfile', 'elixir', 'elm', 'erlang',
-  'fortran', 'fsharp', 'gherkin', 'glsl', 'groovy', 'haskell', 'haxe',
-  'http', 'idl', 'java', 'julia', 'kotlin', 'latex', 'less', 'lua',
-  'mathematica', 'matlab', 'nginx', 'nim', 'nix', 'objectiveC', 'ocaml',
-  'pascal', 'perl', 'php', 'pig', 'powerShell', 'protobuf', 'puppet',
-  'pureScript', 'rust', 'sas', 'sass', 'scala', 'scheme', 'shell',
-  'smalltalk', 'solr', 'sparql', 'sql', 'stylus', 'swift', 'tcl',
-  'textile', 'toml', 'turtle', 'vb', 'verilog', 'vhdl', 'vue', 'wast',
-  'webIDL', 'xQuery', 'yacas', 'yaml', 'z80'
-] as const;
 
 // Helper function to get appropriate CodeMirror extension based on language/type
 const getLanguageExtension = (language: string): Extension[] => {
@@ -73,16 +56,16 @@ const getLanguageExtension = (language: string): Extension[] => {
     case 'svg':
       return [xml()];
     default:
-      // Try to load language dynamically if it's a valid language
-      if (VALID_LANGUAGES.includes(lang as any)) {
-        try {
-          const extension = loadLanguage(lang as typeof VALID_LANGUAGES[number]);
-          return extension ? [extension] : [];
-        } catch {
-          return [];
-        }
+      // Try to load language dynamically if available
+      try {
+        // Check if the language is in the supported list (langNames is a type, not runtime value)
+        // So we use a try-catch approach instead
+        const extension = loadLanguage(lang as any);
+        return extension ? [extension] : [];
+      } catch {
+        // Language not supported, return empty array
+        return [];
       }
-      return [];
   }
 };
 
