@@ -3,18 +3,15 @@ import { ArtifactDetectionResult, ArtifactType } from '@olympian/shared';
 /**
  * Detects if content should be displayed as an artifact
  * Inspired by Claude's artifact detection logic
- * Enhanced for subproject 3 with prose-only chat support
+ * Enhanced to always remove code blocks from chat display when artifacts are created
  */
-export function detectArtifact(content: string, deploymentMode?: string): ArtifactDetectionResult {
+export function detectArtifact(content: string): ArtifactDetectionResult {
   const trimmedContent = content.trim();
   
   // Skip very short content
   if (trimmedContent.length < 50) {
     return { shouldCreateArtifact: false };
   }
-
-  // Check if we're in multi-host deployment (subproject 3)
-  const isMultiHostMode = deploymentMode === 'multi-host';
 
   // Detect code blocks with language
   const codeBlockRegex = /^```(\w+)?\s*([\s\S]*?)```$/m;
@@ -32,14 +29,9 @@ export function detectArtifact(content: string, deploymentMode?: string): Artifa
     const type = getArtifactTypeFromLanguage(language);
     const title = generateTitleFromContent(codeContent, type);
     
-    let processedContent = trimmedContent;
-    let codeBlocksRemoved = false;
-
-    // For multi-host mode (subproject 3), remove code blocks from chat display
-    if (isMultiHostMode) {
-      processedContent = removeCodeBlocksFromContent(trimmedContent);
-      codeBlocksRemoved = processedContent !== trimmedContent;
-    }
+    // Always remove code blocks from chat display when creating artifacts
+    const processedContent = removeCodeBlocksFromContent(trimmedContent);
+    const codeBlocksRemoved = processedContent !== trimmedContent;
     
     return {
       shouldCreateArtifact: true,
@@ -59,8 +51,8 @@ export function detectArtifact(content: string, deploymentMode?: string): Artifa
       type: 'html',
       title: 'HTML Document',
       content: trimmedContent,
-      processedContent: isMultiHostMode ? removeCodeBlocksFromContent(trimmedContent) : trimmedContent,
-      codeBlocksRemoved: false
+      processedContent: removeCodeFromHTMLDescription(trimmedContent),
+      codeBlocksRemoved: true
     };
   }
 
@@ -71,8 +63,8 @@ export function detectArtifact(content: string, deploymentMode?: string): Artifa
       type: 'svg',
       title: 'SVG Diagram',
       content: trimmedContent,
-      processedContent: isMultiHostMode ? removeCodeBlocksFromContent(trimmedContent) : trimmedContent,
-      codeBlocksRemoved: false
+      processedContent: 'An SVG diagram has been generated and is available in the artifact panel.',
+      codeBlocksRemoved: true
     };
   }
 
@@ -83,8 +75,8 @@ export function detectArtifact(content: string, deploymentMode?: string): Artifa
       type: 'json',
       title: 'JSON Data',
       content: trimmedContent,
-      processedContent: isMultiHostMode ? removeCodeBlocksFromContent(trimmedContent) : trimmedContent,
-      codeBlocksRemoved: false
+      processedContent: 'JSON data has been generated and is available in the artifact panel.',
+      codeBlocksRemoved: true
     };
   }
 
@@ -95,8 +87,8 @@ export function detectArtifact(content: string, deploymentMode?: string): Artifa
       type: 'csv',
       title: 'CSV Data',
       content: trimmedContent,
-      processedContent: isMultiHostMode ? removeCodeBlocksFromContent(trimmedContent) : trimmedContent,
-      codeBlocksRemoved: false
+      processedContent: 'CSV data has been generated and is available in the artifact panel.',
+      codeBlocksRemoved: true
     };
   }
 
@@ -107,20 +99,15 @@ export function detectArtifact(content: string, deploymentMode?: string): Artifa
       type: 'mermaid',
       title: 'Mermaid Diagram',
       content: trimmedContent,
-      processedContent: isMultiHostMode ? removeCodeBlocksFromContent(trimmedContent) : trimmedContent,
-      codeBlocksRemoved: false
+      processedContent: 'A Mermaid diagram has been generated and is available in the artifact panel.',
+      codeBlocksRemoved: true
     };
   }
 
-  // Detect substantial markdown content
-  if (isSubstantialMarkdown(trimmedContent)) {
-    let processedContent = trimmedContent;
-    let codeBlocksRemoved = false;
-
-    if (isMultiHostMode) {
-      processedContent = removeCodeBlocksFromContent(trimmedContent);
-      codeBlocksRemoved = processedContent !== trimmedContent;
-    }
+  // Detect substantial markdown content with code blocks
+  if (isSubstantialMarkdown(trimmedContent) && containsCodeBlocks(trimmedContent)) {
+    const processedContent = removeCodeBlocksFromContent(trimmedContent);
+    const codeBlocksRemoved = processedContent !== trimmedContent;
 
     return {
       shouldCreateArtifact: true,
@@ -132,14 +119,20 @@ export function detectArtifact(content: string, deploymentMode?: string): Artifa
     };
   }
 
-  // For multi-host mode, check if content has code blocks that should be removed even if not creating artifacts
-  if (isMultiHostMode) {
+  // Check if content has code blocks that should be removed
+  if (containsCodeBlocks(trimmedContent)) {
     const processedContent = removeCodeBlocksFromContent(trimmedContent);
     const codeBlocksRemoved = processedContent !== trimmedContent;
     
-    if (codeBlocksRemoved) {
+    // Only create artifact if we have substantial code
+    const codeBlocks = extractCodeBlocks(trimmedContent);
+    if (codeBlocks.length > 0 && codeBlocks.some(block => block.content.length > 20)) {
       return {
-        shouldCreateArtifact: false,
+        shouldCreateArtifact: true,
+        type: 'code',
+        title: 'Code',
+        content: codeBlocks.map(block => block.content).join('\n\n'),
+        language: codeBlocks[0]?.language || 'text',
         processedContent,
         codeBlocksRemoved
       };
@@ -150,16 +143,22 @@ export function detectArtifact(content: string, deploymentMode?: string): Artifa
 }
 
 /**
- * Removes code blocks from content for prose-only chat display in subproject 3
+ * Removes code blocks from content for prose-only chat display
  */
 function removeCodeBlocksFromContent(content: string): string {
-  // Remove code blocks with triple backticks
-  let processedContent = content.replace(/```[\w]*\s*[\s\S]*?```/g, '');
+  // First, extract any prose that comes before code blocks
+  const parts = content.split(/```[\w]*\s*[\s\S]*?```/g);
+  
+  // Clean up and join the parts
+  let processedContent = parts
+    .map(part => part.trim())
+    .filter(part => part.length > 0)
+    .join('\n\n');
   
   // Remove inline code blocks
   processedContent = processedContent.replace(/`[^`\n]+`/g, '');
   
-  // Clean up excessive whitespace and empty lines
+  // Clean up excessive whitespace
   processedContent = processedContent
     .split('\n')
     .map(line => line.trim())
@@ -170,40 +169,56 @@ function removeCodeBlocksFromContent(content: string): string {
   // If after removing code blocks we have very little content left, 
   // return a user-friendly message
   if (processedContent.length < 20) {
-    return 'Code has been generated and is available in the artifact panel.';
+    return 'The code has been generated and is available in the artifact panel.';
   }
 
   return processedContent;
 }
 
 /**
- * Gets deployment mode from runtime configuration
- * For subproject 3 (multi-host deployment), this reads from the runtime-injected config
+ * Extracts code blocks from content
  */
-export function getDeploymentMode(): string {
-  if (typeof window !== 'undefined') {
-    // First check the runtime-injected configuration (for Docker deployments)
-    const olympianConfig = (window as any).OLYMPIAN_CONFIG;
-    if (olympianConfig && olympianConfig.DEPLOYMENT_MODE) {
-      console.log('Deployment mode from OLYMPIAN_CONFIG:', olympianConfig.DEPLOYMENT_MODE);
-      return olympianConfig.DEPLOYMENT_MODE;
-    }
-    
-    // Fallback to window.DEPLOYMENT_MODE if set directly
-    if ((window as any).DEPLOYMENT_MODE) {
-      console.log('Deployment mode from window:', (window as any).DEPLOYMENT_MODE);
-      return (window as any).DEPLOYMENT_MODE;
-    }
-    
-    // Development fallback - check environment variable (only works in dev)
-    if (process.env.REACT_APP_DEPLOYMENT_MODE) {
-      console.log('Deployment mode from env:', process.env.REACT_APP_DEPLOYMENT_MODE);
-      return process.env.REACT_APP_DEPLOYMENT_MODE;
-    }
+function extractCodeBlocks(content: string): Array<{ language: string; content: string }> {
+  const codeBlockRegex = /```(\w+)?\s*([\s\S]*?)```/g;
+  const blocks: Array<{ language: string; content: string }> = [];
+  
+  let match;
+  while ((match = codeBlockRegex.exec(content)) !== null) {
+    blocks.push({
+      language: match[1] || 'text',
+      content: match[2]?.trim() || ''
+    });
   }
   
-  console.log('Deployment mode defaulting to: same-host');
-  return 'same-host';
+  return blocks;
+}
+
+/**
+ * Checks if content contains code blocks
+ */
+function containsCodeBlocks(content: string): boolean {
+  return /```[\w]*\s*[\s\S]*?```/.test(content) || /`[^`\n]+`/.test(content);
+}
+
+/**
+ * Remove code from HTML descriptions
+ */
+function removeCodeFromHTMLDescription(content: string): string {
+  // If the content is mostly HTML tags, provide a description
+  const tagCount = (content.match(/<[^>]+>/g) || []).length;
+  const contentLength = content.length;
+  
+  if (tagCount > 5 || contentLength > 200) {
+    return 'An HTML document has been generated and is available in the artifact panel.';
+  }
+  
+  // Otherwise, try to extract meaningful text
+  const textContent = content.replace(/<[^>]+>/g, ' ').trim();
+  if (textContent.length > 20) {
+    return textContent;
+  }
+  
+  return 'HTML content has been generated and is available in the artifact panel.';
 }
 
 function getArtifactTypeFromLanguage(language: string): ArtifactType {
