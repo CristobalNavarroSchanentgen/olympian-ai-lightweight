@@ -274,13 +274,13 @@ export function CodeBlock({
             fontSize: '0.875rem',
             lineHeight: '1.5',
             fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace',
-            background: atomDark.background || '#282c34',
-          }}
+            background: (atomDark as any).background || '#282c34',
+          } as any}
           lineNumberStyle={{
             color: '#928374',
             paddingRight: '1em',
-            textAlign: 'right',
-            userSelect: 'none',
+            textAlign: 'right' as const,
+            userSelect: 'none' as const,
             fontSize: '0.75rem'
           }}
           codeTagProps={{
