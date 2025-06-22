@@ -97,9 +97,9 @@ export function ArtifactHeader({ artifact }: ArtifactHeaderProps) {
   };
 
   return (
-    <div className=\"border-b border-border p-4 space-y-3\">
+    <div className="border-b border-border p-4 space-y-3">
       {/* Title */}
-      <div className=\"flex items-center justify-between\">
+      <div className="flex items-center justify-between">
         {isEditingTitle ? (
           <Input
             value={editedTitle}
@@ -112,14 +112,14 @@ export function ArtifactHeader({ artifact }: ArtifactHeaderProps) {
                 setIsEditingTitle(false);
               }
             }}
-            className=\"text-lg font-medium\"
+            className="text-lg font-medium"
             autoFocus
           />
         ) : (
           <h3 
-            className=\"text-lg font-medium cursor-pointer hover:bg-muted/50 px-2 py-1 rounded\"
+            className="text-lg font-medium cursor-pointer hover:bg-muted/50 px-2 py-1 rounded"
             onClick={() => setIsEditingTitle(true)}
-            title=\"Click to edit title\"
+            title="Click to edit title"
           >
             {artifact.title}
           </h3>
@@ -127,31 +127,31 @@ export function ArtifactHeader({ artifact }: ArtifactHeaderProps) {
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant=\"ghost\" size=\"sm\">
-              <MoreVertical className=\"h-4 w-4\" />
+            <Button variant="ghost" size="sm">
+              <MoreVertical className="h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align=\"end\">
+          <DropdownMenuContent align="end">
             <DropdownMenuItem onClick={handleCopy}>
-              {copied ? <Check className=\"h-4 w-4 mr-2\" /> : <Copy className=\"h-4 w-4 mr-2\" />}
+              {copied ? <Check className="h-4 w-4 mr-2" /> : <Copy className="h-4 w-4 mr-2" />}
               {copied ? 'Copied!' : 'Copy content'}
             </DropdownMenuItem>
             <DropdownMenuItem onClick={handleDownload}>
-              <Download className=\"h-4 w-4 mr-2\" />
+              <Download className="h-4 w-4 mr-2" />
               Download
             </DropdownMenuItem>
             {versions.length > 1 && (
               <DropdownMenuItem>
-                <History className=\"h-4 w-4 mr-2\" />
+                <History className="h-4 w-4 mr-2" />
                 Version history ({versions.length})
               </DropdownMenuItem>
             )}
             <DropdownMenuSeparator />
             <DropdownMenuItem 
               onClick={handleDelete}
-              className=\"text-destructive focus:text-destructive\"
+              className="text-destructive focus:text-destructive"
             >
-              <Trash2 className=\"h-4 w-4 mr-2\" />
+              <Trash2 className="h-4 w-4 mr-2" />
               Delete
             </DropdownMenuItem>
           </DropdownMenuContent>
@@ -159,9 +159,9 @@ export function ArtifactHeader({ artifact }: ArtifactHeaderProps) {
       </div>
 
       {/* Metadata */}
-      <div className=\"flex items-center justify-between text-sm text-muted-foreground\">
-        <div className=\"flex items-center gap-4\">
-          <span className=\"capitalize\">{artifact.type}</span>
+      <div className="flex items-center justify-between text-sm text-muted-foreground">
+        <div className="flex items-center gap-4">
+          <span className="capitalize">{artifact.type}</span>
           {artifact.language && (
             <span>{artifact.language}</span>
           )}
@@ -172,35 +172,35 @@ export function ArtifactHeader({ artifact }: ArtifactHeaderProps) {
 
       {/* View Mode Toggle */}
       {(artifact.type === 'code' || canShowPreview) && (
-        <div className=\"flex items-center gap-1 p-1 bg-muted rounded-lg\">
+        <div className="flex items-center gap-1 p-1 bg-muted rounded-lg">
           <Button
             variant={viewMode === 'code' ? 'default' : 'ghost'}
-            size=\"sm\"
+            size="sm"
             onClick={() => setViewMode('code')}
-            className=\"h-8\"
+            className="h-8"
           >
-            <Code className=\"h-4 w-4 mr-1\" />
+            <Code className="h-4 w-4 mr-1" />
             Code
           </Button>
           {canShowPreview && (
             <Button
               variant={viewMode === 'preview' ? 'default' : 'ghost'}
-              size=\"sm\"
+              size="sm"
               onClick={() => setViewMode('preview')}
-              className=\"h-8\"
+              className="h-8"
             >
-              <Eye className=\"h-4 w-4 mr-1\" />
+              <Eye className="h-4 w-4 mr-1" />
               Preview
             </Button>
           )}
           {canShowPreview && (
             <Button
               variant={viewMode === 'split' ? 'default' : 'ghost'}
-              size=\"sm\"
+              size="sm"
               onClick={() => setViewMode('split')}
-              className=\"h-8\"
+              className="h-8"
             >
-              <Edit className=\"h-4 w-4 mr-1\" />
+              <Edit className="h-4 w-4 mr-1" />
               Split
             </Button>
           )}
