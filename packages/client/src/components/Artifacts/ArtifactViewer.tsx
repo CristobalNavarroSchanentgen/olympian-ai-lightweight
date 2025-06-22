@@ -7,7 +7,7 @@ import { AlertCircle, Save, X } from 'lucide-react';
 import { toast } from '@/hooks/useToast';
 import CodeMirror from '@uiw/react-codemirror';
 import { oneDark } from '@codemirror/theme-one-dark';
-import { loadLanguage, langNames } from '@uiw/codemirror-extensions-langs';
+import { loadLanguage } from '@uiw/codemirror-extensions-langs';
 import { javascript } from '@codemirror/lang-javascript';
 import { python } from '@codemirror/lang-python';
 import { html } from '@codemirror/lang-html';
@@ -58,8 +58,7 @@ const getLanguageExtension = (language: string): Extension[] => {
     default:
       // Try to load language dynamically if available
       try {
-        // Check if the language is in the supported list (langNames is a type, not runtime value)
-        // So we use a try-catch approach instead
+        // Use try-catch to handle unsupported languages gracefully
         const extension = loadLanguage(lang as any);
         return extension ? [extension] : [];
       } catch {
