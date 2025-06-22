@@ -3,14 +3,18 @@ import { ArtifactDetectionResult, ArtifactType } from '@olympian/shared';
 /**
  * Detects if content should be displayed as an artifact
  * Inspired by Claude's artifact detection logic
+ * Enhanced for subproject 3 with prose-only chat support
  */
-export function detectArtifact(content: string): ArtifactDetectionResult {
+export function detectArtifact(content: string, deploymentMode?: string): ArtifactDetectionResult {
   const trimmedContent = content.trim();
   
   // Skip very short content
   if (trimmedContent.length < 50) {
     return { shouldCreateArtifact: false };
   }
+
+  // Check if we're in multi-host deployment (subproject 3)
+  const isMultiHostMode = deploymentMode === 'multi-host';
 
   // Detect code blocks with language
   const codeBlockRegex = /^```(\w+)?\s*([\s\S]*?)```$/m;
@@ -28,12 +32,23 @@ export function detectArtifact(content: string): ArtifactDetectionResult {
     const type = getArtifactTypeFromLanguage(language);
     const title = generateTitleFromContent(codeContent, type);
     
+    let processedContent = trimmedContent;
+    let codeBlocksRemoved = false;
+
+    // For multi-host mode (subproject 3), remove code blocks from chat display
+    if (isMultiHostMode) {
+      processedContent = removeCodeBlocksFromContent(trimmedContent);
+      codeBlocksRemoved = processedContent !== trimmedContent;
+    }
+    
     return {
       shouldCreateArtifact: true,
       type,
       title,
       language: language.toLowerCase(),
-      content: codeContent
+      content: codeContent,
+      processedContent,
+      codeBlocksRemoved
     };
   }
 
@@ -43,7 +58,9 @@ export function detectArtifact(content: string): ArtifactDetectionResult {
       shouldCreateArtifact: true,
       type: 'html',
       title: 'HTML Document',
-      content: trimmedContent
+      content: trimmedContent,
+      processedContent: isMultiHostMode ? removeCodeBlocksFromContent(trimmedContent) : trimmedContent,
+      codeBlocksRemoved: false
     };
   }
 
@@ -53,7 +70,9 @@ export function detectArtifact(content: string): ArtifactDetectionResult {
       shouldCreateArtifact: true,
       type: 'svg',
       title: 'SVG Diagram',
-      content: trimmedContent
+      content: trimmedContent,
+      processedContent: isMultiHostMode ? removeCodeBlocksFromContent(trimmedContent) : trimmedContent,
+      codeBlocksRemoved: false
     };
   }
 
@@ -63,7 +82,9 @@ export function detectArtifact(content: string): ArtifactDetectionResult {
       shouldCreateArtifact: true,
       type: 'json',
       title: 'JSON Data',
-      content: trimmedContent
+      content: trimmedContent,
+      processedContent: isMultiHostMode ? removeCodeBlocksFromContent(trimmedContent) : trimmedContent,
+      codeBlocksRemoved: false
     };
   }
 
@@ -73,7 +94,9 @@ export function detectArtifact(content: string): ArtifactDetectionResult {
       shouldCreateArtifact: true,
       type: 'csv',
       title: 'CSV Data',
-      content: trimmedContent
+      content: trimmedContent,
+      processedContent: isMultiHostMode ? removeCodeBlocksFromContent(trimmedContent) : trimmedContent,
+      codeBlocksRemoved: false
     };
   }
 
@@ -83,21 +106,91 @@ export function detectArtifact(content: string): ArtifactDetectionResult {
       shouldCreateArtifact: true,
       type: 'mermaid',
       title: 'Mermaid Diagram',
-      content: trimmedContent
+      content: trimmedContent,
+      processedContent: isMultiHostMode ? removeCodeBlocksFromContent(trimmedContent) : trimmedContent,
+      codeBlocksRemoved: false
     };
   }
 
   // Detect substantial markdown content
   if (isSubstantialMarkdown(trimmedContent)) {
+    let processedContent = trimmedContent;
+    let codeBlocksRemoved = false;
+
+    if (isMultiHostMode) {
+      processedContent = removeCodeBlocksFromContent(trimmedContent);
+      codeBlocksRemoved = processedContent !== trimmedContent;
+    }
+
     return {
       shouldCreateArtifact: true,
       type: 'markdown',
       title: 'Document',
-      content: trimmedContent
+      content: trimmedContent,
+      processedContent,
+      codeBlocksRemoved
     };
   }
 
+  // For multi-host mode, check if content has code blocks that should be removed even if not creating artifacts
+  if (isMultiHostMode) {
+    const processedContent = removeCodeBlocksFromContent(trimmedContent);
+    const codeBlocksRemoved = processedContent !== trimmedContent;
+    
+    if (codeBlocksRemoved) {
+      return {
+        shouldCreateArtifact: false,
+        processedContent,
+        codeBlocksRemoved
+      };
+    }
+  }
+
   return { shouldCreateArtifact: false };
+}
+
+/**
+ * Removes code blocks from content for prose-only chat display in subproject 3
+ */
+function removeCodeBlocksFromContent(content: string): string {
+  // Remove code blocks with triple backticks
+  let processedContent = content.replace(/```[\w]*\s*[\s\S]*?```/g, '');
+  
+  // Remove inline code blocks
+  processedContent = processedContent.replace(/`[^`\n]+`/g, '');
+  
+  // Clean up excessive whitespace and empty lines
+  processedContent = processedContent
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => line.length > 0)
+    .join('\n')
+    .trim();
+
+  // If after removing code blocks we have very little content left, 
+  // return a user-friendly message
+  if (processedContent.length < 20) {
+    return 'Code has been generated and is available in the artifact panel.';
+  }
+
+  return processedContent;
+}
+
+/**
+ * Gets deployment mode from environment or config
+ * This would typically come from environment variables or application config
+ */
+export function getDeploymentMode(): string {
+  // This could come from environment variables, config, or props
+  // For now, we'll check if we can detect multi-host mode from the environment
+  if (typeof window !== 'undefined') {
+    // Check for deployment mode in window object (could be set by backend)
+    const deploymentMode = (window as any).DEPLOYMENT_MODE || 
+                          process.env.REACT_APP_DEPLOYMENT_MODE ||
+                          'same-host';
+    return deploymentMode;
+  }
+  return 'same-host';
 }
 
 function getArtifactTypeFromLanguage(language: string): ArtifactType {
