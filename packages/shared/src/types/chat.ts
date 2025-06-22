@@ -23,6 +23,10 @@ export interface MessageMetadata {
   model?: string;
   error?: string;
   visionModel?: string; // Vision model used for image processing
+  // Artifact-related metadata
+  artifactId?: string;
+  artifactType?: 'text' | 'code' | 'html' | 'react' | 'svg' | 'mermaid' | 'json' | 'csv' | 'markdown';
+  hasArtifact?: boolean;
 }
 
 export interface ChatRequest {
