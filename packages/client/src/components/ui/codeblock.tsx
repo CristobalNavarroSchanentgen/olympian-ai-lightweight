@@ -55,6 +55,12 @@ const initializeHighlightJs = () => {
   return observer;
 };
 
+// Generate line numbers for code content
+const generateLineNumbers = (content: string): string[] => {
+  const lines = content.split('\n');
+  return lines.map((_, index) => (index + 1).toString());
+};
+
 export function CodeBlock({ 
   children, 
   className, 
@@ -83,6 +89,9 @@ export function CodeBlock({
   // Extract and normalize language
   const detectedLanguage = language || extractLanguage(className);
   const codeContent = getTextContent(children);
+  
+  // Generate line numbers if needed
+  const lineNumbers = showLineNumbers ? generateLineNumbers(codeContent) : [];
 
   // Highlight the specific code block when content changes
   useEffect(() => {
@@ -135,22 +144,49 @@ export function CodeBlock({
         "rounded-lg",
         "border border-gray-700",
         "bg-[#22272e]",
-        "p-4",
         "text-sm",
         "font-mono",
-        "leading-relaxed"
+        "leading-relaxed",
+        showLineNumbers ? "p-0" : "p-4"
       )}>
-        <code 
-          ref={codeRef}
-          className={detectedLanguage ? `language-${detectedLanguage}` : ''}
-          style={{
-            fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace',
-            fontSize: '0.875rem',
-            lineHeight: '1.5',
-          }}
-        >
-          {codeContent}
-        </code>
+        {showLineNumbers ? (
+          <div className="flex">
+            {/* Line numbers column */}
+            <div className="flex flex-col py-4 px-2 bg-gray-800/50 border-r border-gray-600 text-gray-500 text-right select-none">
+              {lineNumbers.map((num, index) => (
+                <span key={index} className="block leading-relaxed text-xs">
+                  {num}
+                </span>
+              ))}
+            </div>
+            {/* Code content */}
+            <div className="flex-1 py-4 px-4">
+              <code 
+                ref={codeRef}
+                className={detectedLanguage ? `language-${detectedLanguage}` : ''}
+                style={{
+                  fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace',
+                  fontSize: '0.875rem',
+                  lineHeight: '1.5',
+                }}
+              >
+                {codeContent}
+              </code>
+            </div>
+          </div>
+        ) : (
+          <code 
+            ref={codeRef}
+            className={detectedLanguage ? `language-${detectedLanguage}` : ''}
+            style={{
+              fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace',
+              fontSize: '0.875rem',
+              lineHeight: '1.5',
+            }}
+          >
+            {codeContent}
+          </code>
+        )}
       </pre>
       
       {/* Copy button with improved styling for multi-host deployment */}
