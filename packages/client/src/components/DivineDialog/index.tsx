@@ -9,7 +9,7 @@ import { ArtifactPanel } from '@/components/Artifacts';
 import { Button } from '@/components/ui/button';
 import { Message } from '@olympian/shared';
 import { toast } from '@/hooks/useToast';
-import { detectArtifact } from '@/lib/artifactDetection';
+import { detectArtifact, getDeploymentMode } from '@/lib/artifactDetection';
 import { Plus } from 'lucide-react';
 
 export function DivineDialog() {
@@ -29,6 +29,9 @@ export function DivineDialog() {
   const [isThinking, setIsThinking] = useState(false);
   const [hasImages, setHasImages] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Get deployment mode for subproject 3 logic
+  const deploymentMode = getDeploymentMode();
 
   useEffect(() => {
     fetchModels();
@@ -85,8 +88,20 @@ export function DivineDialog() {
       }
 
       // Detect if the response should create an artifact
-      const artifactDetection = detectArtifact(response.message);
+      // Pass deployment mode for subproject 3 logic
+      const artifactDetection = detectArtifact(response.message, deploymentMode);
       let artifactId: string | undefined;
+
+      // Store original response content
+      const originalContent = response.message;
+      
+      // Determine what content to display in chat
+      let chatDisplayContent = originalContent;
+      
+      // For subproject 3 (multi-host), use processed content that removes code blocks
+      if (deploymentMode === 'multi-host' && artifactDetection.processedContent) {
+        chatDisplayContent = artifactDetection.processedContent;
+      }
 
       if (artifactDetection.shouldCreateArtifact && artifactDetection.content) {
         // Create the artifact
@@ -101,16 +116,19 @@ export function DivineDialog() {
         artifactId = artifact.id;
       }
 
-      // Add the assistant message to the store with artifact metadata
+      // Add the assistant message to the store with enhanced metadata
       const assistantMessage: Message = {
         conversationId: response.conversationId,
         role: 'assistant',
-        content: response.message,
+        content: chatDisplayContent, // Use processed content for subproject 3
         metadata: {
           ...response.metadata,
           artifactId,
           artifactType: artifactDetection.type,
           hasArtifact: artifactDetection.shouldCreateArtifact,
+          // Enhanced metadata for subproject 3
+          originalContent: originalContent, // Store original content
+          codeBlocksRemoved: artifactDetection.codeBlocksRemoved || false,
         },
         createdAt: new Date(),
       };
@@ -119,6 +137,16 @@ export function DivineDialog() {
       // Reset states
       setIsThinking(false);
       setHasImages(false);
+
+      // Show notification for subproject 3 when code blocks are removed
+      if (deploymentMode === 'multi-host' && artifactDetection.codeBlocksRemoved) {
+        toast({
+          title: 'Code Generated',
+          description: 'Code has been created as an artifact and removed from chat for cleaner display.',
+          variant: 'default',
+        });
+      }
+
     } catch (error) {
       console.error('Error sending message:', error);
       
@@ -168,10 +196,15 @@ export function DivineDialog() {
               New
             </Button>
 
-            {/* Center - Conversation title */}
-            <h3 className="text-lg font-semibold text-center flex-1 text-white">
-              {currentConversation ? currentConversation.title : 'New Conversation'}
-            </h3>
+            {/* Center - Conversation title with deployment mode indicator */}
+            <div className="text-lg font-semibold text-center flex-1 text-white flex flex-col items-center">
+              <span>{currentConversation ? currentConversation.title : 'New Conversation'}</span>
+              {deploymentMode === 'multi-host' && (
+                <span className="text-xs text-gray-400 font-normal">
+                  Multi-host • Prose-only chat mode
+                </span>
+              )}
+            </div>
 
             {/* Right side - Model selector */}
             <div className="flex items-center gap-2 justify-end">
