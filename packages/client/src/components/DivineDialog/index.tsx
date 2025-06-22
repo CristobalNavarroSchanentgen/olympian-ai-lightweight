@@ -9,7 +9,7 @@ import { ArtifactPanel } from '@/components/Artifacts';
 import { Button } from '@/components/ui/button';
 import { Message } from '@olympian/shared';
 import { toast } from '@/hooks/useToast';
-import { detectArtifact, getDeploymentMode } from '@/lib/artifactDetection';
+import { detectArtifact } from '@/lib/artifactDetection';
 import { Plus } from 'lucide-react';
 
 export function DivineDialog() {
@@ -29,9 +29,6 @@ export function DivineDialog() {
   const [isThinking, setIsThinking] = useState(false);
   const [hasImages, setHasImages] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  // Get deployment mode for subproject 3 logic
-  const deploymentMode = getDeploymentMode();
 
   useEffect(() => {
     fetchModels();
@@ -88,8 +85,7 @@ export function DivineDialog() {
       }
 
       // Detect if the response should create an artifact
-      // Pass deployment mode for subproject 3 logic
-      const artifactDetection = detectArtifact(response.message, deploymentMode);
+      const artifactDetection = detectArtifact(response.message);
       let artifactId: string | undefined;
 
       // Store original response content
@@ -98,8 +94,8 @@ export function DivineDialog() {
       // Determine what content to display in chat
       let chatDisplayContent = originalContent;
       
-      // For subproject 3 (multi-host), use processed content that removes code blocks
-      if (deploymentMode === 'multi-host' && artifactDetection.processedContent) {
+      // Use processed content that removes code blocks when artifacts are created
+      if (artifactDetection.processedContent && artifactDetection.codeBlocksRemoved) {
         chatDisplayContent = artifactDetection.processedContent;
       }
 
@@ -120,14 +116,14 @@ export function DivineDialog() {
       const assistantMessage: Message = {
         conversationId: response.conversationId,
         role: 'assistant',
-        content: chatDisplayContent, // Use processed content for subproject 3
+        content: chatDisplayContent, // Use processed content when code blocks are in artifacts
         metadata: {
           ...response.metadata,
           artifactId,
           artifactType: artifactDetection.type,
           hasArtifact: artifactDetection.shouldCreateArtifact,
-          // Enhanced metadata for subproject 3
-          originalContent: originalContent, // Store original content
+          // Store original content and code removal status
+          originalContent: originalContent,
           codeBlocksRemoved: artifactDetection.codeBlocksRemoved || false,
         },
         createdAt: new Date(),
@@ -137,15 +133,6 @@ export function DivineDialog() {
       // Reset states
       setIsThinking(false);
       setHasImages(false);
-
-      // Show notification for subproject 3 when code blocks are removed
-      if (deploymentMode === 'multi-host' && artifactDetection.codeBlocksRemoved) {
-        toast({
-          title: 'Code Generated',
-          description: 'Code has been created as an artifact and removed from chat for cleaner display.',
-          variant: 'default',
-        });
-      }
 
     } catch (error) {
       console.error('Error sending message:', error);
@@ -196,14 +183,9 @@ export function DivineDialog() {
               New
             </Button>
 
-            {/* Center - Conversation title with deployment mode indicator */}
-            <div className="text-lg font-semibold text-center flex-1 text-white flex flex-col items-center">
-              <span>{currentConversation ? currentConversation.title : 'New Conversation'}</span>
-              {deploymentMode === 'multi-host' && (
-                <span className="text-xs text-gray-400 font-normal">
-                  Multi-host • Prose-only chat mode
-                </span>
-              )}
+            {/* Center - Conversation title */}
+            <div className="text-lg font-semibold text-center flex-1 text-white">
+              {currentConversation ? currentConversation.title : 'New Conversation'}
             </div>
 
             {/* Right side - Model selector */}
