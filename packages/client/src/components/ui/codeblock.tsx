@@ -3,7 +3,7 @@ import { Check, Copy } from 'lucide-react';
 import { Button } from './button';
 import { cn } from '@/lib/utils';
 import { PrismLight as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { atomOneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { atomDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 // Import common languages for the light build
 import javascript from 'react-syntax-highlighter/dist/esm/languages/prism/javascript';
@@ -43,6 +43,9 @@ interface CodeBlockProps {
   language?: string;
   showLineNumbers?: boolean;
 }
+
+// Keep track of registered languages for validation
+const registeredLanguages = new Set<string>();
 
 // Register languages once when the module loads
 let languagesRegistered = false;
@@ -98,6 +101,55 @@ const registerLanguages = () => {
   SyntaxHighlighter.registerLanguage('dockerfile', docker);
   SyntaxHighlighter.registerLanguage('nginx', nginx);
   SyntaxHighlighter.registerLanguage('git', git);
+  
+  // Keep track of registered languages
+  registeredLanguages.add('javascript');
+  registeredLanguages.add('js');
+  registeredLanguages.add('typescript');
+  registeredLanguages.add('ts');
+  registeredLanguages.add('jsx');
+  registeredLanguages.add('tsx');
+  registeredLanguages.add('python');
+  registeredLanguages.add('py');
+  registeredLanguages.add('java');
+  registeredLanguages.add('csharp');
+  registeredLanguages.add('cs');
+  registeredLanguages.add('c#');
+  registeredLanguages.add('cpp');
+  registeredLanguages.add('c++');
+  registeredLanguages.add('c');
+  registeredLanguages.add('go');
+  registeredLanguages.add('golang');
+  registeredLanguages.add('rust');
+  registeredLanguages.add('rs');
+  registeredLanguages.add('php');
+  registeredLanguages.add('ruby');
+  registeredLanguages.add('rb');
+  registeredLanguages.add('swift');
+  registeredLanguages.add('kotlin');
+  registeredLanguages.add('kt');
+  registeredLanguages.add('scala');
+  registeredLanguages.add('bash');
+  registeredLanguages.add('sh');
+  registeredLanguages.add('shell');
+  registeredLanguages.add('powershell');
+  registeredLanguages.add('ps1');
+  registeredLanguages.add('sql');
+  registeredLanguages.add('json');
+  registeredLanguages.add('yaml');
+  registeredLanguages.add('yml');
+  registeredLanguages.add('xml');
+  registeredLanguages.add('html');
+  registeredLanguages.add('markup');
+  registeredLanguages.add('css');
+  registeredLanguages.add('scss');
+  registeredLanguages.add('sass');
+  registeredLanguages.add('markdown');
+  registeredLanguages.add('md');
+  registeredLanguages.add('docker');
+  registeredLanguages.add('dockerfile');
+  registeredLanguages.add('nginx');
+  registeredLanguages.add('git');
   
   languagesRegistered = true;
 };
@@ -196,15 +248,15 @@ export function CodeBlock({
     }
   };
 
-  // Check if language is supported, fallback to 'text' if not
-  const isLanguageSupported = SyntaxHighlighter.supportedLanguages.includes(normalizedLanguage);
+  // Check if language is supported using our registered languages set
+  const isLanguageSupported = registeredLanguages.has(normalizedLanguage);
   const finalLanguage = isLanguageSupported ? normalizedLanguage : 'text';
 
   return (
     <div className="relative group">
       <SyntaxHighlighter
         language={finalLanguage}
-        style={atomOneDark}
+        style={atomDark}
         PreTag={({ children, ...props }) => (
           <pre {...props} ref={codeRef}>
             {children}
@@ -214,8 +266,8 @@ export function CodeBlock({
         wrapLines={true}
         customStyle={{
           margin: '0.5rem 0',
-          background: '#282c34', // atom-one-dark background
-          border: '1px solid #3e4451', // subtle border matching the theme
+          background: '#1d2021', // atom-dark background
+          border: '1px solid #3c3836', // subtle border matching the theme
           borderRadius: '0.5rem',
           padding: '1rem',
           fontSize: '0.875rem',
@@ -223,7 +275,7 @@ export function CodeBlock({
           fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace',
         }}
         lineNumberStyle={{
-          color: '#636d83',
+          color: '#928374',
           paddingRight: '1em',
           textAlign: 'right',
           userSelect: 'none',
