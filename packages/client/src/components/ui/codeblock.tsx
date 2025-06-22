@@ -266,13 +266,14 @@ export function CodeBlock({
         wrapLines={true}
         customStyle={{
           margin: '0.5rem 0',
-          background: '#1d2021', // atom-dark background
-          border: '1px solid #3c3836', // subtle border matching the theme
+          border: '1px solid #3c3836',
           borderRadius: '0.5rem',
           padding: '1rem',
           fontSize: '0.875rem',
           lineHeight: '1.5',
           fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace',
+          // Remove the explicit background color to let the theme's background show through
+          // background: '#1d2021', // REMOVED - this was overriding theme colors
         }}
         lineNumberStyle={{
           color: '#928374',
