@@ -177,19 +177,32 @@ function removeCodeBlocksFromContent(content: string): string {
 }
 
 /**
- * Gets deployment mode from environment or config
- * This would typically come from environment variables or application config
+ * Gets deployment mode from runtime configuration
+ * For subproject 3 (multi-host deployment), this reads from the runtime-injected config
  */
 export function getDeploymentMode(): string {
-  // This could come from environment variables, config, or props
-  // For now, we'll check if we can detect multi-host mode from the environment
   if (typeof window !== 'undefined') {
-    // Check for deployment mode in window object (could be set by backend)
-    const deploymentMode = (window as any).DEPLOYMENT_MODE || 
-                          process.env.REACT_APP_DEPLOYMENT_MODE ||
-                          'same-host';
-    return deploymentMode;
+    // First check the runtime-injected configuration (for Docker deployments)
+    const olympianConfig = (window as any).OLYMPIAN_CONFIG;
+    if (olympianConfig && olympianConfig.DEPLOYMENT_MODE) {
+      console.log('Deployment mode from OLYMPIAN_CONFIG:', olympianConfig.DEPLOYMENT_MODE);
+      return olympianConfig.DEPLOYMENT_MODE;
+    }
+    
+    // Fallback to window.DEPLOYMENT_MODE if set directly
+    if ((window as any).DEPLOYMENT_MODE) {
+      console.log('Deployment mode from window:', (window as any).DEPLOYMENT_MODE);
+      return (window as any).DEPLOYMENT_MODE;
+    }
+    
+    // Development fallback - check environment variable (only works in dev)
+    if (process.env.REACT_APP_DEPLOYMENT_MODE) {
+      console.log('Deployment mode from env:', process.env.REACT_APP_DEPLOYMENT_MODE);
+      return process.env.REACT_APP_DEPLOYMENT_MODE;
+    }
   }
+  
+  console.log('Deployment mode defaulting to: same-host');
   return 'same-host';
 }
 
