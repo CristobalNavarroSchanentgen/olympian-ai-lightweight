@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Artifact, ArtifactViewMode } from '@olympian/shared';
+import { Artifact } from '@olympian/shared';
 import { useArtifactStore } from '@/stores/useArtifactStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -31,7 +31,6 @@ export function ArtifactHeader({ artifact }: ArtifactHeaderProps) {
   const { 
     viewMode, 
     setViewMode, 
-    updateArtifact, 
     deleteArtifact,
     getVersionsForArtifact,
   } = useArtifactStore();
