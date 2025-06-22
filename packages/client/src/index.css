@@ -114,33 +114,117 @@
   }
 }
 
-/* Override prose styles for syntax highlighting */
+/* Enhanced Highlight.js integration for multi-host deployment */
 @layer utilities {
-  /* Ensure syntax highlighter styles are not overridden by prose */
-  .prose pre[class*="language-"],
-  .prose pre code[class*="language-"],
-  .prose code[class*="language-"] {
-    color: inherit !important;
-    text-shadow: none !important;
-    background: none !important;
+  /* Ensure Highlight.js styles work correctly within prose */
+  .prose .hljs {
+    background: #22272e !important;
+    color: #adbac7 !important;
+    border: 1px solid #444c56 !important;
+    border-radius: 0.5rem !important;
+    padding: 1rem !important;
+    margin: 1rem 0 !important;
+    font-size: 0.875rem !important;
+    line-height: 1.5 !important;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace !important;
+    overflow-x: auto !important;
   }
-  
-  /* Ensure all syntax highlighter spans maintain their colors */
-  .prose pre span,
-  .prose pre code span {
+
+  /* Preserve Highlight.js token colors */
+  .prose .hljs * {
     color: inherit !important;
+    background: inherit !important;
   }
-  
-  /* Remove prose code block styles from syntax highlighted blocks */
-  .prose pre:has(> code[class*="language-"]) {
-    background-color: transparent !important;
+
+  /* Remove prose styling from highlighted code blocks */
+  .prose pre:has(.hljs) {
+    background: transparent !important;
     padding: 0 !important;
     margin: 0 !important;
     border: none !important;
+    color: inherit !important;
   }
-  
-  /* Ensure syntax highlighter inline styles take precedence */
-  [style*="color:"] {
-    color: var(--color) !important;
+
+  .prose code:has(.hljs) {
+    background: transparent !important;
+    padding: 0 !important;
+    border: none !important;
+    color: inherit !important;
+  }
+
+  /* Inline code styling (non-highlighted) */
+  .prose code:not(.hljs):not([class*="language-"]) {
+    background-color: #363c42 !important;
+    color: #f0f6fc !important;
+    padding: 0.125rem 0.25rem !important;
+    border-radius: 0.25rem !important;
+    font-size: 0.875em !important;
+    font-weight: normal !important;
+  }
+
+  /* Ensure MutationObserver doesn't conflict with existing highlights */
+  .hljs[data-highlighted="yes"] {
+    /* Already highlighted, prevent re-highlighting */
+  }
+
+  /* Language indicator styling for better visibility */
+  .hljs + .language-indicator {
+    position: absolute;
+    top: 0.5rem;
+    left: 0.5rem;
+    background: rgba(54, 60, 66, 0.8);
+    color: #adbac7;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    font-size: 0.75rem;
+    font-family: ui-monospace, monospace;
+    border: 1px solid rgba(68, 76, 86, 0.5);
+    backdrop-filter: blur(4px);
+  }
+
+  /* Copy button positioning adjustment for Highlight.js */
+  .hljs-container {
+    position: relative;
+  }
+
+  .hljs-container .copy-button {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    z-index: 10;
+  }
+
+  /* Enhanced theme compatibility */
+  .dark .hljs {
+    background: #0d1117 !important;
+    border-color: #30363d !important;
+  }
+
+  .light .hljs {
+    background: #f6f8fa !important;
+    color: #24292f !important;
+    border-color: #d0d7de !important;
+  }
+}
+
+/* Additional improvements for multi-host deployment syntax highlighting */
+@layer base {
+  /* Ensure all Highlight.js elements use correct font */
+  .hljs,
+  .hljs * {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace !important;
+  }
+
+  /* Improve readability with proper line spacing */
+  .hljs {
+    line-height: 1.5 !important;
+    white-space: pre !important;
+    word-break: normal !important;
+    word-wrap: normal !important;
+  }
+
+  /* Ensure proper text selection in code blocks */
+  .hljs * {
+    user-select: text;
   }
 }
