@@ -1,4 +1,5 @@
 export * from './types/api';
+export * from './types/artifacts';
 export * from './types/chat';
 export * from './types/connections';
 export * from './types/mcp';
