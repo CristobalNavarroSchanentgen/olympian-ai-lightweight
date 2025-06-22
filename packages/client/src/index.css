@@ -113,3 +113,34 @@
     background-color: rgba(255, 255, 255, 0.2);
   }
 }
+
+/* Override prose styles for syntax highlighting */
+@layer utilities {
+  /* Ensure syntax highlighter styles are not overridden by prose */
+  .prose pre[class*="language-"],
+  .prose pre code[class*="language-"],
+  .prose code[class*="language-"] {
+    color: inherit !important;
+    text-shadow: none !important;
+    background: none !important;
+  }
+  
+  /* Ensure all syntax highlighter spans maintain their colors */
+  .prose pre span,
+  .prose pre code span {
+    color: inherit !important;
+  }
+  
+  /* Remove prose code block styles from syntax highlighted blocks */
+  .prose pre:has(> code[class*="language-"]) {
+    background-color: transparent !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: none !important;
+  }
+  
+  /* Ensure syntax highlighter inline styles take precedence */
+  [style*="color:"] {
+    color: var(--color) !important;
+  }
+}
