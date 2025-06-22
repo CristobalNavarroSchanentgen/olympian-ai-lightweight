@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { Artifact, ArtifactType, ArtifactViewMode, ArtifactVersion } from '@olympian/shared';
+import { Artifact, ArtifactViewMode, ArtifactVersion } from '@olympian/shared';
 
 interface ArtifactState {
   // Current artifacts by conversation
