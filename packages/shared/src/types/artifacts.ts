@@ -30,6 +30,9 @@ export interface ArtifactDetectionResult {
   title?: string;
   language?: string;
   content?: string;
+  // New fields for subproject 3 - prose-only chat mode
+  processedContent?: string; // Content with code blocks removed for chat display
+  codeBlocksRemoved?: boolean; // Flag indicating if code blocks were removed
 }
 
 export interface ArtifactVersion {
@@ -50,4 +53,7 @@ export interface ArtifactMessageMetadata {
   artifactId?: string;
   artifactType?: ArtifactType;
   hasArtifact?: boolean;
+  // New fields for subproject 3
+  originalContent?: string; // Original content before code block removal
+  codeBlocksRemoved?: boolean; // Whether code blocks were removed for prose-only display
 }
