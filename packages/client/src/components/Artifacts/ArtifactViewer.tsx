@@ -6,12 +6,66 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card } from '@/components/ui/card';
 import { AlertCircle, Save, X } from 'lucide-react';
 import { toast } from '@/hooks/useToast';
+import CodeMirror from '@uiw/react-codemirror';
+import { oneDark } from '@codemirror/theme-one-dark';
+import { loadLanguage } from '@uiw/codemirror-extensions-langs';
+import { javascript } from '@codemirror/lang-javascript';
+import { python } from '@codemirror/lang-python';
+import { html } from '@codemirror/lang-html';
+import { css } from '@codemirror/lang-css';
+import { json } from '@codemirror/lang-json';
+import { markdown } from '@codemirror/lang-markdown';
+import { xml } from '@codemirror/lang-xml';
+import { Extension } from '@codemirror/state';
 import hljs from 'highlight.js';
 import 'highlight.js/styles/github-dark-dimmed.css';
 
 interface ArtifactViewerProps {
   artifact: Artifact;
 }
+
+// Helper function to get appropriate CodeMirror extension based on language/type
+const getLanguageExtension = (language: string): Extension[] => {
+  const lang = language.toLowerCase();
+  
+  switch (lang) {
+    case 'javascript':
+    case 'js':
+      return [javascript({ jsx: false })];
+    case 'typescript':
+    case 'ts':
+      return [javascript({ typescript: true })];
+    case 'jsx':
+      return [javascript({ jsx: true })];
+    case 'tsx':
+      return [javascript({ jsx: true, typescript: true })];
+    case 'react':
+      return [javascript({ jsx: true, typescript: true })];
+    case 'python':
+    case 'py':
+      return [python()];
+    case 'html':
+      return [html()];
+    case 'css':
+      return [css()];
+    case 'json':
+      return [json()];
+    case 'markdown':
+    case 'md':
+      return [markdown()];
+    case 'xml':
+    case 'svg':
+      return [xml()];
+    default:
+      // Try to load language dynamically if available
+      try {
+        const extension = loadLanguage(lang);
+        return extension ? [extension] : [];
+      } catch {
+        return [];
+      }
+  }
+};
 
 export function ArtifactViewer({ artifact }: ArtifactViewerProps) {
   const { viewMode, updateArtifact } = useArtifactStore();
@@ -84,12 +138,35 @@ export function ArtifactViewer({ artifact }: ArtifactViewerProps) {
               </Button>
             </div>
           </div>
-          <Textarea
-            value={editContent}
-            onChange={(e) => setEditContent(e.target.value)}
-            className="flex-1 resize-none font-mono text-sm border-0 rounded-none"
-            placeholder="Enter your content here..."
-          />
+          <div className="flex-1 overflow-hidden">
+            <CodeMirror
+              value={editContent}
+              onChange={(value) => setEditContent(value)}
+              theme={oneDark}
+              extensions={getLanguageExtension(artifact.language || artifact.type)}
+              style={{
+                fontSize: '0.875rem',
+                fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace',
+              }}
+              className="h-full"
+              basicSetup={{
+                lineNumbers: true,
+                bracketMatching: true,
+                closeBrackets: true,
+                autocompletion: true,
+                highlightSelectionMatches: true,
+                searchKeymap: true,
+                foldGutter: true,
+                dropCursor: true,
+                allowMultipleSelections: true,
+                indentOnInput: true,
+                history: true,
+                drawSelection: true,
+                rectangularSelection: true,
+                crosshairCursor: true,
+              }}
+            />
+          </div>
         </>
       ) : (
         <div 
