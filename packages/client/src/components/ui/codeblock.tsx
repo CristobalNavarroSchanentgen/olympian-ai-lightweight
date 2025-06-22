@@ -253,26 +253,28 @@ export function CodeBlock({
   const finalLanguage = isLanguageSupported ? normalizedLanguage : 'text';
 
   return (
-    <div className="relative group not-prose">
-      <div className="syntax-highlighter-wrapper">
+    <div className="relative group my-4">
+      {/* Use inline styles to override any conflicting CSS */}
+      <div style={{ all: 'initial', fontFamily: 'inherit' }}>
         <SyntaxHighlighter
           language={finalLanguage}
           style={atomDark}
           PreTag={({ children, ...props }) => (
-            <pre {...props} ref={codeRef} className="!m-0">
+            <pre {...props} ref={codeRef}>
               {children}
             </pre>
           )}
           showLineNumbers={showLineNumbers}
           wrapLines={true}
           customStyle={{
-            margin: '0.5rem 0',
+            margin: 0,
             border: '1px solid #3c3836',
             borderRadius: '0.5rem',
             padding: '1rem',
             fontSize: '0.875rem',
             lineHeight: '1.5',
             fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace',
+            background: atomDark.background || '#282c34',
           }}
           lineNumberStyle={{
             color: '#928374',
@@ -285,9 +287,9 @@ export function CodeBlock({
             style: {
               fontFamily: 'inherit',
               fontSize: 'inherit',
-              color: 'inherit', // Ensure color inheritance
             }
           }}
+          useInlineStyles={true} // Force inline styles to ensure they override external CSS
         >
           {codeContent}
         </SyntaxHighlighter>
@@ -323,16 +325,6 @@ export function CodeBlock({
           </span>
         </div>
       )}
-      
-      <style jsx>{`
-        .syntax-highlighter-wrapper :global(pre),
-        .syntax-highlighter-wrapper :global(code) {
-          color: inherit !important;
-        }
-        .syntax-highlighter-wrapper :global(span) {
-          color: inherit !important;
-        }
-      `}</style>
     </div>
   );
 }
