@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Artifact } from '@olympian/shared';
 import { useArtifactStore } from '@/stores/useArtifactStore';
 import { Button } from '@/components/ui/button';
@@ -6,6 +6,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card } from '@/components/ui/card';
 import { AlertCircle, Save, X } from 'lucide-react';
 import { toast } from '@/hooks/useToast';
+import hljs from 'highlight.js';
+import 'highlight.js/styles/github-dark-dimmed.css';
 
 interface ArtifactViewerProps {
   artifact: Artifact;
@@ -16,6 +18,7 @@ export function ArtifactViewer({ artifact }: ArtifactViewerProps) {
   const [editContent, setEditContent] = useState(artifact.content);
   const [isEditing, setIsEditing] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
+  const codeRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     setEditContent(artifact.content);
@@ -25,6 +28,23 @@ export function ArtifactViewer({ artifact }: ArtifactViewerProps) {
   useEffect(() => {
     setHasChanges(editContent !== artifact.content);
   }, [editContent, artifact.content]);
+
+  // Apply syntax highlighting when content changes
+  useEffect(() => {
+    if (codeRef.current && !isEditing) {
+      // Remove any existing highlighting classes
+      codeRef.current.removeAttribute('data-highlighted');
+      
+      // Set language class based on artifact language or type
+      const language = artifact.language || artifact.type;
+      if (language && language !== 'text') {
+        codeRef.current.className = `language-${language}`;
+      }
+      
+      // Apply highlighting
+      hljs.highlightElement(codeRef.current);
+    }
+  }, [artifact.content, artifact.language, artifact.type, isEditing]);
 
   const handleSave = () => {
     if (hasChanges) {
@@ -76,8 +96,18 @@ export function ArtifactViewer({ artifact }: ArtifactViewerProps) {
           className="h-full p-4 overflow-auto cursor-text hover:bg-muted/20 transition-colors"
           onClick={() => setIsEditing(true)}
         >
-          <pre className="text-sm font-mono whitespace-pre-wrap break-words">
-            <code>{artifact.content}</code>
+          <pre className="hljs bg-[#22272e] rounded-lg border border-gray-700 p-4 text-sm leading-relaxed overflow-x-auto">
+            <code 
+              ref={codeRef}
+              className={artifact.language || artifact.type ? `language-${artifact.language || artifact.type}` : ''}
+              style={{
+                fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace',
+                fontSize: '0.875rem',
+                lineHeight: '1.5',
+              }}
+            >
+              {artifact.content}
+            </code>
           </pre>
         </div>
       )}
@@ -120,8 +150,18 @@ export function ArtifactViewer({ artifact }: ArtifactViewerProps) {
           const jsonData = JSON.parse(artifact.content);
           return (
             <div className="h-full p-4 overflow-auto">
-              <pre className="text-sm font-mono">
-                {JSON.stringify(jsonData, null, 2)}
+              <pre className="hljs bg-[#22272e] rounded-lg border border-gray-700 p-4 text-sm leading-relaxed overflow-x-auto">
+                <code 
+                  className="language-json"
+                  style={{
+                    fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace',
+                    fontSize: '0.875rem',
+                    lineHeight: '1.5',
+                  }}
+                  dangerouslySetInnerHTML={{ 
+                    __html: hljs.highlight(JSON.stringify(jsonData, null, 2), { language: 'json' }).value 
+                  }}
+                />
               </pre>
             </div>
           );
@@ -146,8 +186,13 @@ export function ArtifactViewer({ artifact }: ArtifactViewerProps) {
               <p className="text-sm text-muted-foreground mb-4">
                 React component preview is not yet implemented. Use code view to see the component source.
               </p>
-              <pre className="text-xs font-mono bg-muted/50 p-2 rounded overflow-auto max-h-32">
-                {artifact.content.substring(0, 200)}...
+              <pre className="hljs bg-[#22272e] rounded-lg border border-gray-700 p-2 text-xs overflow-auto max-h-32">
+                <code 
+                  className="language-typescript"
+                  dangerouslySetInnerHTML={{ 
+                    __html: hljs.highlight(artifact.content.substring(0, 200) + '...', { language: 'typescript' }).value 
+                  }}
+                />
               </pre>
             </Card>
           </div>
@@ -218,8 +263,13 @@ export function ArtifactViewer({ artifact }: ArtifactViewerProps) {
           <p className="text-sm text-muted-foreground mb-4">
             Mermaid diagram rendering is not yet implemented. Use code view to see the diagram source.
           </p>
-          <pre className="text-xs font-mono bg-muted/50 p-2 rounded overflow-auto max-h-32">
-            {mermaidContent.substring(0, 200)}...
+          <pre className="hljs bg-[#22272e] rounded-lg border border-gray-700 p-2 text-xs overflow-auto max-h-32">
+            <code 
+              className="language-mermaid"
+              dangerouslySetInnerHTML={{ 
+                __html: hljs.highlight(mermaidContent.substring(0, 200) + '...', { language: 'mermaid' }).value 
+              }}
+            />
           </pre>
         </Card>
       </div>
