@@ -27,6 +27,9 @@ export interface MessageMetadata {
   artifactId?: string;
   artifactType?: 'text' | 'code' | 'html' | 'react' | 'svg' | 'mermaid' | 'json' | 'csv' | 'markdown';
   hasArtifact?: boolean;
+  // Code block removal metadata
+  originalContent?: string; // Original content before code block removal
+  codeBlocksRemoved?: boolean; // Whether code blocks were removed for display
 }
 
 export interface ChatRequest {
