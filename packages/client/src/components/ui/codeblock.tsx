@@ -253,44 +253,45 @@ export function CodeBlock({
   const finalLanguage = isLanguageSupported ? normalizedLanguage : 'text';
 
   return (
-    <div className="relative group">
-      <SyntaxHighlighter
-        language={finalLanguage}
-        style={atomDark}
-        PreTag={({ children, ...props }) => (
-          <pre {...props} ref={codeRef}>
-            {children}
-          </pre>
-        )}
-        showLineNumbers={showLineNumbers}
-        wrapLines={true}
-        customStyle={{
-          margin: '0.5rem 0',
-          border: '1px solid #3c3836',
-          borderRadius: '0.5rem',
-          padding: '1rem',
-          fontSize: '0.875rem',
-          lineHeight: '1.5',
-          fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace',
-          // Remove the explicit background color to let the theme's background show through
-          // background: '#1d2021', // REMOVED - this was overriding theme colors
-        }}
-        lineNumberStyle={{
-          color: '#928374',
-          paddingRight: '1em',
-          textAlign: 'right',
-          userSelect: 'none',
-          fontSize: '0.75rem'
-        }}
-        codeTagProps={{
-          style: {
-            fontFamily: 'inherit',
-            fontSize: 'inherit'
-          }
-        }}
-      >
-        {codeContent}
-      </SyntaxHighlighter>
+    <div className="relative group not-prose">
+      <div className="syntax-highlighter-wrapper">
+        <SyntaxHighlighter
+          language={finalLanguage}
+          style={atomDark}
+          PreTag={({ children, ...props }) => (
+            <pre {...props} ref={codeRef} className="!m-0">
+              {children}
+            </pre>
+          )}
+          showLineNumbers={showLineNumbers}
+          wrapLines={true}
+          customStyle={{
+            margin: '0.5rem 0',
+            border: '1px solid #3c3836',
+            borderRadius: '0.5rem',
+            padding: '1rem',
+            fontSize: '0.875rem',
+            lineHeight: '1.5',
+            fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace',
+          }}
+          lineNumberStyle={{
+            color: '#928374',
+            paddingRight: '1em',
+            textAlign: 'right',
+            userSelect: 'none',
+            fontSize: '0.75rem'
+          }}
+          codeTagProps={{
+            style: {
+              fontFamily: 'inherit',
+              fontSize: 'inherit',
+              color: 'inherit', // Ensure color inheritance
+            }
+          }}
+        >
+          {codeContent}
+        </SyntaxHighlighter>
+      </div>
       
       {/* Copy button with improved styling for multi-host deployment */}
       <Button
@@ -322,6 +323,16 @@ export function CodeBlock({
           </span>
         </div>
       )}
+      
+      <style jsx>{`
+        .syntax-highlighter-wrapper :global(pre),
+        .syntax-highlighter-wrapper :global(code) {
+          color: inherit !important;
+        }
+        .syntax-highlighter-wrapper :global(span) {
+          color: inherit !important;
+        }
+      `}</style>
     </div>
   );
 }
