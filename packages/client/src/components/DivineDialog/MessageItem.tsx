@@ -80,13 +80,20 @@ export function MessageItem({ message, isLatest = false }: MessageItemProps) {
                 />
               ) : (
                 <ReactMarkdown
-                  className="prose prose-invert prose-sm max-w-none prose-p:leading-relaxed prose-pre:bg-gray-800 prose-pre:border prose-pre:border-gray-700"
+                  className="prose prose-invert prose-sm max-w-none prose-p:leading-relaxed"
                   components={{
-                    pre: ({ node: _node, children, className }) => {
-                      // Use our custom CodeBlock component for all pre elements
-                      // ReactMarkdown typically renders code blocks as <pre><code>...</code></pre>
+                    pre: ({ node: _node, children }) => {
+                      // Extract the code content and language from the children
+                      if (children && typeof children === 'object' && 'props' in children) {
+                        const { className, children: codeChildren } = (children as any).props;
+                        return (
+                          <CodeBlock className={className} showLineNumbers={false}>
+                            {codeChildren}
+                          </CodeBlock>
+                        );
+                      }
                       return (
-                        <CodeBlock className={className}>
+                        <CodeBlock showLineNumbers={false}>
                           {children}
                         </CodeBlock>
                       );
@@ -101,9 +108,7 @@ export function MessageItem({ message, isLatest = false }: MessageItemProps) {
                         </code>
                       ) : (
                         // For code blocks, let the parent pre element handle the rendering
-                        <code className={className} {...props}>
-                          {children}
-                        </code>
+                        <>{children}</>
                       );
                     },
                   }}
