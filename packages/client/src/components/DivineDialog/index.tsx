@@ -153,7 +153,7 @@ export function DivineDialog() {
   return (
     <div className="h-full flex bg-gray-900">
       {/* Left Panel - Conversation */}
-      <div className={`flex-1 flex flex-col bg-gray-900 ${isArtifactPanelOpen ? 'border-r border-gray-800' : ''}`}>
+      <div className={`${isArtifactPanelOpen ? 'w-1/2' : 'flex-1'} flex flex-col bg-gray-900 ${isArtifactPanelOpen ? 'border-r border-gray-800' : ''} transition-all duration-300`}>
         {/* Header */}
         <div className="border-b border-gray-800 px-4 py-2 flex-shrink-0 bg-gray-900/80 backdrop-blur-sm">
           <div className="flex items-center justify-between">
@@ -204,7 +204,7 @@ export function DivineDialog() {
       </div>
 
       {/* Right Panel - Artifacts */}
-      <div className={`${isArtifactPanelOpen ? 'w-96' : 'w-0'} transition-all duration-300 overflow-hidden`}>
+      <div className={`${isArtifactPanelOpen ? 'w-1/2' : 'w-0'} transition-all duration-300 overflow-hidden`}>
         <ArtifactPanel />
       </div>
     </div>
