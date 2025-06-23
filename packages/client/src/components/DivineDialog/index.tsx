@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useChatStore } from '@/stores/useChatStore';
 import { useArtifactStore } from '@/stores/useArtifactStore';
 import { useTypedMessagesStore } from '@/stores/useTypedMessagesStore';
-import { api } from '@/services/api';
+import { webSocketChatService } from '@/services/websocketChat';
 import { ChatInput } from './ChatInput';
 import { MessageList } from './MessageList';
 import { ModelSelector } from './ModelSelector';
@@ -34,10 +34,12 @@ export function DivineDialog() {
     getArtifactsForConversation
   } = useArtifactStore();
   
-  const { clearTypedMessages } = useTypedMessagesStore();
+  const { clearTypedMessages, addTypedContent, getTypedContent } = useTypedMessagesStore();
   
   const [isThinking, setIsThinking] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
   const [hasImages, setHasImages] = useState(false);
+  const [currentMessageId, setCurrentMessageId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -48,6 +50,32 @@ export function DivineDialog() {
     // Auto-scroll to bottom when new messages arrive
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Initialize WebSocket connection on component mount
+  useEffect(() => {
+    const initializeWebSocket = async () => {
+      try {
+        console.log('[DivineDialog] Initializing WebSocket connection...');
+        await webSocketChatService.connect();
+        console.log('[DivineDialog] ✅ WebSocket connected successfully');
+      } catch (error) {
+        console.error('[DivineDialog] ❌ Failed to connect WebSocket:', error);
+        toast({
+          title: 'Connection Error',
+          description: 'Failed to establish real-time connection. Using fallback mode.',
+          variant: 'destructive',
+        });
+      }
+    };
+
+    initializeWebSocket();
+
+    // Cleanup on unmount
+    return () => {
+      console.log('[DivineDialog] Cleaning up WebSocket connection...');
+      webSocketChatService.disconnect();
+    };
+  }, []);
 
   // Sync artifact panel state with conversation changes
   useEffect(() => {
@@ -113,104 +141,205 @@ export function DivineDialog() {
 
     // Set loading state
     setIsThinking(true);
+    setIsGenerating(false);
+
+    let messageId: string | null = null;
+    let assistantContent = '';
 
     try {
-      // Use traditional API for all models
-      const response = await api.sendMessage({
-        message: content,
-        model: selectedModel,
-        visionModel: selectedVisionModel || undefined,
-        conversationId: currentConversation?._id,
-        images,
-      });
-
-      // If this was a new conversation, update the current conversation
-      if (!currentConversation && response.conversation) {
-        setCurrentConversation(response.conversation);
-      }
-
-      // Detect if the response should create an artifact
-      const artifactDetection = detectArtifact(response.message);
-      let artifactId: string | undefined;
-
-      // Store original response content
-      const originalContent = response.message;
+      console.log('[DivineDialog] 📤 Sending message via WebSocket...');
       
-      // Determine what content to display in chat
-      let chatDisplayContent = originalContent;
-      
-      // Use processed content that removes code blocks when artifacts are created
-      if (artifactDetection.processedContent && artifactDetection.codeBlocksRemoved) {
-        chatDisplayContent = artifactDetection.processedContent;
-      }
-
-      if (artifactDetection.shouldCreateArtifact && artifactDetection.content) {
-        // Create the artifact
-        const artifact = createArtifact({
-          title: artifactDetection.title || 'Untitled Artifact',
-          type: artifactDetection.type!,
-          content: artifactDetection.content,
-          language: artifactDetection.language,
-          conversationId: response.conversationId,
-          version: 1,
-        });
-        artifactId = artifact.id;
-        
-        // Auto-open artifact panel when artifact is created
-        setArtifactPanelOpen(true);
-        console.log('🎨 [DivineDialog] Created new artifact:', artifact.id);
-      }
-
-      // Add the assistant message to the store with enhanced metadata
-      const assistantMessage: Message = {
-        conversationId: response.conversationId,
-        role: 'assistant',
-        content: chatDisplayContent, // Use processed content when code blocks are in artifacts
-        metadata: {
-          ...response.metadata,
-          artifactId,
-          artifactType: artifactDetection.type,
-          hasArtifact: artifactDetection.shouldCreateArtifact,
-          // Store original content and code removal status
-          originalContent: originalContent,
-          codeBlocksRemoved: artifactDetection.codeBlocksRemoved || false,
+      // Send message via WebSocket with handlers
+      messageId = await webSocketChatService.sendMessage(
+        {
+          content,
+          model: selectedModel,
+          visionModel: selectedVisionModel || undefined,
+          conversationId: currentConversation?._id,
+          images,
         },
-        createdAt: new Date(),
-      };
-      addMessage(assistantMessage);
+        {
+          onThinking: (data) => {
+            console.log('[DivineDialog] 🤔 Model is thinking...', data);
+            setIsThinking(true);
+            setIsGenerating(false);
+          },
 
-      // Reset states
-      setIsThinking(false);
-      setHasImages(false);
+          onGenerating: (data) => {
+            console.log('[DivineDialog] ⚡ Model started generating...', data);
+            setIsThinking(false);
+            setIsGenerating(true);
+            // Clear any previous typed content for this conversation
+            if (currentConversation) {
+              clearTypedMessages();
+            }
+          },
+
+          onToken: (data) => {
+            console.log('[DivineDialog] 🔤 Received token:', data.token);
+            assistantContent += data.token;
+            
+            // Add token to typed messages store for real-time display
+            if (currentConversation) {
+              addTypedContent(currentConversation._id?.toString() || '', data.token);
+            }
+          },
+
+          onComplete: (data) => {
+            console.log('[DivineDialog] ✅ Message completed:', data);
+            setIsThinking(false);
+            setIsGenerating(false);
+            setCurrentMessageId(null);
+
+            // If this was a new conversation, update the current conversation
+            if (!currentConversation && data.conversationId) {
+              // We'll need to fetch the conversation details
+              // For now, create a minimal conversation object
+              setCurrentConversation({
+                _id: data.conversationId,
+                title: content.substring(0, 50) + '...',
+                model: selectedModel,
+                createdAt: new Date(),
+                updatedAt: new Date(),
+                messageCount: 2,
+              });
+            }
+
+            // Get the final content (either from typed messages or from assistant content)
+            const finalContent = currentConversation 
+              ? getTypedContent(currentConversation._id?.toString() || '') || assistantContent
+              : assistantContent;
+
+            // Detect if the response should create an artifact
+            const artifactDetection = detectArtifact(finalContent);
+            let artifactId: string | undefined;
+
+            // Store original response content
+            const originalContent = finalContent;
+            
+            // Determine what content to display in chat
+            let chatDisplayContent = originalContent;
+            
+            // Use processed content that removes code blocks when artifacts are created
+            if (artifactDetection.processedContent && artifactDetection.codeBlocksRemoved) {
+              chatDisplayContent = artifactDetection.processedContent;
+            }
+
+            if (artifactDetection.shouldCreateArtifact && artifactDetection.content) {
+              // Create the artifact
+              const artifact = createArtifact({
+                title: artifactDetection.title || 'Untitled Artifact',
+                type: artifactDetection.type!,
+                content: artifactDetection.content,
+                language: artifactDetection.language,
+                conversationId: data.conversationId,
+                version: 1,
+              });
+              artifactId = artifact.id;
+              
+              // Auto-open artifact panel when artifact is created
+              setArtifactPanelOpen(true);
+              console.log('🎨 [DivineDialog] Created new artifact:', artifact.id);
+            }
+
+            // Add the assistant message to the store with enhanced metadata
+            const assistantMessage: Message = {
+              conversationId: data.conversationId,
+              role: 'assistant',
+              content: chatDisplayContent, // Use processed content when code blocks are in artifacts
+              metadata: {
+                ...data.metadata,
+                artifactId,
+                artifactType: artifactDetection.type,
+                hasArtifact: artifactDetection.shouldCreateArtifact,
+                // Store original content and code removal status
+                originalContent: originalContent,
+                codeBlocksRemoved: artifactDetection.codeBlocksRemoved || false,
+              },
+              createdAt: new Date(),
+            };
+            addMessage(assistantMessage);
+
+            // Clear typed messages after adding the final message
+            if (currentConversation) {
+              clearTypedMessages();
+            }
+
+            // Reset states
+            setHasImages(false);
+          },
+
+          onError: (data) => {
+            console.error('[DivineDialog] ❌ WebSocket error:', data);
+            setIsThinking(false);
+            setIsGenerating(false);
+            setCurrentMessageId(null);
+
+            toast({
+              title: 'Error',
+              description: data.error || 'Failed to send message',
+              variant: 'destructive',
+            });
+
+            // Clear typed messages on error
+            if (currentConversation) {
+              clearTypedMessages();
+            }
+          },
+
+          onConversationCreated: (data) => {
+            console.log('[DivineDialog] 🆕 New conversation created:', data.conversationId);
+            // Update current conversation if we don't have one
+            if (!currentConversation) {
+              setCurrentConversation({
+                _id: data.conversationId,
+                title: content.substring(0, 50) + '...',
+                model: selectedModel,
+                createdAt: new Date(),
+                updatedAt: new Date(),
+                messageCount: 1,
+              });
+            }
+          },
+        }
+      );
+
+      setCurrentMessageId(messageId);
+      console.log('[DivineDialog] ✅ Message sent successfully, ID:', messageId);
 
     } catch (error) {
-      console.error('Error sending message:', error);
-      
-      // Handle vision-specific errors
-      if (error instanceof Error && error.message.includes('VISION_UNSUPPORTED')) {
-        try {
-          const errorData = JSON.parse(error.message);
-          toast({
-            title: 'Vision Model Required',
-            description: errorData.message,
-            variant: 'destructive',
-          });
-        } catch {
-          toast({
-            title: 'Error',
-            description: error.message,
-            variant: 'destructive',
-          });
-        }
-      } else {
-        toast({
-          title: 'Error',
-          description: error instanceof Error ? error.message : 'Failed to send message',
-          variant: 'destructive',
-        });
-      }
+      console.error('[DivineDialog] ❌ Error sending message:', error);
       
       setIsThinking(false);
+      setIsGenerating(false);
+      setCurrentMessageId(null);
+
+      toast({
+        title: 'Connection Error',
+        description: 'Failed to send message. Please check your connection.',
+        variant: 'destructive',
+      });
+
+      // Clear typed messages on error
+      if (currentConversation) {
+        clearTypedMessages();
+      }
+    }
+  };
+
+  const handleCancelMessage = () => {
+    if (currentMessageId) {
+      console.log('[DivineDialog] ❌ Cancelling message:', currentMessageId);
+      webSocketChatService.cancelMessage(currentMessageId);
+      setCurrentMessageId(null);
+    }
+    
+    setIsThinking(false);
+    setIsGenerating(false);
+    
+    // Clear typed messages on cancel
+    if (currentConversation) {
+      clearTypedMessages();
     }
   };
 
@@ -237,6 +366,11 @@ export function DivineDialog() {
   };
 
   const defaultLayout = getDefaultLayout();
+
+  // Get the current streamed content for display
+  const streamedContent = currentConversation 
+    ? getTypedContent(currentConversation._id?.toString() || '') || ''
+    : '';
 
   return (
     <div className="h-full flex bg-gray-900">
@@ -285,9 +419,9 @@ export function DivineDialog() {
               <div className="flex-1 overflow-y-auto p-4 bg-gray-900">
                 <MessageList
                   messages={messages}
-                  streamedContent=""
+                  streamedContent={streamedContent}
                   isThinking={isThinking}
-                  isGenerating={false}
+                  isGenerating={isGenerating}
                   isTransitioning={false}
                 />
                 <div ref={messagesEndRef} />
@@ -297,9 +431,9 @@ export function DivineDialog() {
               <div className="border-t border-gray-800 p-4 flex-shrink-0 bg-gray-900/80 backdrop-blur-sm">
                 <ChatInput
                   onSendMessage={handleSendMessage}
-                  onCancel={() => {}}
-                  isDisabled={isThinking}
-                  isGenerating={false}
+                  onCancel={handleCancelMessage}
+                  isDisabled={isThinking || isGenerating}
+                  isGenerating={isGenerating}
                 />
               </div>
             </div>
@@ -354,9 +488,9 @@ export function DivineDialog() {
           <div className="flex-1 overflow-y-auto p-4 bg-gray-900">
             <MessageList
               messages={messages}
-              streamedContent=""
+              streamedContent={streamedContent}
               isThinking={isThinking}
-              isGenerating={false}
+              isGenerating={isGenerating}
               isTransitioning={false}
             />
             <div ref={messagesEndRef} />
@@ -366,9 +500,9 @@ export function DivineDialog() {
           <div className="border-t border-gray-800 p-4 flex-shrink-0 bg-gray-900/80 backdrop-blur-sm">
             <ChatInput
               onSendMessage={handleSendMessage}
-              onCancel={() => {}}
-              isDisabled={isThinking}
-              isGenerating={false}
+              onCancel={handleCancelMessage}
+              isDisabled={isThinking || isGenerating}
+              isGenerating={isGenerating}
             />
           </div>
         </div>
