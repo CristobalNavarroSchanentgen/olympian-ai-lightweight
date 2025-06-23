@@ -7,6 +7,7 @@ import { CodeBlock } from '../ui/codeblock';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useArtifactStore } from '@/stores/useArtifactStore';
+import { useChatStore } from '@/stores/useChatStore';
 import { useTypedMessagesStore } from '@/stores/useTypedMessagesStore';
 import { 
   FileText, 
@@ -15,6 +16,7 @@ import {
   FileJson, 
   Table, 
   ExternalLink,
+  AlertTriangle,
 } from 'lucide-react';
 
 interface MessageItemProps {
@@ -28,8 +30,10 @@ export function MessageItem({ message, isLatest = false, isStreaming = false }: 
   const messageId = message._id?.toString() || `${message.conversationId}-${message.createdAt}`;
   const conversationId = message.conversationId;
   
+  const { currentConversation } = useChatStore();
   const { 
     getArtifactById, 
+    getArtifactsForConversation,
     selectArtifact, 
     setArtifactPanelOpen 
   } = useArtifactStore();
@@ -45,10 +49,45 @@ export function MessageItem({ message, isLatest = false, isStreaming = false }: 
     !isStreaming && 
     shouldTriggerTypewriter(conversationId, messageId, isLatest);
 
-  // Get artifact if this message has one
-  const artifact = message.metadata?.artifactId 
-    ? getArtifactById(message.metadata.artifactId)
-    : null;
+  // Enhanced artifact validation
+  const getValidatedArtifact = () => {
+    if (!message.metadata?.artifactId) {
+      return null;
+    }
+
+    const artifact = getArtifactById(message.metadata.artifactId);
+    if (!artifact) {
+      console.warn('🎨 [MessageItem] Artifact not found:', message.metadata.artifactId);
+      return null;
+    }
+
+    // Verify the artifact belongs to the current conversation
+    const currentConversationId = currentConversation?._id?.toString() || '';
+    if (artifact.conversationId !== currentConversationId) {
+      console.warn('🎨 [MessageItem] Artifact belongs to wrong conversation:', {
+        artifactId: artifact.id,
+        artifactConversation: artifact.conversationId,
+        currentConversation: currentConversationId
+      });
+      return null;
+    }
+
+    return artifact;
+  };
+
+  const artifact = getValidatedArtifact();
+
+  // Check if this message should display original content with code blocks
+  // This happens when an artifact is expected but missing/invalid
+  const shouldShowOriginalContent = message.metadata?.artifactId && 
+    !artifact && 
+    message.metadata?.originalContent &&
+    message.metadata?.codeBlocksRemoved;
+
+  // Determine which content to display
+  const displayContent = shouldShowOriginalContent 
+    ? message.metadata.originalContent 
+    : message.content;
 
   const getArtifactIcon = (type: string) => {
     switch (type) {
@@ -119,6 +158,13 @@ export function MessageItem({ message, isLatest = false, isStreaming = false }: 
               Artifact
             </Badge>
           )}
+          {/* Missing artifact warning */}
+          {message.metadata?.artifactId && !artifact && (
+            <Badge variant="destructive" className="text-xs">
+              <AlertTriangle className="h-3 w-3 mr-1" />
+              Artifact Missing
+            </Badge>
+          )}
         </div>
         
         <div
@@ -148,7 +194,7 @@ export function MessageItem({ message, isLatest = false, isStreaming = false }: 
             <>
               {shouldShowTypewriter ? (
                 <TypewriterText
-                  content={message.content}
+                  content={displayContent}
                   speed={15}
                   onStart={handleTypewriterStart}
                   onComplete={handleTypewriterComplete}
@@ -188,7 +234,7 @@ export function MessageItem({ message, isLatest = false, isStreaming = false }: 
                     },
                   }}
                 >
-                  {message.content}
+                  {displayContent}
                 </ReactMarkdown>
               )}
             </>
@@ -225,6 +271,21 @@ export function MessageItem({ message, isLatest = false, isStreaming = false }: 
                   <ExternalLink className="h-4 w-4 mr-1" />
                   Open
                 </Button>
+              </div>
+            </div>
+          )}
+          
+          {/* Missing artifact warning with fallback message */}
+          {message.metadata?.artifactId && !artifact && !shouldShowTypewriter && (
+            <div className="mt-4 p-3 bg-yellow-900/20 border border-yellow-700 rounded-lg">
+              <div className="flex items-center gap-2 text-yellow-300">
+                <AlertTriangle className="h-4 w-4" />
+                <div className="text-sm">
+                  <div className="font-medium">Artifact Unavailable</div>
+                  <div className="text-xs text-yellow-400">
+                    The artifact for this message is not available. {shouldShowOriginalContent ? 'Showing original content with code blocks.' : 'This may happen when switching conversations.'}
+                  </div>
+                </div>
               </div>
             </div>
           )}
