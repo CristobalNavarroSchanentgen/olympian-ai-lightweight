@@ -22,6 +22,7 @@ class WebSocketChatService {
   private reconnectDelay = 1000;
   private keepAliveInterval: NodeJS.Timeout | null = null;
   private connectionCheckInterval: NodeJS.Timeout | null = null;
+  private baseUrl = '';
 
   connect(): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -36,12 +37,12 @@ class WebSocketChatService {
       const port = window.location.port;
       
       // Construct the base URL - in production behind nginx, this will be the same origin
-      const baseUrl = port ? `${protocol}//${hostname}:${port}` : `${protocol}//${hostname}`;
+      this.baseUrl = port ? `${protocol}//${hostname}:${port}` : `${protocol}//${hostname}`;
       
-      console.log('[WebSocketChat] Connecting to:', baseUrl);
+      console.log('[WebSocketChat] Connecting to:', this.baseUrl);
       console.log('[WebSocketChat] Protocol:', protocol, 'Hostname:', hostname, 'Port:', port);
 
-      this.socket = io(baseUrl, {
+      this.socket = io(this.baseUrl, {
         path: '/socket.io/',
         // Enhanced transport configuration for multi-host reliability
         transports: ['websocket', 'polling'], // Start with WebSocket, fallback to polling
@@ -56,9 +57,6 @@ class WebSocketChatService {
         tryAllTransports: true, // Try all transports if first fails
         // Force new connection to avoid stale sessions
         forceNew: false,
-        // Upgrade timeout for WebSocket
-        upgrade: true,
-        upgradeTimeout: 30000,
         // Important for multi-host deployment behind nginx
         closeOnBeforeunload: false,
         // Additional socket.io specific options
@@ -365,7 +363,7 @@ class WebSocketChatService {
       readyState: this.socket.io.engine.readyState,
       reconnectAttempts: this.reconnectAttempts,
       activeChats: this.chatHandlers.size,
-      url: this.socket.io.uri
+      url: this.baseUrl
     };
   }
 }
