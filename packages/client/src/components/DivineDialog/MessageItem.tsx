@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useArtifactStore } from '@/stores/useArtifactStore';
 import { useTypedMessagesStore } from '@/stores/useTypedMessagesStore';
+import { useChatStore } from '@/stores/useChatStore';
 import { 
   FileText, 
   Code, 
@@ -26,7 +27,9 @@ interface MessageItemProps {
 export function MessageItem({ message, isLatest = false, isStreaming = false }: MessageItemProps) {
   const isUser = message.role === 'user';
   const messageId = message._id?.toString() || `${message.conversationId}-${message.createdAt}`;
+  const conversationId = message.conversationId;
   
+  const { currentConversation } = useChatStore();
   const { 
     getArtifactById, 
     selectArtifact, 
@@ -34,12 +37,15 @@ export function MessageItem({ message, isLatest = false, isStreaming = false }: 
   } = useArtifactStore();
 
   const {
-    isMessageTyped,
-    markAsTyped
+    shouldTriggerTypewriter,
+    markAsTyped,
+    setLastTypingMessage
   } = useTypedMessagesStore();
 
-  // Check if this message has already been typed
-  const hasTyped = isUser || isMessageTyped(messageId) || isStreaming;
+  // Only trigger typewriter for assistant messages that haven't been typed yet
+  const shouldShowTypewriter = !isUser && 
+    !isStreaming && 
+    shouldTriggerTypewriter(conversationId, messageId, isLatest);
 
   // Get artifact if this message has one
   const artifact = message.metadata?.artifactId 
@@ -74,8 +80,15 @@ export function MessageItem({ message, isLatest = false, isStreaming = false }: 
     }
   };
 
+  const handleTypewriterStart = () => {
+    // Mark this message as the one currently being typed
+    setLastTypingMessage(messageId);
+  };
+
   const handleTypewriterComplete = () => {
-    markAsTyped(messageId);
+    // Mark message as typed and clear the typing indicator
+    markAsTyped(conversationId, messageId);
+    setLastTypingMessage(null);
   };
 
   return (
@@ -135,10 +148,11 @@ export function MessageItem({ message, isLatest = false, isStreaming = false }: 
             <p className="text-sm text-white/90">{message.content}</p>
           ) : (
             <>
-              {!hasTyped && isLatest && !isStreaming ? (
+              {shouldShowTypewriter ? (
                 <TypewriterText
                   content={message.content}
                   speed={15}
+                  onStart={handleTypewriterStart}
                   onComplete={handleTypewriterComplete}
                 />
               ) : (
@@ -162,7 +176,7 @@ export function MessageItem({ message, isLatest = false, isStreaming = false }: 
                       );
                     },
                     code: ({ node: _node, children, className, ...props }) => {
-                      const match = /language-(\w+)/.exec(className || '');
+                      const match = /language-(\\w+)/.exec(className || '');
                       const isInline = !match;
                       
                       return isInline ? (
@@ -182,8 +196,8 @@ export function MessageItem({ message, isLatest = false, isStreaming = false }: 
             </>
           )}
           
-          {/* Artifact */}
-          {artifact && (hasTyped || isStreaming) && (
+          {/* Artifact - Only show after typing is complete or if no typewriter */}
+          {artifact && !shouldShowTypewriter && (
             <div className="mt-4 p-3 bg-gray-800/50 border border-gray-700 rounded-lg">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
