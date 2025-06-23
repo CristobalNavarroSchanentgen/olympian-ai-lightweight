@@ -33,7 +33,6 @@ export function MessageItem({ message, isLatest = false, isStreaming = false }: 
   const { currentConversation } = useChatStore();
   const { 
     getArtifactById, 
-    getArtifactsForConversation,
     selectArtifact, 
     setArtifactPanelOpen 
   } = useArtifactStore();
@@ -86,7 +85,7 @@ export function MessageItem({ message, isLatest = false, isStreaming = false }: 
 
   // Determine which content to display
   const displayContent = shouldShowOriginalContent 
-    ? message.metadata.originalContent 
+    ? message.metadata?.originalContent || message.content
     : message.content;
 
   const getArtifactIcon = (type: string) => {
