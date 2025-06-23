@@ -1,4 +1,3 @@
-import { useEffect } from 'react';
 import { Message } from '@olympian/shared';
 import { format } from 'date-fns';
 import ReactMarkdown from 'react-markdown';
