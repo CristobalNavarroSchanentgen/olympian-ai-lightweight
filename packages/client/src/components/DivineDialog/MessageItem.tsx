@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import { Message } from '@olympian/shared';
 import { format } from 'date-fns';
 import ReactMarkdown from 'react-markdown';
@@ -8,6 +8,7 @@ import { CodeBlock } from '../ui/codeblock';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useArtifactStore } from '@/stores/useArtifactStore';
+import { useTypedMessagesStore } from '@/stores/useTypedMessagesStore';
 import { 
   FileText, 
   Code, 
@@ -20,11 +21,12 @@ import {
 interface MessageItemProps {
   message: Message;
   isLatest?: boolean;
+  isStreaming?: boolean;
 }
 
-export function MessageItem({ message, isLatest = false }: MessageItemProps) {
+export function MessageItem({ message, isLatest = false, isStreaming = false }: MessageItemProps) {
   const isUser = message.role === 'user';
-  const [hasTyped, setHasTyped] = useState(!isLatest || isUser);
+  const messageId = message._id?.toString() || `${message.conversationId}-${message.createdAt}`;
   
   const { 
     getArtifactById, 
@@ -32,17 +34,18 @@ export function MessageItem({ message, isLatest = false }: MessageItemProps) {
     setArtifactPanelOpen 
   } = useArtifactStore();
 
+  const {
+    isMessageTyped,
+    markAsTyped
+  } = useTypedMessagesStore();
+
+  // Check if this message has already been typed
+  const hasTyped = isUser || isMessageTyped(messageId) || isStreaming;
+
   // Get artifact if this message has one
   const artifact = message.metadata?.artifactId 
     ? getArtifactById(message.metadata.artifactId)
     : null;
-
-  // Reset typing state when message changes
-  useEffect(() => {
-    if (isLatest && !isUser) {
-      setHasTyped(false);
-    }
-  }, [message._id, isLatest, isUser]);
 
   const getArtifactIcon = (type: string) => {
     switch (type) {
@@ -70,6 +73,10 @@ export function MessageItem({ message, isLatest = false }: MessageItemProps) {
       selectArtifact(artifact);
       setArtifactPanelOpen(true);
     }
+  };
+
+  const handleTypewriterComplete = () => {
+    markAsTyped(messageId);
   };
 
   return (
@@ -129,11 +136,11 @@ export function MessageItem({ message, isLatest = false }: MessageItemProps) {
             <p className="text-sm text-white/90">{message.content}</p>
           ) : (
             <>
-              {!hasTyped ? (
+              {!hasTyped && isLatest && !isStreaming ? (
                 <TypewriterText
                   content={message.content}
                   speed={15}
-                  onComplete={() => setHasTyped(true)}
+                  onComplete={handleTypewriterComplete}
                 />
               ) : (
                 <ReactMarkdown
@@ -177,7 +184,7 @@ export function MessageItem({ message, isLatest = false }: MessageItemProps) {
           )}
           
           {/* Artifact */}
-          {artifact && hasTyped && (
+          {artifact && (hasTyped || isStreaming) && (
             <div className="mt-4 p-3 bg-gray-800/50 border border-gray-700 rounded-lg">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
