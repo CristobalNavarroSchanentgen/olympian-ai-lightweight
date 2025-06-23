@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useChatStore } from '@/stores/useChatStore';
+import { useArtifactStore } from '@/stores/useArtifactStore';
 import { useTypedMessagesStore } from '@/stores/useTypedMessagesStore';
 import { formatDistanceToNow } from 'date-fns';
 import { MessageSquare, Plus, Trash } from 'lucide-react';
@@ -19,20 +20,58 @@ export function ConversationSidebar() {
   } = useChatStore();
 
   const { clearTypedMessages } = useTypedMessagesStore();
+  const { selectArtifact, setArtifactPanelOpen, getArtifactsForConversation } = useArtifactStore();
 
   useEffect(() => {
     fetchConversations();
   }, [fetchConversations]);
 
   const handleSelectConversation = (conversationId: string) => {
+    console.log('🔄 [ConversationSidebar] Switching to conversation:', conversationId);
+    
     // Clear typed messages when switching conversations
     clearTypedMessages();
+    
+    // Clear artifact selection immediately to prevent showing artifacts from the wrong conversation
+    selectArtifact(null);
+    
+    // Get artifacts for the target conversation
+    const artifactsForConversation = getArtifactsForConversation(conversationId);
+    console.log('🎨 [ConversationSidebar] Artifacts for target conversation:', artifactsForConversation.length);
+    
+    // If the target conversation has artifacts, keep panel open and select the most recent one
+    if (artifactsForConversation.length > 0) {
+      const mostRecentArtifact = artifactsForConversation.sort((a, b) => 
+        new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+      )[0];
+      
+      // Select the most recent artifact after a brief delay to ensure conversation is loaded
+      setTimeout(() => {
+        selectArtifact(mostRecentArtifact);
+        setArtifactPanelOpen(true);
+        console.log('🎨 [ConversationSidebar] Auto-selected most recent artifact:', mostRecentArtifact.id);
+      }, 100);
+    } else {
+      // No artifacts in target conversation, close the panel
+      setArtifactPanelOpen(false);
+      console.log('🎨 [ConversationSidebar] No artifacts found, closing artifact panel');
+    }
+    
+    // Select the conversation (this will also update the chat store)
     selectConversation(conversationId);
   };
 
   const handleCreateConversation = () => {
+    console.log('🆕 [ConversationSidebar] Creating new conversation');
+    
     // Clear typed messages when creating a new conversation
     clearTypedMessages();
+    
+    // Clear artifact selection and close panel for new conversation
+    selectArtifact(null);
+    setArtifactPanelOpen(false);
+    console.log('🎨 [ConversationSidebar] Cleared artifacts for new conversation');
+    
     createConversation();
   };
 
