@@ -40,8 +40,8 @@ function detectVisionModelsByName(models: string[]): string[] {
     /bakllava/i,
     /llava-llama3/i,
     /llava-phi3/i,
-    /llava-v1\\.6/i,
-    /llama3\\.2-vision/i,
+    /llava-v1\.6/i,
+    /llama3\.2-vision/i,
     /moondream/i,
     /cogvlm/i,
     /instructblip/i,
@@ -107,6 +107,34 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     try {
       const conversation = await api.getConversation(id);
       console.log('✅ [useChatStore] selectConversation success:', conversation);
+      
+      // Clear artifact selection when switching conversations
+      // We need to import this dynamically to avoid circular dependency
+      const { useArtifactStore } = await import('./useArtifactStore');
+      const artifactStore = useArtifactStore.getState();
+      
+      // Clear selected artifact and close panel if no artifacts for this conversation
+      const conversationId = conversation._id?.toString() || '';
+      const artifactsForConversation = artifactStore.getArtifactsForConversation(conversationId);
+      
+      console.log('🎨 [useChatStore] Artifacts for conversation', conversationId, ':', artifactsForConversation.length);
+      
+      // Always clear the selected artifact when switching conversations
+      artifactStore.selectArtifact(null);
+      
+      // If new conversation has artifacts, auto-select the most recent one
+      if (artifactsForConversation.length > 0) {
+        const mostRecentArtifact = artifactsForConversation.sort((a, b) => 
+          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+        )[0];
+        artifactStore.selectArtifact(mostRecentArtifact);
+        console.log('🎨 [useChatStore] Auto-selected most recent artifact:', mostRecentArtifact.id);
+      } else {
+        // No artifacts in this conversation, close the panel
+        artifactStore.setArtifactPanelOpen(false);
+        console.log('🎨 [useChatStore] No artifacts found, closing artifact panel');
+      }
+      
       set({ currentConversation: conversation });
       await get().fetchMessages(id);
     } catch (error) {
@@ -135,6 +163,16 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
   createConversation: () => {
     console.log('🆕 [useChatStore] createConversation called');
+    
+    // Clear artifact selection when creating new conversation
+    setTimeout(async () => {
+      const { useArtifactStore } = await import('./useArtifactStore');
+      const artifactStore = useArtifactStore.getState();
+      artifactStore.selectArtifact(null);
+      artifactStore.setArtifactPanelOpen(false);
+      console.log('🎨 [useChatStore] Cleared artifacts for new conversation');
+    }, 0);
+    
     set({ currentConversation: null, messages: [] });
   },
 
@@ -142,6 +180,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     console.log('📞 [useChatStore] deleteConversation called with id:', id);
     try {
       await api.deleteConversation(id);
+      
+      // Clear artifacts for deleted conversation
+      const { useArtifactStore } = await import('./useArtifactStore');
+      const artifactStore = useArtifactStore.getState();
+      artifactStore.clearArtifactsForConversation(id);
+      console.log('🎨 [useChatStore] Cleared artifacts for deleted conversation:', id);
+      
       set(state => ({
         conversations: state.conversations.filter(c => c._id?.toString() !== id),
         currentConversation: state.currentConversation?._id?.toString() === id ? null : state.currentConversation,
@@ -346,6 +391,16 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
   clearCurrentConversation: () => {
     console.log('🧹 [useChatStore] clearCurrentConversation called');
+    
+    // Clear artifact selection when clearing conversation
+    setTimeout(async () => {
+      const { useArtifactStore } = await import('./useArtifactStore');
+      const artifactStore = useArtifactStore.getState();
+      artifactStore.selectArtifact(null);
+      artifactStore.setArtifactPanelOpen(false);
+      console.log('🎨 [useChatStore] Cleared artifacts for cleared conversation');
+    }, 0);
+    
     set({ currentConversation: null, messages: [] });
   },
 }));
