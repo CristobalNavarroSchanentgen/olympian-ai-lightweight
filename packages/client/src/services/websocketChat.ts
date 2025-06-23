@@ -20,6 +20,7 @@ class WebSocketChatService {
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
   private reconnectDelay = 1000;
+  private keepAliveInterval: NodeJS.Timeout | null = null;
 
   connect(): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -30,29 +31,55 @@ class WebSocketChatService {
 
       this.socket = io({
         path: '/socket.io',
-        transports: ['websocket'],
+        transports: ['websocket', 'polling'],
         reconnection: true,
         reconnectionAttempts: this.maxReconnectAttempts,
         reconnectionDelay: this.reconnectDelay,
         reconnectionDelayMax: 10000,
+        timeout: 20000,
+        autoConnect: true,
       });
 
       this.socket.on('connect', () => {
         console.log('[WebSocketChat] Connected to server');
         this.reconnectAttempts = 0;
+        this.startKeepAlive();
         resolve();
       });
 
       this.socket.on('disconnect', (reason) => {
         console.log('[WebSocketChat] Disconnected:', reason);
+        this.stopKeepAlive();
+        
+        // Only show error for abnormal disconnections
+        if (reason === 'io server disconnect' || reason === 'io client disconnect') {
+          // Normal disconnect, don't show error
+          return;
+        }
+        
+        // For other disconnection reasons, attempt to reconnect
+        if (reason === 'transport close' || reason === 'transport error') {
+          console.log('[WebSocketChat] Attempting to reconnect...');
+        }
       });
 
       this.socket.on('connect_error', (error) => {
         console.error('[WebSocketChat] Connection error:', error.message);
         this.reconnectAttempts++;
         if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+          this.stopKeepAlive();
           reject(new Error('Failed to connect to WebSocket server'));
         }
+      });
+
+      this.socket.on('reconnect', (attemptNumber) => {
+        console.log('[WebSocketChat] Reconnected after', attemptNumber, 'attempts');
+        this.startKeepAlive();
+      });
+
+      this.socket.on('reconnect_failed', () => {
+        console.error('[WebSocketChat] Reconnection failed');
+        this.stopKeepAlive();
       });
 
       // Setup chat event handlers
@@ -65,6 +92,22 @@ class WebSocketChatService {
         }
       }, 10000);
     });
+  }
+
+  private startKeepAlive() {
+    // Send a ping every 30 seconds to keep the connection alive
+    this.keepAliveInterval = setInterval(() => {
+      if (this.socket?.connected) {
+        this.socket.emit('ping');
+      }
+    }, 30000);
+  }
+
+  private stopKeepAlive() {
+    if (this.keepAliveInterval) {
+      clearInterval(this.keepAliveInterval);
+      this.keepAliveInterval = null;
+    }
   }
 
   private setupChatHandlers() {
@@ -106,6 +149,11 @@ class WebSocketChatService {
         handlers.onConversationCreated?.(data);
       });
     });
+
+    // Handle pong response
+    this.socket.on('pong', () => {
+      // Server acknowledged our ping
+    });
   }
 
   async sendMessage(
@@ -142,6 +190,7 @@ class WebSocketChatService {
   }
 
   disconnect() {
+    this.stopKeepAlive();
     if (this.socket) {
       this.socket.disconnect();
       this.socket = null;
