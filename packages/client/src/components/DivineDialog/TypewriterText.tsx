@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 interface TypewriterTextProps {
   content: string;
   speed?: number;
+  onStart?: () => void;
   onComplete?: () => void;
   className?: string;
   isStreaming?: boolean; // indicates if content is currently being streamed
@@ -13,6 +14,7 @@ interface TypewriterTextProps {
 export function TypewriterText({ 
   content, 
   speed = 20, 
+  onStart,
   onComplete,
   className,
   isStreaming = false,
@@ -20,6 +22,7 @@ export function TypewriterText({
   const [displayedContent, setDisplayedContent] = useState('');
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isTyping, setIsTyping] = useState(true);
+  const [hasStarted, setHasStarted] = useState(false);
   const lastStreamedIndexRef = useRef(0);
 
   useEffect(() => {
@@ -42,6 +45,7 @@ export function TypewriterText({
     setDisplayedContent('');
     setCurrentIndex(0);
     setIsTyping(true);
+    setHasStarted(false);
     lastStreamedIndexRef.current = 0;
   }, [content, isStreaming]);
 
@@ -49,6 +53,12 @@ export function TypewriterText({
     // Skip typewriter effect during streaming - content is already displayed progressively
     if (isStreaming) {
       return;
+    }
+
+    // Call onStart when typewriter begins (only once)
+    if (currentIndex === 0 && content.length > 0 && !hasStarted) {
+      setHasStarted(true);
+      onStart?.();
     }
 
     // Original typewriter behavior for non-streaming content
@@ -63,7 +73,7 @@ export function TypewriterText({
       setIsTyping(false);
       onComplete?.();
     }
-  }, [currentIndex, content, speed, isTyping, onComplete, isStreaming]);
+  }, [currentIndex, content, speed, isTyping, onComplete, onStart, isStreaming, hasStarted]);
 
   // During streaming, progressively show content as it arrives
   useEffect(() => {
@@ -86,7 +96,7 @@ export function TypewriterText({
             <pre className="overflow-x-auto rounded-lg bg-background p-3" {...props} />
           ),
           code: ({ node, children, className, ...props }) => {
-            const match = /language-(\w+)/.exec(className || '');
+            const match = /language-(\\w+)/.exec(className || '');
             const isInline = !match;
             
             return isInline ? (
