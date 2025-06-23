@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { Conversation, Message, ModelCapability } from '@olympian/shared';
 import { api } from '@/services/api';
 import { toast } from '@/hooks/useToast';
+import { useTypedMessagesStore } from './useTypedMessagesStore';
 
 interface ChatStore {
   conversations: Conversation[];
@@ -39,8 +40,8 @@ function detectVisionModelsByName(models: string[]): string[] {
     /bakllava/i,
     /llava-llama3/i,
     /llava-phi3/i,
-    /llava-v1\.6/i,
-    /llama3\.2-vision/i,
+    /llava-v1\\.6/i,
+    /llama3\\.2-vision/i,
     /moondream/i,
     /cogvlm/i,
     /instructblip/i,
@@ -85,6 +86,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       const { conversations } = await api.getConversations();
       console.log('✅ [useChatStore] fetchConversations success:', conversations.length, 'conversations');
       set({ conversations });
+      
+      // Clean up old typed messages data
+      const activeConversationIds = conversations.map(c => c._id?.toString()).filter(Boolean) as string[];
+      useTypedMessagesStore.getState().cleanupOldConversations(activeConversationIds);
     } catch (error) {
       console.error('❌ [useChatStore] fetchConversations error:', error);
       toast({
@@ -142,6 +147,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         currentConversation: state.currentConversation?._id?.toString() === id ? null : state.currentConversation,
         messages: state.currentConversation?._id?.toString() === id ? [] : state.messages,
       }));
+      
+      // Clean up typed messages for deleted conversation
+      useTypedMessagesStore.getState().clearTypedMessages(id);
+      
       console.log('✅ [useChatStore] deleteConversation success');
       toast({
         title: 'Success',
