@@ -15,19 +15,6 @@ import { getDeploymentConfig } from './config/deployment';
 
 const app = express();
 const httpServer = createServer(app);
-const io = new Server(httpServer, {
-  cors: {
-    origin: process.env.CLIENT_URL || 'http://localhost:3000',
-    credentials: true,
-  },
-  // Enhanced Socket.IO configuration for better connection stability
-  pingTimeout: 60000, // 60 seconds
-  pingInterval: 25000, // 25 seconds
-  upgradeTimeout: 30000, // 30 seconds
-  maxHttpBufferSize: 1e8, // 100 MB for large image uploads
-  transports: ['websocket', 'polling'], // Allow both transports
-  allowEIO3: true, // Allow Socket.IO v3 clients
-});
 
 // Get deployment configuration
 const deploymentConfig = getDeploymentConfig();
@@ -37,6 +24,35 @@ const deploymentConfig = getDeploymentConfig();
 // Also handle legacy "docker-multi-host" mode designation
 const isMultiHostDeployment = deploymentConfig.mode === 'multi-host' || 
                               process.env.DEPLOYMENT_MODE?.includes('multi-host');
+
+// Configure CORS for Socket.IO based on deployment mode
+const getCorsOrigin = () => {
+  if (isMultiHostDeployment) {
+    // In multi-host deployment behind nginx, accept all origins since nginx handles security
+    logger.info('🔧 Multi-host deployment: Configuring Socket.IO CORS to accept all origins (nginx handles security)');
+    return true; // Accept all origins
+  } else {
+    // For same-host deployments, use specific origin
+    const origin = process.env.CLIENT_URL || 'http://localhost:3000';
+    logger.info(`🔧 Same-host deployment: Configuring Socket.IO CORS for origin: ${origin}`);
+    return origin;
+  }
+};
+
+const io = new Server(httpServer, {
+  cors: {
+    origin: getCorsOrigin(),
+    credentials: true,
+    methods: ['GET', 'POST'],
+  },
+  // Enhanced Socket.IO configuration for better connection stability
+  pingTimeout: 60000, // 60 seconds
+  pingInterval: 25000, // 25 seconds
+  upgradeTimeout: 30000, // 30 seconds
+  maxHttpBufferSize: 1e8, // 100 MB for large image uploads
+  transports: ['websocket', 'polling'], // Allow both transports
+  allowEIO3: true, // Allow Socket.IO v3 clients
+});
 
 if (isMultiHostDeployment) {
   logger.info('Configuring Express to trust proxy headers for multi-host deployment');
@@ -122,6 +138,7 @@ async function start(): Promise<void> {
       logger.info(`   - Ping timeout: ${io.engine.opts.pingTimeout}ms`);
       logger.info(`   - Ping interval: ${io.engine.opts.pingInterval}ms`);
       logger.info(`   - Transports: ${io.engine.opts.transports?.join(', ')}`);
+      logger.info(`   - CORS origin: ${isMultiHostDeployment ? 'All origins (multi-host mode)' : io.engine.opts.cors?.origin}`);
     } catch (error) {
       serviceStatus.websocket = false;
       logger.error('❌ WebSocket initialization failed:', error);
