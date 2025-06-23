@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useChatStore } from '@/stores/useChatStore';
+import { useTypedMessagesStore } from '@/stores/useTypedMessagesStore';
 import { formatDistanceToNow } from 'date-fns';
 import { MessageSquare, Plus, Trash } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -17,9 +18,23 @@ export function ConversationSidebar() {
     deleteConversation,
   } = useChatStore();
 
+  const { clearTypedMessages } = useTypedMessagesStore();
+
   useEffect(() => {
     fetchConversations();
   }, [fetchConversations]);
+
+  const handleSelectConversation = (conversationId: string) => {
+    // Clear typed messages when switching conversations
+    clearTypedMessages();
+    selectConversation(conversationId);
+  };
+
+  const handleCreateConversation = () => {
+    // Clear typed messages when creating a new conversation
+    clearTypedMessages();
+    createConversation();
+  };
 
   return (
     <Card className="h-full flex flex-col">
@@ -28,7 +43,7 @@ export function ConversationSidebar() {
           <CardTitle className="text-lg">Conversations</CardTitle>
           <Button
             size="sm"
-            onClick={createConversation}
+            onClick={handleCreateConversation}
           >
             <Plus className="mr-2 h-4 w-4" />
             New
@@ -53,7 +68,7 @@ export function ConversationSidebar() {
                     'group relative rounded-lg border p-3 hover:bg-accent cursor-pointer transition-colors',
                     currentConversation?._id === conversation._id && 'bg-accent'
                   )}
-                  onClick={() => selectConversation(conversation._id!.toString())}
+                  onClick={() => handleSelectConversation(conversation._id!.toString())}
                 >
                   <div className="pr-8">
                     <h4 className="font-medium text-sm line-clamp-1">
