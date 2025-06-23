@@ -138,7 +138,7 @@ async function start(): Promise<void> {
       logger.info(`   - Ping timeout: ${io.engine.opts.pingTimeout}ms`);
       logger.info(`   - Ping interval: ${io.engine.opts.pingInterval}ms`);
       logger.info(`   - Transports: ${io.engine.opts.transports?.join(', ')}`);
-      logger.info(`   - CORS origin: ${isMultiHostDeployment ? 'All origins (multi-host mode)' : io.engine.opts.cors?.origin}`);
+      logger.info(`   - CORS mode: ${isMultiHostDeployment ? 'All origins (multi-host)' : 'Specific origin (same-host)'}`);
     } catch (error) {
       serviceStatus.websocket = false;
       logger.error('❌ WebSocket initialization failed:', error);
