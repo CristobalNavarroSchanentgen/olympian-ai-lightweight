@@ -132,14 +132,16 @@ export const useTypedMessagesStore = create<TypedMessagesStore>()(
         setItem: (name, value) => {
           try {
             // Convert Map with Sets to serializable format
-            const mapEntries = Array.from(value.state.typedMessagesByConversation.entries());
-            const serializableEntries: [string, string[]][] = mapEntries.map(
-              ([conversationId, messageIds]: [string, Set<string>]) => [conversationId, Array.from(messageIds)]
-            );
+            const serializableMap: Record<string, string[]> = {};
+            
+            // Properly iterate over the map entries
+            value.state.typedMessagesByConversation.forEach((messageIds: Set<string>, conversationId: string) => {
+              serializableMap[conversationId] = Array.from(messageIds);
+            });
             
             const serializableState = {
               ...value.state,
-              typedMessagesByConversation: Object.fromEntries(serializableEntries)
+              typedMessagesByConversation: serializableMap
             };
             
             localStorage.setItem(name, JSON.stringify({
