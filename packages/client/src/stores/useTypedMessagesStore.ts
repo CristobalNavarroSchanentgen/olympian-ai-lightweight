@@ -10,10 +10,13 @@ interface TypedMessagesStore {
   markAsTyped: (conversationId: string, messageId: string) => void;
   isMessageTyped: (conversationId: string, messageId: string) => boolean;
   setLastTypingMessage: (messageId: string | null) => void;
-  shouldTriggerTypewriter: (conversationId: string, messageId: string, isLatest: boolean) => boolean;
+  shouldTriggerTypewriter: (conversationId: string, messageId: string, isLatest: boolean, messageCreatedAt?: Date) => boolean;
   clearTypedMessages: (conversationId?: string) => void;
   cleanupOldConversations: (activeConversationIds: string[]) => void;
 }
+
+// Track when messages were added to prevent marking new messages as typed
+const messageAddedTimes = new Map<string, number>();
 
 export const useTypedMessagesStore = create<TypedMessagesStore>()(
   persist(
@@ -45,13 +48,46 @@ export const useTypedMessagesStore = create<TypedMessagesStore>()(
         set({ lastTypingMessageId: messageId });
       },
       
-      shouldTriggerTypewriter: (conversationId: string, messageId: string, isLatest: boolean) => {
+      shouldTriggerTypewriter: (conversationId: string, messageId: string, isLatest: boolean, messageCreatedAt?: Date) => {
         const state = get();
         
         // Only trigger for latest assistant messages
         if (!isLatest) return false;
         
-        // Don't trigger if already typed
+        // Check if this is a new message (created within the last 5 seconds)
+        const messageKey = `${conversationId}-${messageId}`;
+        const now = Date.now();
+        
+        if (!messageAddedTimes.has(messageKey)) {
+          messageAddedTimes.set(messageKey, now);
+          // Clean up old entries to prevent memory leak
+          if (messageAddedTimes.size > 100) {
+            const entries = Array.from(messageAddedTimes.entries());
+            entries.slice(0, 50).forEach(([key]) => messageAddedTimes.delete(key));
+          }
+        }
+        
+        const messageAddedTime = messageAddedTimes.get(messageKey) || now;
+        const isNewMessage = (now - messageAddedTime) < 5000; // 5 seconds
+        
+        // If it's a new message, trigger typewriter regardless of typed state
+        if (isNewMessage) {
+          // Remove from typed messages if it was somehow marked as typed
+          if (state.isMessageTyped(conversationId, messageId)) {
+            set((state) => {
+              const newMap = new Map(state.typedMessagesByConversation);
+              const conversationSet = newMap.get(conversationId);
+              if (conversationSet) {
+                conversationSet.delete(messageId);
+                newMap.set(conversationId, new Set(conversationSet));
+              }
+              return { typedMessagesByConversation: newMap };
+            });
+          }
+          return true;
+        }
+        
+        // For older messages, check if already typed
         if (state.isMessageTyped(conversationId, messageId)) return false;
         
         // Don't trigger if this message is already being typed
@@ -65,12 +101,17 @@ export const useTypedMessagesStore = create<TypedMessagesStore>()(
           set((state) => {
             const newMap = new Map(state.typedMessagesByConversation);
             newMap.delete(conversationId);
+            // Also clear message added times for this conversation
+            Array.from(messageAddedTimes.keys())
+              .filter(key => key.startsWith(conversationId))
+              .forEach(key => messageAddedTimes.delete(key));
             return {
               typedMessagesByConversation: newMap,
               lastTypingMessageId: null
             };
           });
         } else {
+          messageAddedTimes.clear();
           set({
             typedMessagesByConversation: new Map<string, Set<string>>(),
             lastTypingMessageId: null
@@ -89,6 +130,14 @@ export const useTypedMessagesStore = create<TypedMessagesStore>()(
               newMap.set(conversationId, messageIds);
             }
           }
+          
+          // Clean up message added times
+          Array.from(messageAddedTimes.keys())
+            .filter(key => {
+              const conversationId = key.split('-')[0];
+              return !activeIds.has(conversationId);
+            })
+            .forEach(key => messageAddedTimes.delete(key));
           
           return {
             typedMessagesByConversation: newMap,
