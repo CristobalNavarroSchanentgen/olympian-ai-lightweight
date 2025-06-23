@@ -3,7 +3,26 @@ import { Artifact } from '@olympian/shared';
 import { useArtifactStore } from '@/stores/useArtifactStore';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { AlertCircle, Save, X } from 'lucide-react';
+import { 
+  AlertCircle, 
+  Save, 
+  X, 
+  Copy, 
+  Download, 
+  Trash2, 
+  Check,
+  Code,
+  Eye,
+  Edit,
+  MoreHorizontal
+} from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu';
 import { toast } from '@/hooks/useToast';
 import CodeMirror from '@uiw/react-codemirror';
 import { oneDark } from '@codemirror/theme-one-dark';
@@ -68,12 +87,63 @@ const getLanguageExtension = (language: string): Extension[] => {
   }
 };
 
+function getFileExtension(type: string, language?: string): string {
+  if (language) {
+    switch (language.toLowerCase()) {
+      case 'javascript':
+      case 'js':
+        return 'js';
+      case 'typescript':
+      case 'ts':
+        return 'ts';
+      case 'jsx':
+        return 'jsx';
+      case 'tsx':
+        return 'tsx';
+      case 'python':
+      case 'py':
+        return 'py';
+      case 'html':
+        return 'html';
+      case 'css':
+        return 'css';
+      case 'json':
+        return 'json';
+      case 'markdown':
+      case 'md':
+        return 'md';
+      default:
+        return language.toLowerCase();
+    }
+  }
+
+  switch (type) {
+    case 'html':
+      return 'html';
+    case 'react':
+      return 'jsx';
+    case 'svg':
+      return 'svg';
+    case 'json':
+      return 'json';
+    case 'csv':
+      return 'csv';
+    case 'markdown':
+      return 'md';
+    default:
+      return 'txt';
+  }
+}
+
 export function ArtifactViewer({ artifact }: ArtifactViewerProps) {
-  const { viewMode, updateArtifact } = useArtifactStore();
+  const { viewMode, setViewMode, updateArtifact, deleteArtifact } = useArtifactStore();
   const [editContent, setEditContent] = useState(artifact.content);
   const [isEditing, setIsEditing] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
+  const [copied, setCopied] = useState(false);
   const codeRef = useRef<HTMLElement>(null);
+
+  const canShowPreview = ['html', 'react', 'svg', 'mermaid'].includes(artifact.type);
 
   useEffect(() => {
     setEditContent(artifact.content);
@@ -118,61 +188,187 @@ export function ArtifactViewer({ artifact }: ArtifactViewerProps) {
     setHasChanges(false);
   };
 
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(artifact.content);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+      toast({
+        title: 'Copied',
+        description: 'Artifact content copied to clipboard.',
+      });
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to copy content.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleDownload = () => {
+    const element = document.createElement('a');
+    const file = new Blob([artifact.content], { type: 'text/plain' });
+    element.href = URL.createObjectURL(file);
+    element.download = `${artifact.title}.${getFileExtension(artifact.type, artifact.language)}`;
+    document.body.appendChild(element);
+    element.click();
+    document.body.removeChild(element);
+  };
+
+  const handleDelete = () => {
+    if (window.confirm('Are you sure you want to delete this artifact?')) {
+      deleteArtifact(artifact.id);
+      toast({
+        title: 'Deleted',
+        description: 'Artifact has been deleted.',
+      });
+    }
+  };
+
+  const renderToolbar = () => (
+    <div className="flex items-center justify-between p-2 border-b bg-muted/50 flex-shrink-0">
+      <div className="flex items-center gap-1">
+        {/* View Mode Toggle */}
+        {(artifact.type === 'code' || canShowPreview) && (
+          <div className="flex items-center gap-1 mr-2">
+            <Button
+              variant={viewMode === 'code' ? 'default' : 'ghost'}
+              size="sm"
+              onClick={() => setViewMode('code')}
+              className="h-7 px-2 text-xs"
+            >
+              <Code className="h-3 w-3 mr-1" />
+              Code
+            </Button>
+            {canShowPreview && (
+              <>
+                <Button
+                  variant={viewMode === 'preview' ? 'default' : 'ghost'}
+                  size="sm"
+                  onClick={() => setViewMode('preview')}
+                  className="h-7 px-2 text-xs"
+                >
+                  <Eye className="h-3 w-3 mr-1" />
+                  Preview
+                </Button>
+                <Button
+                  variant={viewMode === 'split' ? 'default' : 'ghost'}
+                  size="sm"
+                  onClick={() => setViewMode('split')}
+                  className="h-7 px-2 text-xs"
+                >
+                  <Edit className="h-3 w-3 mr-1" />
+                  Split
+                </Button>
+              </>
+            )}
+          </div>
+        )}
+        
+        {/* Artifact info */}
+        <span className="text-xs text-muted-foreground">
+          {artifact.type} • v{artifact.version}
+        </span>
+      </div>
+
+      <div className="flex items-center gap-1">
+        {/* Quick actions */}
+        <Button size="sm" variant="ghost" onClick={handleCopy} className="h-7 px-2">
+          {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+        </Button>
+        <Button size="sm" variant="ghost" onClick={handleDownload} className="h-7 px-2">
+          <Download className="h-3 w-3" />
+        </Button>
+        
+        {/* More options */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="sm" className="h-7 px-2">
+              <MoreHorizontal className="h-3 w-3" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={handleCopy}>
+              {copied ? <Check className="h-3 w-3 mr-2" /> : <Copy className="h-3 w-3 mr-2" />}
+              {copied ? 'Copied!' : 'Copy content'}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={handleDownload}>
+              <Download className="h-3 w-3 mr-2" />
+              Download
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem 
+              onClick={handleDelete}
+              className="text-destructive focus:text-destructive"
+            >
+              <Trash2 className="h-3 w-3 mr-2" />
+              Delete
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        {/* Edit mode actions */}
+        {isEditing && (
+          <>
+            <div className="w-px h-4 bg-border mx-1" />
+            <Button size="sm" variant="ghost" onClick={handleCancel} className="h-7 px-2">
+              <X className="h-3 w-3 mr-1" />
+              Cancel
+            </Button>
+            <Button 
+              size="sm" 
+              onClick={handleSave} 
+              disabled={!hasChanges}
+              className="h-7 px-2"
+            >
+              <Save className="h-3 w-3 mr-1" />
+              Save
+            </Button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+
   const renderCodeView = () => (
     <div className="h-full flex flex-col">
+      {renderToolbar()}
+      
       {isEditing ? (
-        <>
-          <div className="flex items-center justify-between p-2 border-b bg-muted/50 flex-shrink-0">
-            <span className="text-sm font-medium">Editing {artifact.type}</span>
-            <div className="flex items-center gap-2">
-              <Button size="sm" variant="ghost" onClick={handleCancel}>
-                <X className="h-4 w-4 mr-1" />
-                Cancel
-              </Button>
-              <Button 
-                size="sm" 
-                onClick={handleSave} 
-                disabled={!hasChanges}
-              >
-                <Save className="h-4 w-4 mr-1" />
-                Save
-              </Button>
-            </div>
-          </div>
-          <div className="flex-1 min-h-0 overflow-hidden">
-            <CodeMirror
-              value={editContent}
-              onChange={(value) => setEditContent(value)}
-              theme={oneDark}
-              extensions={getLanguageExtension(artifact.language || artifact.type)}
-              style={{
-                fontSize: '0.875rem',
-                fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace',
-              }}
-              className="h-full overflow-auto"
-              height="100%"
-              basicSetup={{
-                lineNumbers: true,
-                bracketMatching: true,
-                closeBrackets: true,
-                autocompletion: true,
-                highlightSelectionMatches: true,
-                searchKeymap: true,
-                foldGutter: true,
-                dropCursor: true,
-                allowMultipleSelections: true,
-                indentOnInput: true,
-                history: true,
-                drawSelection: true,
-                rectangularSelection: true,
-                crosshairCursor: true,
-              }}
-            />
-          </div>
-        </>
+        <div className="flex-1 min-h-0 overflow-hidden">
+          <CodeMirror
+            value={editContent}
+            onChange={(value) => setEditContent(value)}
+            theme={oneDark}
+            extensions={getLanguageExtension(artifact.language || artifact.type)}
+            style={{
+              fontSize: '0.875rem',
+              fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace',
+            }}
+            className="h-full overflow-auto"
+            height="100%"
+            basicSetup={{
+              lineNumbers: true,
+              bracketMatching: true,
+              closeBrackets: true,
+              autocompletion: true,
+              highlightSelectionMatches: true,
+              searchKeymap: true,
+              foldGutter: true,
+              dropCursor: true,
+              allowMultipleSelections: true,
+              indentOnInput: true,
+              history: true,
+              drawSelection: true,
+              rectangularSelection: true,
+              crosshairCursor: true,
+            }}
+          />
+        </div>
       ) : (
         <div 
-          className="h-full p-4 overflow-auto cursor-text hover:bg-muted/20 transition-colors"
+          className="flex-1 p-4 overflow-auto cursor-text hover:bg-muted/20 transition-colors"
           onClick={() => setIsEditing(true)}
         >
           <pre className="hljs bg-[#22272e] rounded-lg border border-gray-700 p-4 text-sm leading-relaxed overflow-x-auto max-h-full">
@@ -200,30 +396,39 @@ export function ArtifactViewer({ artifact }: ArtifactViewerProps) {
     switch (artifact.type) {
       case 'html':
         return (
-          <div className="h-full overflow-hidden">
-            <iframe
-              srcDoc={artifact.content}
-              className="w-full h-full border-0"
-              sandbox="allow-scripts allow-same-origin"
-              title={artifact.title}
-            />
+          <div className="h-full flex flex-col">
+            {!isEditing && renderToolbar()}
+            <div className="flex-1 overflow-hidden">
+              <iframe
+                srcDoc={artifact.content}
+                className="w-full h-full border-0"
+                sandbox="allow-scripts allow-same-origin"
+                title={artifact.title}
+              />
+            </div>
           </div>
         );
       
       case 'svg':
         return (
-          <div className="h-full p-4 overflow-auto bg-white dark:bg-gray-900">
-            <div 
-              className="flex items-center justify-center min-h-full"
-              dangerouslySetInnerHTML={{ __html: artifact.content }}
-            />
+          <div className="h-full flex flex-col">
+            {!isEditing && renderToolbar()}
+            <div className="flex-1 p-4 overflow-auto bg-white dark:bg-gray-900">
+              <div 
+                className="flex items-center justify-center min-h-full"
+                dangerouslySetInnerHTML={{ __html: artifact.content }}
+              />
+            </div>
           </div>
         );
       
       case 'markdown':
         return (
-          <div className="h-full p-4 overflow-auto prose prose-sm max-w-none dark:prose-invert">
-            <ReactMarkdown>{artifact.content}</ReactMarkdown>
+          <div className="h-full flex flex-col">
+            {!isEditing && renderToolbar()}
+            <div className="flex-1 p-4 overflow-auto prose prose-sm max-w-none dark:prose-invert">
+              <ReactMarkdown>{artifact.content}</ReactMarkdown>
+            </div>
           </div>
         );
       
@@ -231,22 +436,25 @@ export function ArtifactViewer({ artifact }: ArtifactViewerProps) {
         try {
           const jsonData = JSON.parse(artifact.content);
           return (
-            <div className="h-full p-4 overflow-auto">
-              <pre className="hljs bg-[#22272e] rounded-lg border border-gray-700 p-4 text-sm leading-relaxed overflow-x-auto max-h-full">
-                <code 
-                  className="language-json"
-                  style={{
-                    fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace',
-                    fontSize: '0.875rem',
-                    lineHeight: '1.5',
-                    display: 'block',
-                    whiteSpace: 'pre',
-                  }}
-                  dangerouslySetInnerHTML={{ 
-                    __html: hljs.highlight(JSON.stringify(jsonData, null, 2), { language: 'json' }).value 
-                  }}
-                />
-              </pre>
+            <div className="h-full flex flex-col">
+              {!isEditing && renderToolbar()}
+              <div className="flex-1 p-4 overflow-auto">
+                <pre className="hljs bg-[#22272e] rounded-lg border border-gray-700 p-4 text-sm leading-relaxed overflow-x-auto max-h-full">
+                  <code 
+                    className="language-json"
+                    style={{
+                      fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace',
+                      fontSize: '0.875rem',
+                      lineHeight: '1.5',
+                      display: 'block',
+                      whiteSpace: 'pre',
+                    }}
+                    dangerouslySetInnerHTML={{ 
+                      __html: hljs.highlight(JSON.stringify(jsonData, null, 2), { language: 'json' }).value 
+                    }}
+                  />
+                </pre>
+              </div>
             </div>
           );
         } catch (error) {
@@ -254,31 +462,48 @@ export function ArtifactViewer({ artifact }: ArtifactViewerProps) {
         }
       
       case 'csv':
-        return renderCSVPreview(artifact.content);
+        return (
+          <div className="h-full flex flex-col">
+            {!isEditing && renderToolbar()}
+            <div className="flex-1">
+              {renderCSVPreview(artifact.content)}
+            </div>
+          </div>
+        );
       
       case 'mermaid':
-        return renderMermaidPreview(artifact.content);
+        return (
+          <div className="h-full flex flex-col">
+            {!isEditing && renderToolbar()}
+            <div className="flex-1">
+              {renderMermaidPreview(artifact.content)}
+            </div>
+          </div>
+        );
       
       case 'react':
         return (
-          <div className="h-full p-4 overflow-auto">
-            <Card className="p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <AlertCircle className="h-4 w-4 text-yellow-500" />
-                <span className="text-sm font-medium">React Component Preview</span>
-              </div>
-              <p className="text-sm text-muted-foreground mb-4">
-                React component preview is not yet implemented. Use code view to see the component source.
-              </p>
-              <pre className="hljs bg-[#22272e] rounded-lg border border-gray-700 p-2 text-xs overflow-auto max-h-32">
-                <code 
-                  className="language-typescript"
-                  dangerouslySetInnerHTML={{ 
-                    __html: hljs.highlight(artifact.content.substring(0, 200) + '...', { language: 'typescript' }).value 
-                  }}
-                />
-              </pre>
-            </Card>
+          <div className="h-full flex flex-col">
+            {!isEditing && renderToolbar()}
+            <div className="flex-1 p-4 overflow-auto">
+              <Card className="p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <AlertCircle className="h-4 w-4 text-yellow-500" />
+                  <span className="text-sm font-medium">React Component Preview</span>
+                </div>
+                <p className="text-sm text-muted-foreground mb-4">
+                  React component preview is not yet implemented. Use code view to see the component source.
+                </p>
+                <pre className="hljs bg-[#22272e] rounded-lg border border-gray-700 p-2 text-xs overflow-auto max-h-32">
+                  <code 
+                    className="language-typescript"
+                    dangerouslySetInnerHTML={{ 
+                      __html: hljs.highlight(artifact.content.substring(0, 200) + '...', { language: 'typescript' }).value 
+                    }}
+                  />
+                </pre>
+              </Card>
+            </div>
           </div>
         );
       
