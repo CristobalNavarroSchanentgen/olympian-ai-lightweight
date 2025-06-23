@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useChatStore } from '@/stores/useChatStore';
 import { useArtifactStore } from '@/stores/useArtifactStore';
+import { useTypedMessagesStore } from '@/stores/useTypedMessagesStore';
 import { api } from '@/services/api';
 import { ChatInput } from './ChatInput';
 import { MessageList } from './MessageList';
@@ -26,6 +27,7 @@ export function DivineDialog() {
   } = useChatStore();
 
   const { createArtifact, isArtifactPanelOpen } = useArtifactStore();
+  const { clearTypedMessages } = useTypedMessagesStore();
   
   const [isThinking, setIsThinking] = useState(false);
   const [hasImages, setHasImages] = useState(false);
@@ -41,6 +43,8 @@ export function DivineDialog() {
   }, [messages]);
 
   const handleNewConversation = () => {
+    // Clear typed messages when creating a new conversation
+    clearTypedMessages();
     createConversation();
   };
 
