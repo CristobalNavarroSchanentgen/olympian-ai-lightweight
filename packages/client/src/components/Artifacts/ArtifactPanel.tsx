@@ -3,7 +3,6 @@ import { useArtifactStore } from '@/stores/useArtifactStore';
 import { useChatStore } from '@/stores/useChatStore';
 import { ArtifactViewer } from './ArtifactViewer';
 import { ArtifactList } from './ArtifactList';
-import { ArtifactHeader } from './ArtifactHeader';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { FileText, ChevronLeft, ChevronRight } from 'lucide-react';
@@ -82,11 +81,8 @@ export function ArtifactPanel() {
             onClose={() => setShowArtifactList(false)}
           />
         ) : selectedArtifact ? (
-          <div className="h-full flex flex-col">
-            <ArtifactHeader artifact={selectedArtifact} />
-            <div className="flex-1 overflow-hidden">
-              <ArtifactViewer artifact={selectedArtifact} />
-            </div>
+          <div className="h-full overflow-hidden">
+            <ArtifactViewer artifact={selectedArtifact} />
           </div>
         ) : (
           <div className="h-full flex items-center justify-center p-8 relative">
