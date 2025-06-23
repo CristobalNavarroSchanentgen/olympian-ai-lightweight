@@ -10,7 +10,7 @@ interface TypedMessagesStore {
   markAsTyped: (conversationId: string, messageId: string) => void;
   isMessageTyped: (conversationId: string, messageId: string) => boolean;
   setLastTypingMessage: (messageId: string | null) => void;
-  shouldTriggerTypewriter: (conversationId: string, messageId: string, isLatest: boolean, messageCreatedAt?: Date) => boolean;
+  shouldTriggerTypewriter: (conversationId: string, messageId: string, isLatest: boolean) => boolean;
   clearTypedMessages: (conversationId?: string) => void;
   cleanupOldConversations: (activeConversationIds: string[]) => void;
 }
@@ -48,7 +48,7 @@ export const useTypedMessagesStore = create<TypedMessagesStore>()(
         set({ lastTypingMessageId: messageId });
       },
       
-      shouldTriggerTypewriter: (conversationId: string, messageId: string, isLatest: boolean, messageCreatedAt?: Date) => {
+      shouldTriggerTypewriter: (conversationId: string, messageId: string, isLatest: boolean) => {
         const state = get();
         
         // Only trigger for latest assistant messages
