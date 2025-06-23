@@ -300,9 +300,14 @@ class WebSocketChatService {
     console.log('[WebSocketChat] 📝 Registered handlers for message:', messageId);
     console.log('[WebSocketChat] 📊 Total active chats:', this.chatHandlers.size);
 
-    // Send the message via WebSocket
-    this.socket!.emit('chat:message', params as ClientEvents['chat:message']);
-    console.log('[WebSocketChat] ✅ Message sent successfully');
+    // Send the message via WebSocket with the messageId included
+    const messageData: ClientEvents['chat:message'] = {
+      messageId, // Include the messageId so server uses the same ID
+      ...params
+    };
+    
+    this.socket!.emit('chat:message', messageData);
+    console.log('[WebSocketChat] ✅ Message sent successfully with messageId:', messageId);
 
     return messageId;
   }
