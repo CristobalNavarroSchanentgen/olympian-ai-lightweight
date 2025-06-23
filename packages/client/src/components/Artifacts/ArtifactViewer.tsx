@@ -7,23 +7,8 @@ import { Card } from '@/components/ui/card';
 import { 
   AlertCircle, 
   Save, 
-  X, 
-  Copy, 
-  Download, 
-  Trash2, 
-  Check,
-  Code,
-  Eye,
-  Edit,
-  MoreHorizontal
+  X
 } from 'lucide-react';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  DropdownMenuSeparator,
-} from '@/components/ui/dropdown-menu';
 import { toast } from '@/hooks/useToast';
 import CodeMirror from '@uiw/react-codemirror';
 import { oneDark } from '@codemirror/theme-one-dark';
@@ -88,62 +73,12 @@ const getLanguageExtension = (language: string): Extension[] => {
   }
 };
 
-function getFileExtension(type: string, language?: string): string {
-  if (language) {
-    switch (language.toLowerCase()) {
-      case 'javascript':
-      case 'js':
-        return 'js';
-      case 'typescript':
-      case 'ts':
-        return 'ts';
-      case 'jsx':
-        return 'jsx';
-      case 'tsx':
-        return 'tsx';
-      case 'python':
-      case 'py':
-        return 'py';
-      case 'html':
-        return 'html';
-      case 'css':
-        return 'css';
-      case 'json':
-        return 'json';
-      case 'markdown':
-      case 'md':
-        return 'md';
-      default:
-        return language.toLowerCase();
-    }
-  }
-
-  switch (type) {
-    case 'html':
-      return 'html';
-    case 'react':
-      return 'jsx';
-    case 'svg':
-      return 'svg';
-    case 'json':
-      return 'json';
-    case 'csv':
-      return 'csv';
-    case 'markdown':
-      return 'md';
-    default:
-      return 'txt';
-  }
-}
-
 export function ArtifactViewer({ artifact }: ArtifactViewerProps) {
   const { viewMode, updateArtifact } = useArtifactStore();
   const [editContent, setEditContent] = useState(artifact.content);
   const [isEditing, setIsEditing] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const codeRef = useRef<HTMLElement>(null);
-
-  const canShowPreview = ['html', 'react', 'svg', 'mermaid'].includes(artifact.type);
 
   useEffect(() => {
     setEditContent(artifact.content);
