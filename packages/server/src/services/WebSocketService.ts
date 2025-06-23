@@ -13,6 +13,7 @@ export class WebSocketService {
   private streamliner: OllamaStreamliner;
   private memoryService: ChatMemoryService;
   private activeChats: Map<string, AbortController> = new Map();
+  private connectedClients: Map<string, Date> = new Map();
 
   constructor(io: Server) {
     this.io = io;
@@ -25,6 +26,7 @@ export class WebSocketService {
   initialize(): void {
     this.io.on('connection', (socket: Socket) => {
       logger.info(`Client connected: ${socket.id}`);
+      this.connectedClients.set(socket.id, new Date());
 
       // Chat events
       socket.on('chat:message', async (data: ClientEvents['chat:message']) => {
@@ -57,8 +59,28 @@ export class WebSocketService {
         await this.handleConnectionTest(socket, data);
       });
 
-      socket.on('disconnect', () => {
-        logger.info(`Client disconnected: ${socket.id}`);
+      // Keep-alive ping/pong
+      socket.on('ping', () => {
+        socket.emit('pong');
+      });
+
+      socket.on('disconnect', (reason) => {
+        const connectionDuration = this.connectedClients.get(socket.id);
+        if (connectionDuration) {
+          const duration = Date.now() - connectionDuration.getTime();
+          logger.info(`Client disconnected: ${socket.id}, reason: ${reason}, duration: ${duration}ms`);
+          this.connectedClients.delete(socket.id);
+        } else {
+          logger.info(`Client disconnected: ${socket.id}, reason: ${reason}`);
+        }
+        
+        // Clean up any active chats for this socket
+        this.activeChats.forEach((controller, messageId) => {
+          if (messageId.startsWith(socket.id)) {
+            controller.abort();
+            this.activeChats.delete(messageId);
+          }
+        });
       });
     });
 
@@ -66,6 +88,13 @@ export class WebSocketService {
     this.scanner.on('progress', (progress: ScanProgress) => {
       this.io.emit('scan:progress', progress);
     });
+
+    // Log connection statistics periodically
+    setInterval(() => {
+      if (this.connectedClients.size > 0) {
+        logger.debug(`Active WebSocket connections: ${this.connectedClients.size}`);
+      }
+    }, 60000); // Every minute
   }
 
   private async handleChatMessage(
