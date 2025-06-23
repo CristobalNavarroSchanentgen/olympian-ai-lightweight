@@ -1,27 +1,18 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { ConnectionsPanel } from '@/components/ConnectionsPanel';
 import { MCPConfigPanel } from '@/components/MCPConfigPanel';
 import { ConversationSidebar } from '@/components/DivineDialog/ConversationSidebar';
 import { DivineDialog } from '@/components/DivineDialog';
 import { Toaster } from '@/components/ui/toaster';
-import { useWebSocket } from '@/hooks/useWebSocket';
 import { ThemeProvider } from '@/components/ThemeProvider';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Cable, Settings, History } from 'lucide-react';
 
 function App() {
-  const { connect, disconnect } = useWebSocket();
   const [showConnections, setShowConnections] = useState(false);
   const [showMCPConfig, setShowMCPConfig] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
-
-  useEffect(() => {
-    connect();
-    return () => {
-      disconnect();
-    };
-  }, [connect, disconnect]);
 
   return (
     <ThemeProvider defaultTheme="dark" storageKey="olympian-theme">
