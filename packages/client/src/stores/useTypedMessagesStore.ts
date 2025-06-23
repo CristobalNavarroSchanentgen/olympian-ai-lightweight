@@ -6,6 +6,8 @@ interface TypedMessagesStore {
   typedMessagesByConversation: Map<string, Set<string>>;
   // Track the most recent message that started typing to prevent re-triggering
   lastTypingMessageId: string | null;
+  // Map of conversationId -> streaming content for real-time display
+  streamingContentByConversation: Map<string, string>;
   
   markAsTyped: (conversationId: string, messageId: string) => void;
   isMessageTyped: (conversationId: string, messageId: string) => boolean;
@@ -13,6 +15,10 @@ interface TypedMessagesStore {
   shouldTriggerTypewriter: (conversationId: string, messageId: string, isLatest: boolean) => boolean;
   clearTypedMessages: (conversationId?: string) => void;
   cleanupOldConversations: (activeConversationIds: string[]) => void;
+  
+  // Streaming content methods
+  addTypedContent: (conversationId: string, token: string) => void;
+  getTypedContent: (conversationId: string) => string;
 }
 
 // Track when messages were added to prevent marking new messages as typed
@@ -23,6 +29,7 @@ export const useTypedMessagesStore = create<TypedMessagesStore>()(
     (set, get) => ({
       typedMessagesByConversation: new Map<string, Set<string>>(),
       lastTypingMessageId: null,
+      streamingContentByConversation: new Map<string, string>(),
       
       markAsTyped: (conversationId: string, messageId: string) => {
         set((state) => {
@@ -100,13 +107,17 @@ export const useTypedMessagesStore = create<TypedMessagesStore>()(
         if (conversationId) {
           set((state) => {
             const newMap = new Map(state.typedMessagesByConversation);
+            const newStreamingMap = new Map(state.streamingContentByConversation);
             newMap.delete(conversationId);
+            newStreamingMap.delete(conversationId);
+            
             // Also clear message added times for this conversation
             Array.from(messageAddedTimes.keys())
               .filter(key => key.startsWith(conversationId))
               .forEach(key => messageAddedTimes.delete(key));
             return {
               typedMessagesByConversation: newMap,
+              streamingContentByConversation: newStreamingMap,
               lastTypingMessageId: null
             };
           });
@@ -114,6 +125,7 @@ export const useTypedMessagesStore = create<TypedMessagesStore>()(
           messageAddedTimes.clear();
           set({
             typedMessagesByConversation: new Map<string, Set<string>>(),
+            streamingContentByConversation: new Map<string, string>(),
             lastTypingMessageId: null
           });
         }
@@ -122,12 +134,19 @@ export const useTypedMessagesStore = create<TypedMessagesStore>()(
       cleanupOldConversations: (activeConversationIds: string[]) => {
         set((state) => {
           const newMap = new Map<string, Set<string>>();
+          const newStreamingMap = new Map<string, string>();
           const activeIds = new Set(activeConversationIds);
           
           // Keep only active conversations
           for (const [conversationId, messageIds] of state.typedMessagesByConversation) {
             if (activeIds.has(conversationId)) {
               newMap.set(conversationId, messageIds);
+            }
+          }
+          
+          for (const [conversationId, content] of state.streamingContentByConversation) {
+            if (activeIds.has(conversationId)) {
+              newStreamingMap.set(conversationId, content);
             }
           }
           
@@ -141,10 +160,28 @@ export const useTypedMessagesStore = create<TypedMessagesStore>()(
           
           return {
             typedMessagesByConversation: newMap,
+            streamingContentByConversation: newStreamingMap,
             // Clear lastTypingMessageId if it doesn't belong to an active conversation
             lastTypingMessageId: state.lastTypingMessageId
           };
         });
+      },
+      
+      // Streaming content methods
+      addTypedContent: (conversationId: string, token: string) => {
+        set((state) => {
+          const newStreamingMap = new Map(state.streamingContentByConversation);
+          const currentContent = newStreamingMap.get(conversationId) || '';
+          newStreamingMap.set(conversationId, currentContent + token);
+          return {
+            streamingContentByConversation: newStreamingMap
+          };
+        });
+      },
+      
+      getTypedContent: (conversationId: string) => {
+        const state = get();
+        return state.streamingContentByConversation.get(conversationId) || '';
       }
     }),
     {
@@ -167,10 +204,20 @@ export const useTypedMessagesStore = create<TypedMessagesStore>()(
               }
             }
             
+            // Convert serialized streaming content map back to Map
+            const streamingContentByConversation = new Map<string, string>();
+            if (parsed.state?.streamingContentByConversation) {
+              const entries = Object.entries(parsed.state.streamingContentByConversation) as [string, string][];
+              for (const [conversationId, content] of entries) {
+                streamingContentByConversation.set(conversationId, content);
+              }
+            }
+            
             return {
               state: {
                 ...parsed.state,
                 typedMessagesByConversation,
+                streamingContentByConversation,
               },
               version: parsed.version
             };
@@ -188,9 +235,16 @@ export const useTypedMessagesStore = create<TypedMessagesStore>()(
               serializableMap[conversationId] = Array.from(messageIds);
             });
             
+            // Convert streaming content map to serializable format
+            const serializableStreamingMap: Record<string, string> = {};
+            value.state.streamingContentByConversation.forEach((content: string, conversationId: string) => {
+              serializableStreamingMap[conversationId] = content;
+            });
+            
             const serializableState = {
               ...value.state,
-              typedMessagesByConversation: serializableMap
+              typedMessagesByConversation: serializableMap,
+              streamingContentByConversation: serializableStreamingMap
             };
             
             localStorage.setItem(name, JSON.stringify({
