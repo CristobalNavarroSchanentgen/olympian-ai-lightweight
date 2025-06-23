@@ -11,6 +11,7 @@ import { Message } from '@olympian/shared';
 import { toast } from '@/hooks/useToast';
 import { detectArtifact } from '@/lib/artifactDetection';
 import { Plus } from 'lucide-react';
+import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 
 export function DivineDialog() {
   const {
@@ -165,63 +166,165 @@ export function DivineDialog() {
     }
   };
 
+  const handleLayoutChange = (sizes: number[]) => {
+    // Persist layout to localStorage
+    localStorage.setItem('olympian-dialog-layout', JSON.stringify(sizes));
+  };
+
+  // Get default layout from localStorage or use defaults
+  const getDefaultLayout = (): [number, number] => {
+    try {
+      const savedLayout = localStorage.getItem('olympian-dialog-layout');
+      if (savedLayout) {
+        const parsed = JSON.parse(savedLayout);
+        if (Array.isArray(parsed) && parsed.length === 2) {
+          return [parsed[0], parsed[1]];
+        }
+      }
+    } catch (error) {
+      console.warn('Failed to parse saved layout:', error);
+    }
+    // Default layout: 60% chat, 40% artifacts when both panels are open
+    return [60, 40];
+  };
+
+  const defaultLayout = getDefaultLayout();
+
   return (
     <div className="h-full flex bg-gray-900">
-      {/* Left Panel - Conversation */}
-      <div className={`${isArtifactPanelOpen ? 'w-1/2' : 'flex-1'} flex flex-col bg-gray-900 ${isArtifactPanelOpen ? 'border-r border-gray-800' : ''} transition-all duration-300`}>
-        {/* Header */}
-        <div className="border-b border-gray-800 px-4 py-2 flex-shrink-0 bg-gray-900/80 backdrop-blur-sm">
-          <div className="flex items-center justify-between">
-            {/* Left side - New button */}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleNewConversation}
-              className="flex items-center gap-2 text-gray-300 hover:text-white hover:bg-gray-800"
-            >
-              <Plus className="h-4 w-4" />
-              New
-            </Button>
+      {isArtifactPanelOpen ? (
+        // When artifact panel is open, use resizable panels
+        <PanelGroup 
+          direction="horizontal" 
+          onLayout={handleLayoutChange}
+          className="h-full"
+        >
+          {/* Chat Panel */}
+          <Panel 
+            defaultSize={defaultLayout[0]} 
+            minSize={30}
+            id="chat-panel"
+            order={1}
+          >
+            <div className="h-full flex flex-col bg-gray-900">
+              {/* Header */}
+              <div className="border-b border-gray-800 px-4 py-2 flex-shrink-0 bg-gray-900/80 backdrop-blur-sm">
+                <div className="flex items-center justify-between">
+                  {/* Left side - New button */}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleNewConversation}
+                    className="flex items-center gap-2 text-gray-300 hover:text-white hover:bg-gray-800"
+                  >
+                    <Plus className="h-4 w-4" />
+                    New
+                  </Button>
 
-            {/* Center - Conversation title */}
-            <div className="text-lg font-semibold text-center flex-1 text-white">
-              {currentConversation ? currentConversation.title : 'New Conversation'}
+                  {/* Center - Conversation title */}
+                  <div className="text-lg font-semibold text-center flex-1 text-white">
+                    {currentConversation ? currentConversation.title : 'New Conversation'}
+                  </div>
+
+                  {/* Right side - Model selector */}
+                  <div className="flex items-center gap-2 justify-end">
+                    <ModelSelector hasImages={hasImages} />
+                  </div>
+                </div>
+              </div>
+
+              {/* Messages - This takes all available space */}
+              <div className="flex-1 overflow-y-auto p-4 bg-gray-900">
+                <MessageList
+                  messages={messages}
+                  streamedContent=""
+                  isThinking={isThinking}
+                  isGenerating={false}
+                  isTransitioning={false}
+                />
+                <div ref={messagesEndRef} />
+              </div>
+
+              {/* Input - Fixed at bottom */}
+              <div className="border-t border-gray-800 p-4 flex-shrink-0 bg-gray-900/80 backdrop-blur-sm">
+                <ChatInput
+                  onSendMessage={handleSendMessage}
+                  onCancel={() => {}}
+                  isDisabled={isThinking}
+                  isGenerating={false}
+                />
+              </div>
             </div>
+          </Panel>
 
-            {/* Right side - Model selector */}
-            <div className="flex items-center gap-2 justify-end">
-              <ModelSelector hasImages={hasImages} />
+          {/* Resizable Handle */}
+          <PanelResizeHandle className="w-1 bg-gray-700 hover:bg-gray-600 transition-colors duration-200 relative group">
+            {/* Visual indicator */}
+            <div className="absolute inset-y-0 left-1/2 w-1 -translate-x-1/2 bg-gray-600 group-hover:bg-gray-500 rounded-full"></div>
+          </PanelResizeHandle>
+
+          {/* Artifact Panel */}
+          <Panel 
+            defaultSize={defaultLayout[1]} 
+            minSize={25}
+            id="artifact-panel"
+            order={2}
+          >
+            <ArtifactPanel />
+          </Panel>
+        </PanelGroup>
+      ) : (
+        // When artifact panel is closed, use single panel
+        <div className="flex-1 flex flex-col bg-gray-900">
+          {/* Header */}
+          <div className="border-b border-gray-800 px-4 py-2 flex-shrink-0 bg-gray-900/80 backdrop-blur-sm">
+            <div className="flex items-center justify-between">
+              {/* Left side - New button */}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleNewConversation}
+                className="flex items-center gap-2 text-gray-300 hover:text-white hover:bg-gray-800"
+              >
+                <Plus className="h-4 w-4" />
+                New
+              </Button>
+
+              {/* Center - Conversation title */}
+              <div className="text-lg font-semibold text-center flex-1 text-white">
+                {currentConversation ? currentConversation.title : 'New Conversation'}
+              </div>
+
+              {/* Right side - Model selector */}
+              <div className="flex items-center gap-2 justify-end">
+                <ModelSelector hasImages={hasImages} />
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* Messages - This takes all available space */}
-        <div className="flex-1 overflow-y-auto p-4 bg-gray-900">
-          <MessageList
-            messages={messages}
-            streamedContent=""
-            isThinking={isThinking}
-            isGenerating={false}
-            isTransitioning={false}
-          />
-          <div ref={messagesEndRef} />
-        </div>
+          {/* Messages - This takes all available space */}
+          <div className="flex-1 overflow-y-auto p-4 bg-gray-900">
+            <MessageList
+              messages={messages}
+              streamedContent=""
+              isThinking={isThinking}
+              isGenerating={false}
+              isTransitioning={false}
+            />
+            <div ref={messagesEndRef} />
+          </div>
 
-        {/* Input - Fixed at bottom */}
-        <div className="border-t border-gray-800 p-4 flex-shrink-0 bg-gray-900/80 backdrop-blur-sm">
-          <ChatInput
-            onSendMessage={handleSendMessage}
-            onCancel={() => {}}
-            isDisabled={isThinking}
-            isGenerating={false}
-          />
+          {/* Input - Fixed at bottom */}
+          <div className="border-t border-gray-800 p-4 flex-shrink-0 bg-gray-900/80 backdrop-blur-sm">
+            <ChatInput
+              onSendMessage={handleSendMessage}
+              onCancel={() => {}}
+              isDisabled={isThinking}
+              isGenerating={false}
+            />
+          </div>
         </div>
-      </div>
-
-      {/* Right Panel - Artifacts */}
-      <div className={`${isArtifactPanelOpen ? 'w-1/2' : 'w-0'} transition-all duration-300 overflow-hidden`}>
-        <ArtifactPanel />
-      </div>
+      )}
     </div>
   );
 }
