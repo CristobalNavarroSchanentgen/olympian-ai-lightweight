@@ -96,7 +96,7 @@ export function TypewriterText({
             <pre className="overflow-x-auto rounded-lg bg-background p-3" {...props} />
           ),
           code: ({ node, children, className, ...props }) => {
-            const match = /language-(\\w+)/.exec(className || '');
+            const match = /language-(\w+)/.exec(className || '');
             const isInline = !match;
             
             return isInline ? (
