@@ -41,36 +41,36 @@ export function ArtifactPanel() {
 
   return (
     <div className="h-full flex flex-col bg-background border-l border-border">
-      {/* Header */}
-      <div className="border-b border-border p-4 flex-shrink-0">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold flex items-center gap-2">
-            <FileText className="h-5 w-5" />
-            Artifacts
-          </h2>
-          <div className="flex items-center gap-2">
-            {conversationArtifacts.length > 1 && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowArtifactList(!showArtifactList)}
-                className="text-xs"
-              >
-                {conversationArtifacts.length} artifacts
-              </Button>
-            )}
+      {/* Compact Header - Only show when needed */}
+      {(conversationArtifacts.length > 1 || showArtifactList) && (
+        <div className="border-b border-border p-2 flex-shrink-0">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              {conversationArtifacts.length > 1 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowArtifactList(!showArtifactList)}
+                  className="text-xs h-7 px-2"
+                >
+                  <FileText className="h-3 w-3 mr-1" />
+                  {conversationArtifacts.length} artifacts
+                </Button>
+              )}
+            </div>
             <Button
               variant="ghost"
               size="sm"
               onClick={toggleArtifactPanel}
+              className="h-7 w-7 p-0"
             >
-              <ChevronRight className="h-4 w-4" />
+              <ChevronRight className="h-3 w-3" />
             </Button>
           </div>
         </div>
-      </div>
+      )}
 
-      {/* Content */}
+      {/* Content - Full height when no header */}
       <div className="flex-1 overflow-hidden">
         {showArtifactList ? (
           <ArtifactList
@@ -89,7 +89,17 @@ export function ArtifactPanel() {
             </div>
           </div>
         ) : (
-          <div className="h-full flex items-center justify-center p-8">
+          <div className="h-full flex items-center justify-center p-8 relative">
+            {/* Minimal close button for empty state */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={toggleArtifactPanel}
+              className="absolute top-2 right-2 h-7 w-7 p-0"
+            >
+              <ChevronRight className="h-3 w-3" />
+            </Button>
+            
             <Card className="p-8 text-center max-w-sm">
               <FileText className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
               <h3 className="text-lg font-medium mb-2">No artifacts yet</h3>
