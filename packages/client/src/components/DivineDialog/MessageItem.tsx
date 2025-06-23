@@ -83,10 +83,21 @@ export function MessageItem({ message, isLatest = false, isStreaming = false }: 
     message.metadata?.originalContent &&
     message.metadata?.codeBlocksRemoved;
 
-  // Determine which content to display
-  const displayContent = shouldShowOriginalContent 
-    ? message.metadata?.originalContent || message.content
-    : message.content;
+  // For typewriter effect, always use the processed content (message.content)
+  // For static display when artifacts are missing, use original content as fallback
+  const getDisplayContent = () => {
+    if (shouldShowTypewriter) {
+      // Always use processed content for typewriting
+      return message.content;
+    }
+    
+    // For static display, use original content if artifact is missing and we have it
+    return shouldShowOriginalContent 
+      ? (message.metadata?.originalContent || message.content)
+      : message.content;
+  };
+
+  const displayContent = getDisplayContent();
 
   const getArtifactIcon = (type: string) => {
     switch (type) {
