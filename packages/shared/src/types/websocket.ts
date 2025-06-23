@@ -9,6 +9,7 @@ export interface SocketIOError extends Error {
 // Client -> Server Events
 export interface ClientEvents {
   'chat:message': {
+    messageId: string;  // Added to ensure client and server use the same ID
     content: string;
     images?: string[];
     model: string;
