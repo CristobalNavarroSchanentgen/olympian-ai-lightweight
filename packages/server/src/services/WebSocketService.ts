@@ -49,6 +49,7 @@ export class WebSocketService {
       // Chat events
       socket.on('chat:message', async (data: ClientEvents['chat:message']) => {
         logger.info(`📨 Received chat:message from ${socket.id}:`, {
+          messageId: data.messageId,  // Log the client-provided messageId
           model: data.model,
           contentLength: data.content?.length || 0,
           hasImages: !!data.images?.length,
@@ -163,7 +164,8 @@ export class WebSocketService {
     socket: Socket,
     data: ClientEvents['chat:message']
   ): Promise<void> {
-    const messageId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+    // Use the messageId provided by the client instead of generating a new one
+    const messageId = data.messageId;
     const abortController = new AbortController();
     this.activeChats.set(messageId, abortController);
 
