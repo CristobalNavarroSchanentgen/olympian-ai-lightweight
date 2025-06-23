@@ -1,5 +1,5 @@
 import { io, Socket } from 'socket.io-client';
-import { ClientEvents, ServerEvents } from '@olympian/shared';
+import { ClientEvents, ServerEvents, SocketIOError } from '@olympian/shared';
 
 export interface ChatHandlers {
   onThinking?: (data: { messageId: string }) => void;
@@ -80,9 +80,9 @@ class WebSocketChatService {
         }
       });
 
-      this.socket.on('connect_error', (error) => {
+      this.socket.on('connect_error', (error: SocketIOError) => {
         console.error('[WebSocketChat] Connection error:', error.message);
-        console.error('[WebSocketChat] Error type:', error.type);
+        console.error('[WebSocketChat] Error type:', error.type || 'unknown');
         console.error('[WebSocketChat] Error details:', error);
         this.reconnectAttempts++;
         if (this.reconnectAttempts >= this.maxReconnectAttempts) {
