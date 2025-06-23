@@ -8,7 +8,6 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useArtifactStore } from '@/stores/useArtifactStore';
 import { useTypedMessagesStore } from '@/stores/useTypedMessagesStore';
-import { useChatStore } from '@/stores/useChatStore';
 import { 
   FileText, 
   Code, 
@@ -29,7 +28,6 @@ export function MessageItem({ message, isLatest = false, isStreaming = false }: 
   const messageId = message._id?.toString() || `${message.conversationId}-${message.createdAt}`;
   const conversationId = message.conversationId;
   
-  const { currentConversation } = useChatStore();
   const { 
     getArtifactById, 
     selectArtifact, 
