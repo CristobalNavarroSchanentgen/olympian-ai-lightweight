@@ -230,7 +230,7 @@ export function MessageItem({ message, isLatest = false, isStreaming = false }: 
                       );
                     },
                     code: ({ node: _node, children, className, ...props }) => {
-                      const match = /language-(\\w+)/.exec(className || '');
+                      const match = /language-(\w+)/.exec(className || '');
                       const isInline = !match;
                       
                       return isInline ? (
