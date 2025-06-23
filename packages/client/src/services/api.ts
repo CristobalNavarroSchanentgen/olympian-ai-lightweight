@@ -12,6 +12,7 @@ import {
   Message,
   ModelCapability,
 } from '@olympian/shared';
+import { webSocketChatService, ChatHandlers } from './websocketChat';
 
 interface ProgressiveUpdate {
   type: 'model_processed' | 'vision_model_found' | 'loading_complete' | 'error' | 'initial_state';
@@ -42,6 +43,7 @@ interface StreamingEvent {
 
 class ApiService {
   private client: AxiosInstance;
+  private useWebSocket: boolean = true; // Enable WebSocket by default
 
   constructor() {
     this.client = axios.create({
@@ -63,6 +65,12 @@ class ApiService {
         throw error;
       }
     );
+
+    // Initialize WebSocket connection
+    webSocketChatService.connect().catch(error => {
+      console.error('Failed to initialize WebSocket connection:', error);
+      this.useWebSocket = false; // Fallback to HTTP if WebSocket fails
+    });
   }
 
   // Helper function to check if a model is basic (no capabilities)
@@ -132,6 +140,58 @@ class ApiService {
   async invokeMCPTool(request: MCPInvokeRequest): Promise<MCPInvokeResponse> {
     const { data } = await this.client.post<ApiResponse<MCPInvokeResponse>>('/mcp/invoke', request);
     return data.data!;
+  }
+
+  // NEW: WebSocket-based chat message sending
+  async sendMessageViaWebSocket(
+    params: {
+      message: string;
+      model: string;
+      visionModel?: string;
+      conversationId?: string;
+      images?: string[];
+    },
+    handlers: ChatHandlers
+  ): Promise<void> {
+    return new Promise((resolve, reject) => {
+      let messageId: string;
+      let hasCompleted = false;
+
+      const wrappedHandlers: ChatHandlers = {
+        ...handlers,
+        onComplete: (data) => {
+          hasCompleted = true;
+          handlers.onComplete?.(data);
+          resolve();
+        },
+        onError: (data) => {
+          hasCompleted = true;
+          handlers.onError?.(data);
+          reject(new Error(data.error));
+        },
+      };
+
+      webSocketChatService.sendMessage(
+        {
+          content: params.message,
+          model: params.model,
+          visionModel: params.visionModel,
+          conversationId: params.conversationId,
+          images: params.images,
+        },
+        wrappedHandlers
+      ).then(id => {
+        messageId = id;
+      }).catch(reject);
+
+      // Add timeout
+      setTimeout(() => {
+        if (!hasCompleted) {
+          webSocketChatService.cancelMessage(messageId);
+          reject(new Error('WebSocket message timeout'));
+        }
+      }, 300000); // 5 minutes timeout
+    });
   }
 
   // NEW: Streaming API for basic models
@@ -231,11 +291,68 @@ class ApiService {
     message: string;
     metadata: any;
   }> {
+    // Check if we should use WebSocket for this message
+    if (this.useWebSocket && webSocketChatService.isConnected()) {
+      // Use WebSocket for real-time streaming
+      return new Promise((resolve, reject) => {
+        let responseData: any = {};
+        let content = '';
+
+        this.sendMessageViaWebSocket(params, {
+          onThinking: () => {
+            console.log('[API] WebSocket: Thinking...');
+          },
+          onGenerating: () => {
+            console.log('[API] WebSocket: Generating...');
+          },
+          onToken: (data) => {
+            content += data.token;
+          },
+          onComplete: (data) => {
+            console.log('[API] WebSocket: Complete', data);
+            resolve({
+              conversation: responseData.conversation || { _id: data.conversationId } as Conversation,
+              conversationId: data.conversationId,
+              message: content,
+              metadata: data.metadata,
+            });
+          },
+          onError: (data) => {
+            console.error('[API] WebSocket: Error', data);
+            reject(new Error(data.error));
+          },
+          onConversationCreated: (data) => {
+            responseData.conversationId = data.conversationId;
+          },
+        }).catch(error => {
+          console.error('[API] WebSocket send failed, falling back to HTTP:', error);
+          // Fallback to HTTP
+          this.sendMessageViaHTTP(params).then(resolve).catch(reject);
+        });
+      });
+    }
+
+    // Fallback to HTTP
+    return this.sendMessageViaHTTP(params);
+  }
+
+  private async sendMessageViaHTTP(params: {
+    message: string;
+    model: string;
+    visionModel?: string;
+    conversationId?: string;
+    images?: string[];
+  }): Promise<{
+    conversation: Conversation;
+    conversationId: string;
+    message: string;
+    metadata: any;
+  }> {
     // Match nginx timeout configuration: 300s for vision processing
     const hasImages = params.images && params.images.length > 0;
     const timeout = hasImages ? 300000 : 60000; // 300s (nginx match) for vision, 60s for text
     
-    console.log(`🌐 [API] sendMessage with ${hasImages ? 'images' : 'text only'}, timeout: ${timeout}ms (${timeout/1000}s)`);
+    console.log(`🌐 [API] sendMessage via HTTP with ${hasImages ? 'images' : 'text only'}, timeout: ${timeout}ms (${timeout/1000}s)`);
     
     const { data } = await this.client.post<ApiResponse<{
       conversation: Conversation;
@@ -579,6 +696,17 @@ class ApiService {
 
   async restoreBackup(filename: string): Promise<void> {
     await this.client.post(`/config/backups/${filename}/restore`);
+  }
+
+  // Method to toggle WebSocket usage
+  setUseWebSocket(use: boolean) {
+    this.useWebSocket = use;
+    console.log(`[API] WebSocket usage ${use ? 'enabled' : 'disabled'}`);
+  }
+
+  // Method to check WebSocket status
+  isWebSocketConnected(): boolean {
+    return webSocketChatService.isConnected();
   }
 }
 

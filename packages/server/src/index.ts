@@ -20,6 +20,13 @@ const io = new Server(httpServer, {
     origin: process.env.CLIENT_URL || 'http://localhost:3000',
     credentials: true,
   },
+  // Enhanced Socket.IO configuration for better connection stability
+  pingTimeout: 60000, // 60 seconds
+  pingInterval: 25000, // 25 seconds
+  upgradeTimeout: 30000, // 30 seconds
+  maxHttpBufferSize: 1e8, // 100 MB for large image uploads
+  transports: ['websocket', 'polling'], // Allow both transports
+  allowEIO3: true, // Allow Socket.IO v3 clients
 });
 
 // Get deployment configuration
@@ -109,6 +116,12 @@ async function start(): Promise<void> {
       wsService.initialize();
       serviceStatus.websocket = true;
       logger.info('✅ WebSocket service initialized');
+      
+      // Log Socket.IO configuration
+      logger.info('🔌 Socket.IO configuration:');
+      logger.info(`   - Ping timeout: ${io.engine.opts.pingTimeout}ms`);
+      logger.info(`   - Ping interval: ${io.engine.opts.pingInterval}ms`);
+      logger.info(`   - Transports: ${io.engine.opts.transports?.join(', ')}`);
     } catch (error) {
       serviceStatus.websocket = false;
       logger.error('❌ WebSocket initialization failed:', error);
@@ -175,6 +188,11 @@ const gracefulShutdown = async (signal: string) => {
   logger.info(`📤 ${signal} received, shutting down gracefully...`);
   
   try {
+    // Close WebSocket connections gracefully
+    io.close(() => {
+      logger.info('✅ Socket.IO server closed');
+    });
+
     // Close HTTP server
     await new Promise<void>((resolve) => {
       httpServer.close((err) => {
