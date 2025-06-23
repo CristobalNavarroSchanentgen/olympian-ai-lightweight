@@ -46,7 +46,7 @@ export function MessageItem({ message, isLatest = false, isStreaming = false }: 
   // Only trigger typewriter for assistant messages that haven't been typed yet
   const shouldShowTypewriter = !isUser && 
     !isStreaming && 
-    shouldTriggerTypewriter(conversationId, messageId, isLatest);
+    shouldTriggerTypewriter(conversationId, messageId, isLatest, new Date(message.createdAt));
 
   // Enhanced artifact validation
   const getValidatedArtifact = () => {
