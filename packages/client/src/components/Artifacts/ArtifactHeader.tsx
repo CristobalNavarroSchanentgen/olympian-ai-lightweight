@@ -131,17 +131,6 @@ export function ArtifactHeader({ artifact }: ArtifactHeaderProps) {
         )}
 
         <div className="flex items-center gap-2">
-          {/* Close Button */}
-          <Button 
-            variant="ghost" 
-            size="sm"
-            onClick={handleClose}
-            className="h-8 w-8 p-0 hover:bg-destructive hover:text-destructive-foreground transition-colors"
-            title="Close artifact panel"
-          >
-            <X className="h-4 w-4" />
-          </Button>
-
           {/* More Options Dropdown */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -174,6 +163,17 @@ export function ArtifactHeader({ artifact }: ArtifactHeaderProps) {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+
+          {/* Close Button - Now at the furthermost right */}
+          <Button 
+            variant="ghost" 
+            size="sm"
+            onClick={handleClose}
+            className="h-8 w-8 p-0 hover:bg-destructive hover:text-destructive-foreground transition-colors"
+            title="Close artifact panel"
+          >
+            <X className="h-4 w-4" />
+          </Button>
         </div>
       </div>
 
