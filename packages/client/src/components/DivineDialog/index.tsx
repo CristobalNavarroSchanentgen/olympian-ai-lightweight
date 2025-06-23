@@ -26,7 +26,14 @@ export function DivineDialog() {
     createConversation,
   } = useChatStore();
 
-  const { createArtifact, isArtifactPanelOpen } = useArtifactStore();
+  const { 
+    createArtifact, 
+    isArtifactPanelOpen, 
+    selectArtifact,
+    setArtifactPanelOpen,
+    getArtifactsForConversation
+  } = useArtifactStore();
+  
   const { clearTypedMessages } = useTypedMessagesStore();
   
   const [isThinking, setIsThinking] = useState(false);
@@ -42,10 +49,43 @@ export function DivineDialog() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // Sync artifact panel state with conversation changes
+  useEffect(() => {
+    if (!currentConversation) {
+      // No conversation selected, clear artifacts
+      selectArtifact(null);
+      setArtifactPanelOpen(false);
+      return;
+    }
+
+    const conversationId = currentConversation._id?.toString() || '';
+    const artifactsForConversation = getArtifactsForConversation(conversationId);
+    
+    console.log('🎨 [DivineDialog] Conversation changed, artifacts:', artifactsForConversation.length);
+    
+    // If conversation has artifacts, ensure panel is open and select most recent
+    if (artifactsForConversation.length > 0) {
+      const mostRecentArtifact = artifactsForConversation.sort((a, b) => 
+        new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+      )[0];
+      
+      selectArtifact(mostRecentArtifact);
+      setArtifactPanelOpen(true);
+      console.log('🎨 [DivineDialog] Auto-selected artifact for conversation:', mostRecentArtifact.id);
+    } else {
+      // No artifacts, clear selection but keep panel state as user preference
+      selectArtifact(null);
+      console.log('🎨 [DivineDialog] No artifacts found for conversation');
+    }
+  }, [currentConversation, getArtifactsForConversation, selectArtifact, setArtifactPanelOpen]);
+
   const handleNewConversation = () => {
-    // Clear typed messages when creating a new conversation
+    // Clear typed messages and artifact state when creating a new conversation
     clearTypedMessages();
+    selectArtifact(null);
+    setArtifactPanelOpen(false);
     createConversation();
+    console.log('🆕 [DivineDialog] Created new conversation, cleared artifacts');
   };
 
   const handleSendMessage = async (content: string, images?: string[]) => {
@@ -115,6 +155,10 @@ export function DivineDialog() {
           version: 1,
         });
         artifactId = artifact.id;
+        
+        // Auto-open artifact panel when artifact is created
+        setArtifactPanelOpen(true);
+        console.log('🎨 [DivineDialog] Created new artifact:', artifact.id);
       }
 
       // Add the assistant message to the store with enhanced metadata
