@@ -122,7 +122,7 @@ export function ArtifactViewer({ artifact }: ArtifactViewerProps) {
     <div className="h-full flex flex-col">
       {isEditing ? (
         <>
-          <div className="flex items-center justify-between p-2 border-b bg-muted/50">
+          <div className="flex items-center justify-between p-2 border-b bg-muted/50 flex-shrink-0">
             <span className="text-sm font-medium">Editing {artifact.type}</span>
             <div className="flex items-center gap-2">
               <Button size="sm" variant="ghost" onClick={handleCancel}>
@@ -139,7 +139,7 @@ export function ArtifactViewer({ artifact }: ArtifactViewerProps) {
               </Button>
             </div>
           </div>
-          <div className="flex-1 overflow-hidden">
+          <div className="flex-1 min-h-0 overflow-hidden">
             <CodeMirror
               value={editContent}
               onChange={(value) => setEditContent(value)}
@@ -149,7 +149,8 @@ export function ArtifactViewer({ artifact }: ArtifactViewerProps) {
                 fontSize: '0.875rem',
                 fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace',
               }}
-              className="h-full"
+              className="h-full overflow-auto"
+              height="100%"
               basicSetup={{
                 lineNumbers: true,
                 bracketMatching: true,
@@ -174,7 +175,7 @@ export function ArtifactViewer({ artifact }: ArtifactViewerProps) {
           className="h-full p-4 overflow-auto cursor-text hover:bg-muted/20 transition-colors"
           onClick={() => setIsEditing(true)}
         >
-          <pre className="hljs bg-[#22272e] rounded-lg border border-gray-700 p-4 text-sm leading-relaxed overflow-x-auto">
+          <pre className="hljs bg-[#22272e] rounded-lg border border-gray-700 p-4 text-sm leading-relaxed overflow-x-auto max-h-full">
             <code 
               ref={codeRef}
               className={artifact.language || artifact.type ? `language-${artifact.language || artifact.type}` : ''}
@@ -182,6 +183,9 @@ export function ArtifactViewer({ artifact }: ArtifactViewerProps) {
                 fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace',
                 fontSize: '0.875rem',
                 lineHeight: '1.5',
+                display: 'block',
+                whiteSpace: 'pre',
+                overflowWrap: 'normal',
               }}
             >
               {artifact.content}
@@ -196,7 +200,7 @@ export function ArtifactViewer({ artifact }: ArtifactViewerProps) {
     switch (artifact.type) {
       case 'html':
         return (
-          <div className="h-full">
+          <div className="h-full overflow-hidden">
             <iframe
               srcDoc={artifact.content}
               className="w-full h-full border-0"
@@ -228,13 +232,15 @@ export function ArtifactViewer({ artifact }: ArtifactViewerProps) {
           const jsonData = JSON.parse(artifact.content);
           return (
             <div className="h-full p-4 overflow-auto">
-              <pre className="hljs bg-[#22272e] rounded-lg border border-gray-700 p-4 text-sm leading-relaxed overflow-x-auto">
+              <pre className="hljs bg-[#22272e] rounded-lg border border-gray-700 p-4 text-sm leading-relaxed overflow-x-auto max-h-full">
                 <code 
                   className="language-json"
                   style={{
                     fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace',
                     fontSize: '0.875rem',
                     lineHeight: '1.5',
+                    display: 'block',
+                    whiteSpace: 'pre',
                   }}
                   dangerouslySetInnerHTML={{ 
                     __html: hljs.highlight(JSON.stringify(jsonData, null, 2), { language: 'json' }).value 
@@ -357,10 +363,10 @@ export function ArtifactViewer({ artifact }: ArtifactViewerProps) {
   if (viewMode === 'split') {
     return (
       <div className="h-full flex">
-        <div className="w-1/2 border-r border-border">
+        <div className="w-1/2 border-r border-border min-h-0">
           {renderCodeView()}
         </div>
-        <div className="w-1/2">
+        <div className="w-1/2 min-h-0">
           {renderPreview()}
         </div>
       </div>
@@ -368,10 +374,18 @@ export function ArtifactViewer({ artifact }: ArtifactViewerProps) {
   }
 
   if (viewMode === 'preview') {
-    return renderPreview();
+    return (
+      <div className="h-full min-h-0 overflow-hidden">
+        {renderPreview()}
+      </div>
+    );
   }
 
-  return renderCodeView();
+  return (
+    <div className="h-full min-h-0 overflow-hidden">
+      {renderCodeView()}
+    </div>
+  );
 }
 
 // Simple markdown renderer (you might want to use react-markdown instead)
