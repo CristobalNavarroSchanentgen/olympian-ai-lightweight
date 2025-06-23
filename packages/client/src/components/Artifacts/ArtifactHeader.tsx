@@ -20,6 +20,7 @@ import {
   History,
   Copy,
   Check,
+  X,
 } from 'lucide-react';
 import { toast } from '@/hooks/useToast';
 
@@ -33,6 +34,7 @@ export function ArtifactHeader({ artifact }: ArtifactHeaderProps) {
     setViewMode, 
     deleteArtifact,
     getVersionsForArtifact,
+    setArtifactPanelOpen,
   } = useArtifactStore();
   
   const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -95,9 +97,13 @@ export function ArtifactHeader({ artifact }: ArtifactHeaderProps) {
     }
   };
 
+  const handleClose = () => {
+    setArtifactPanelOpen(false);
+  };
+
   return (
     <div className="border-b border-border p-4 space-y-3">
-      {/* Title */}
+      {/* Title and Controls */}
       <div className="flex items-center justify-between">
         {isEditingTitle ? (
           <Input
@@ -124,37 +130,51 @@ export function ArtifactHeader({ artifact }: ArtifactHeaderProps) {
           </h3>
         )}
 
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm">
-              <MoreVertical className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={handleCopy}>
-              {copied ? <Check className="h-4 w-4 mr-2" /> : <Copy className="h-4 w-4 mr-2" />}
-              {copied ? 'Copied!' : 'Copy content'}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={handleDownload}>
-              <Download className="h-4 w-4 mr-2" />
-              Download
-            </DropdownMenuItem>
-            {versions.length > 1 && (
-              <DropdownMenuItem>
-                <History className="h-4 w-4 mr-2" />
-                Version history ({versions.length})
+        <div className="flex items-center gap-2">
+          {/* Close Button */}
+          <Button 
+            variant="ghost" 
+            size="sm"
+            onClick={handleClose}
+            className="h-8 w-8 p-0"
+            title="Close artifact panel"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+
+          {/* More Options Dropdown */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm">
+                <MoreVertical className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={handleCopy}>
+                {copied ? <Check className="h-4 w-4 mr-2" /> : <Copy className="h-4 w-4 mr-2" />}
+                {copied ? 'Copied!' : 'Copy content'}
               </DropdownMenuItem>
-            )}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem 
-              onClick={handleDelete}
-              className="text-destructive focus:text-destructive"
-            >
-              <Trash2 className="h-4 w-4 mr-2" />
-              Delete
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+              <DropdownMenuItem onClick={handleDownload}>
+                <Download className="h-4 w-4 mr-2" />
+                Download
+              </DropdownMenuItem>
+              {versions.length > 1 && (
+                <DropdownMenuItem>
+                  <History className="h-4 w-4 mr-2" />
+                  Version history ({versions.length})
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem 
+                onClick={handleDelete}
+                className="text-destructive focus:text-destructive"
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
 
       {/* Metadata */}
