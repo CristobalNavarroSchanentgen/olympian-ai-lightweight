@@ -136,7 +136,7 @@ export function ArtifactHeader({ artifact }: ArtifactHeaderProps) {
             variant="ghost" 
             size="sm"
             onClick={handleClose}
-            className="h-8 w-8 p-0"
+            className="h-8 w-8 p-0 hover:bg-destructive hover:text-destructive-foreground transition-colors"
             title="Close artifact panel"
           >
             <X className="h-4 w-4" />
@@ -145,7 +145,7 @@ export function ArtifactHeader({ artifact }: ArtifactHeaderProps) {
           {/* More Options Dropdown */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm">
+              <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
                 <MoreVertical className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
