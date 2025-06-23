@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useArtifactStore } from '@/stores/useArtifactStore';
 import { useChatStore } from '@/stores/useChatStore';
 import { ArtifactViewer } from './ArtifactViewer';
@@ -23,6 +23,50 @@ export function ArtifactPanel() {
     ? getArtifactsForConversation(currentConversation._id || '') 
     : [];
 
+  // Sync artifact selection with conversation changes
+  useEffect(() => {
+    if (!currentConversation) {
+      // No conversation selected, clear selection
+      if (selectedArtifact) {
+        selectArtifact(null);
+        console.log('🎨 [ArtifactPanel] Cleared artifact selection - no conversation');
+      }
+      return;
+    }
+
+    const conversationId = currentConversation._id || '';
+    const artifactsForConversation = getArtifactsForConversation(conversationId);
+    
+    // If there's a selected artifact, check if it belongs to the current conversation
+    if (selectedArtifact) {
+      const artifactBelongsToConversation = artifactsForConversation.some(
+        artifact => artifact.id === selectedArtifact.id
+      );
+      
+      if (!artifactBelongsToConversation) {
+        // Selected artifact doesn't belong to current conversation, clear it
+        selectArtifact(null);
+        console.log('🎨 [ArtifactPanel] Cleared artifact selection - wrong conversation');
+        
+        // If new conversation has artifacts, auto-select the most recent one
+        if (artifactsForConversation.length > 0) {
+          const mostRecentArtifact = artifactsForConversation.sort((a, b) => 
+            new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+          )[0];
+          selectArtifact(mostRecentArtifact);
+          console.log('🎨 [ArtifactPanel] Auto-selected most recent artifact:', mostRecentArtifact.id);
+        }
+      }
+    } else if (artifactsForConversation.length > 0) {
+      // No artifact selected but conversation has artifacts, select most recent
+      const mostRecentArtifact = artifactsForConversation.sort((a, b) => 
+        new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+      )[0];
+      selectArtifact(mostRecentArtifact);
+      console.log('🎨 [ArtifactPanel] Auto-selected artifact for conversation:', mostRecentArtifact.id);
+    }
+  }, [currentConversation, selectedArtifact, getArtifactsForConversation, selectArtifact]);
+
   if (!isArtifactPanelOpen) {
     return (
       <div className="fixed right-0 top-0 h-full flex items-center z-10">
@@ -37,6 +81,11 @@ export function ArtifactPanel() {
       </div>
     );
   }
+
+  // Verify that the selected artifact belongs to the current conversation
+  const isSelectedArtifactValid = selectedArtifact && conversationArtifacts.some(
+    artifact => artifact.id === selectedArtifact.id
+  );
 
   return (
     <div className="h-full flex flex-col bg-background border-l border-border">
@@ -80,7 +129,7 @@ export function ArtifactPanel() {
             }}
             onClose={() => setShowArtifactList(false)}
           />
-        ) : selectedArtifact ? (
+        ) : (selectedArtifact && isSelectedArtifactValid) ? (
           <div className="h-full overflow-hidden">
             <ArtifactViewer artifact={selectedArtifact} />
           </div>
