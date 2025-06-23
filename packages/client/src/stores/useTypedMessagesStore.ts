@@ -109,10 +109,12 @@ export const useTypedMessagesStore = create<TypedMessagesStore>()(
           try {
             const parsed = JSON.parse(str);
             // Convert serialized map back to Map with Sets
-            const typedMessagesByConversation = new Map();
+            const typedMessagesByConversation = new Map<string, Set<string>>();
             if (parsed.state?.typedMessagesByConversation) {
-              for (const [conversationId, messageIds] of Object.entries(parsed.state.typedMessagesByConversation)) {
-                typedMessagesByConversation.set(conversationId, new Set(messageIds as string[]));
+              // Properly type the entries as [string, string[]]
+              const entries = Object.entries(parsed.state.typedMessagesByConversation) as [string, string[]][];
+              for (const [conversationId, messageIds] of entries) {
+                typedMessagesByConversation.set(conversationId, new Set(messageIds));
               }
             }
             
@@ -130,13 +132,14 @@ export const useTypedMessagesStore = create<TypedMessagesStore>()(
         setItem: (name, value) => {
           try {
             // Convert Map with Sets to serializable format
+            const mapEntries = Array.from(value.state.typedMessagesByConversation.entries());
+            const serializableEntries: [string, string[]][] = mapEntries.map(
+              ([conversationId, messageIds]: [string, Set<string>]) => [conversationId, Array.from(messageIds)]
+            );
+            
             const serializableState = {
               ...value.state,
-              typedMessagesByConversation: Object.fromEntries(
-                Array.from(value.state.typedMessagesByConversation.entries()).map(
-                  ([conversationId, messageIds]) => [conversationId, Array.from(messageIds)]
-                )
-              )
+              typedMessagesByConversation: Object.fromEntries(serializableEntries)
             };
             
             localStorage.setItem(name, JSON.stringify({
