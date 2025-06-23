@@ -1,3 +1,11 @@
+// Socket.IO connection error interface
+export interface SocketIOError extends Error {
+  type?: string;
+  description?: string;
+  context?: any;
+  details?: any;
+}
+
 // Client -> Server Events
 export interface ClientEvents {
   'chat:message': {
