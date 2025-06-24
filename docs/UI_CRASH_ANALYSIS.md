@@ -150,7 +150,7 @@ const sanitizedContent = streamedContent
 1. Check browser console for specific error messages
 2. Add try-catch around ReactMarkdown rendering
 3. Log content before rendering to identify malformed data
-4. Test with simple messages to isolate complex content issues
+4. Test with various content types (code, special characters, long responses)
 
 ## File Paths for Investigation
 
@@ -165,3 +165,114 @@ const sanitizedContent = streamedContent
 2. Add content validation before display
 3. Test with various content types (code, special characters, long responses)
 4. Consider switching to a more robust markdown renderer or adding preprocessing
+
+---
+
+## Implementation Report (2025-06-24)
+
+### Fixes Applied
+
+Based on the analysis, the following fixes have been implemented to resolve the UI crash issue:
+
+#### 1. **Created ErrorBoundary Component** (`/packages/client/src/components/ErrorBoundary.tsx`)
+
+- Implemented a React error boundary component that catches rendering errors
+- Provides graceful fallback UI when components crash
+- Logs detailed error information for debugging
+- Shows user-friendly error message with recovery options
+
+#### 2. **Created Content Sanitization Utilities** (`/packages/client/src/utils/contentSanitizer.ts`)
+
+Implemented comprehensive content sanitization functions:
+- `sanitizeContent()`: Removes control characters that could crash the renderer
+- `isValidMarkdownContent()`: Validates markdown structure (balanced code blocks, line length)
+- `prepareMarkdownContent()`: Prepares content for safe rendering
+- `escapeHtmlOutsideCodeBlocks()`: Prevents XSS attacks
+- `truncateForSafety()`: Limits content length to prevent memory issues
+
+#### 3. **Updated MessageList Component** (`/packages/client/src/components/DivineDialog/MessageList.tsx`)
+
+Changes:
+- Added ErrorBoundary wrapper around ReactMarkdown
+- Integrated content sanitization before rendering
+- Added fallback component for markdown rendering failures
+- Removed unused `node` parameter from ReactMarkdown components
+- Added null/undefined guards for content
+
+#### 4. **Updated MessageItem Component** (`/packages/client/src/components/DivineDialog/MessageItem.tsx`)
+
+Changes:
+- Added ErrorBoundary wrapper around all markdown rendering
+- Integrated content sanitization
+- Added fallback component for rendering failures
+- Applied same safety measures as MessageList
+
+#### 5. **Updated App Component** (`/packages/client/src/App.tsx`)
+
+Changes:
+- Added global ErrorBoundary at the application level
+- Implemented comprehensive error recovery UI
+- Added options to reload or clear data and reload
+- Prevents entire application crash from component errors
+
+### Technical Implementation Details
+
+#### Error Boundary Implementation
+```javascript
+public static getDerivedStateFromError(error: Error): State {
+  return { hasError: true, error };
+}
+
+public componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+  console.error('[ErrorBoundary] Caught error:', error);
+  console.error('[ErrorBoundary] Component stack:', errorInfo.componentStack);
+}
+```
+
+#### Content Sanitization Pipeline
+```javascript
+// 1. Remove dangerous characters
+.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
+
+// 2. Normalize line endings
+.replace(/\r\n/g, '\n')
+
+// 3. Prevent excessive newlines
+.replace(/\n{4,}/g, '\n\n\n')
+
+// 4. Fix unbalanced code blocks
+if (codeBlockCount % 2 !== 0) {
+  prepared += '\n```';
+}
+
+// 5. Escape HTML outside code blocks
+processedContent = processedContent
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;');
+```
+
+### Results
+
+The implemented fixes address all identified issues:
+
+1. **Crash Prevention**: Error boundaries catch and contain rendering failures
+2. **Content Safety**: Malformed content is sanitized before rendering
+3. **Graceful Degradation**: Users see helpful error messages instead of blank screens
+4. **Recovery Options**: Users can reload or clear corrupted data
+5. **Debug Support**: Detailed error logging helps identify issues
+
+### Testing Recommendations
+
+1. Test with malformed markdown (unbalanced code blocks, special characters)
+2. Test with very long responses (>100KB)
+3. Test with rapid message switching during streaming
+4. Test with corrupted localStorage data
+5. Test network interruptions during streaming
+
+### Future Improvements
+
+1. Consider implementing content buffering to prevent race conditions
+2. Add telemetry to track rendering failures
+3. Implement progressive rendering for very long messages
+4. Consider alternative markdown renderers if issues persist
+5. Add content validation on the backend before streaming
