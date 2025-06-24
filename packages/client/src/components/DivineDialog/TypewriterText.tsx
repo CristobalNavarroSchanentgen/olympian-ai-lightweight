@@ -41,11 +41,11 @@ export function TypewriterText({
 
   // Debug problematic content
   useEffect(() => {
-    if (content && (content.includes('...') || content.includes(''') || content.includes('''))) {
+    if (content && (content.includes('...') || content.includes('\u2019') || content.includes('\u2018'))) {
       console.log('[TypewriterText] Processing content with special characters:', {
         length: content.length,
         hasEllipsis: content.includes('...'),
-        hasSmartQuotes: /['']/.test(content),
+        hasSmartQuotes: /[\u2018\u2019]/.test(content),
         preview: content.substring(0, 100)
       });
     }
