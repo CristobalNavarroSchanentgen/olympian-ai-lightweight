@@ -766,22 +766,22 @@ These characters might not be properly handled by the markdown renderer or could
 Added comprehensive handling for special characters:
 
 ```javascript
-// Replace smart quotes with regular quotes
-.replace(/['']/g, "'")
-.replace(/[""]/g, '"')
+// Replace smart quotes with regular quotes using Unicode escape sequences
+.replace(/[\u2018\u2019]/g, "'")
+.replace(/[\u201C\u201D]/g, '"')
 
 // Normalize ellipsis (in case of special Unicode ellipsis character)
-.replace(/…/g, '...')
+.replace(/\u2026/g, '...')
 
 // Remove zero-width characters that might cause issues
 .replace(/[\u200B-\u200D\uFEFF]/g, '')
 
 // Added debug logging for problematic content
-if (content.includes('...') || content.includes(''') || content.includes(''') || content.includes('"') || content.includes('"')) {
+if (content.includes('...') || content.includes('\u2019') || content.includes('\u2018') || content.includes('\u201C') || content.includes('\u201D')) {
   console.log('[ContentSanitizer] Processing content with special characters:', {
     length: content.length,
     hasEllipsis: content.includes('...'),
-    hasSmartQuotes: /[''""]/.test(content),
+    hasSmartQuotes: /[\u2018\u2019\u201C\u201D]/.test(content),
     preview: content.substring(0, 100)
   });
 }
@@ -809,13 +809,13 @@ Added comprehensive error handling and debugging:
 // Added error state tracking
 const [hasError, setHasError] = useState(false);
 
-// Debug problematic content
+// Debug problematic content using Unicode escape sequences
 useEffect(() => {
-  if (content && (content.includes('...') || content.includes(''') || content.includes('''))) {
+  if (content && (content.includes('...') || content.includes('\u2019') || content.includes('\u2018'))) {
     console.log('[TypewriterText] Processing content with special characters:', {
       length: content.length,
       hasEllipsis: content.includes('...'),
-      hasSmartQuotes: /['']/.test(content),
+      hasSmartQuotes: /[\u2018\u2019]/.test(content),
       preview: content.substring(0, 100)
     });
   }
@@ -850,18 +850,20 @@ if (hasError) {
 
 The fixes address the issue by:
 
-1. **Normalizing Special Characters**: Converting smart quotes and ellipsis to standard ASCII equivalents
+1. **Normalizing Special Characters**: Converting smart quotes and ellipsis to standard ASCII equivalents using Unicode escape sequences
 2. **Removing Zero-Width Characters**: Eliminating invisible characters that could break rendering
 3. **Adding Debug Logging**: Tracking when special characters are processed
 4. **Graceful Error Handling**: Catching errors and providing fallback rendering
 5. **Multiple Layers of Protection**: ErrorBoundary + try-catch + fallback UI
+6. **TypeScript Compatibility**: Using Unicode escape sequences to avoid syntax errors
 
 ### Results
 
 1. **Special characters are normalized before rendering**
-2. **Errors are caught and logged for debugging**
-3. **Fallback UI shows the content even if rendering fails**
-4. **Better visibility into what's causing rendering issues**
+2. **TypeScript compilation errors are fixed**
+3. **Errors are caught and logged for debugging**
+4. **Fallback UI shows the content even if rendering fails**
+5. **Better visibility into what's causing rendering issues**
 
 ### Testing Recommendations
 
