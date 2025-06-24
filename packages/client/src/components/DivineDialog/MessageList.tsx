@@ -1,6 +1,8 @@
 import { Message } from '@olympian/shared';
 import { MessageItem } from './MessageItem';
 import { Spinner } from '@/components/ui/spinner';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { prepareMarkdownContent, truncateForSafety } from '@/utils/contentSanitizer';
 import ReactMarkdown from 'react-markdown';
 
 interface MessageListProps {
@@ -10,6 +12,19 @@ interface MessageListProps {
   isGenerating: boolean;
   isTransitioning?: boolean;
 }
+
+// Fallback component for markdown rendering errors
+const MarkdownErrorFallback = ({ content }: { content: string }) => (
+  <div className="p-4 border border-yellow-500 rounded-md bg-yellow-50 dark:bg-yellow-900/20">
+    <p className="text-sm font-medium text-yellow-800 dark:text-yellow-200 mb-2">
+      Failed to render markdown
+    </p>
+    <pre className="text-xs text-yellow-700 dark:text-yellow-300 whitespace-pre-wrap font-mono overflow-x-auto">
+      {content.substring(0, 500)}
+      {content.length > 500 && '...'}
+    </pre>
+  </div>
+);
 
 export function MessageList({
   messages,
@@ -28,6 +43,9 @@ export function MessageList({
       </div>
     );
   }
+
+  // Sanitize and prepare streamed content for safe rendering
+  const safeStreamedContent = prepareMarkdownContent(truncateForSafety(streamedContent));
 
   return (
     <div className="space-y-6">
@@ -56,7 +74,7 @@ export function MessageList({
       )}
       
       {/* Streaming Content - Display directly without typewriter effect */}
-      {(isGenerating || streamedContent) && !isTransitioning && (
+      {(isGenerating || safeStreamedContent) && !isTransitioning && (
         <div className="flex flex-col items-center">
           <div className="w-full max-w-4xl flex flex-col items-center">
             <div className="flex items-center gap-2 mb-2">
@@ -66,41 +84,45 @@ export function MessageList({
               </span>
             </div>
             <div className="w-full max-w-3xl">
-              {streamedContent ? (
+              {safeStreamedContent ? (
                 <div className="prose prose-invert prose-sm max-w-none prose-p:leading-relaxed">
-                  <ReactMarkdown
-                    components={{
-                      pre: ({ node, ...props }) => (
-                        <pre className="overflow-x-auto rounded-lg bg-background p-3" {...props} />
-                      ),
-                      code: ({ node, children, className, ...props }) => {
-                        const match = /language-(\w+)/.exec(className || '');
-                        const isInline = !match;
-                        
-                        return isInline ? (
-                          <code className="rounded bg-background px-1 py-0.5" {...props}>
-                            {children}
-                          </code>
-                        ) : (
-                          <code className={className} {...props}>
-                            {children}
-                          </code>
-                        );
-                      },
-                    }}
+                  <ErrorBoundary 
+                    fallback={<MarkdownErrorFallback content={safeStreamedContent} />}
                   >
-                    {streamedContent}
-                  </ReactMarkdown>
+                    <ReactMarkdown
+                      components={{
+                        pre: ({ ...props }) => (
+                          <pre className="overflow-x-auto rounded-lg bg-background p-3" {...props} />
+                        ),
+                        code: ({ children, className, ...props }) => {
+                          const match = /language-(\w+)/.exec(className || '');
+                          const isInline = !match;
+                          
+                          return isInline ? (
+                            <code className="rounded bg-background px-1 py-0.5" {...props}>
+                              {children}
+                            </code>
+                          ) : (
+                            <code className={className} {...props}>
+                              {children}
+                            </code>
+                          );
+                        },
+                      }}
+                    >
+                      {safeStreamedContent}
+                    </ReactMarkdown>
+                  </ErrorBoundary>
                   {isGenerating && (
                     <span className="typewriter-cursor animate-pulse ml-1" aria-hidden="true">▌</span>
                   )}
                 </div>
-              ) : (
+              ) : isGenerating ? (
                 <div className="flex items-center gap-2 text-sm text-gray-400">
                   <Spinner size="sm" />
-                  <span>Generating response...</span>
+                  <span>Waiting for response...</span>
                 </div>
-              )}
+              ) : null}
             </div>
           </div>
         </div>
