@@ -539,6 +539,8 @@ Despite the previous fixes, the infinite re-render loop (React error #185) is st
 
 3. **Non-memoized Display Content Calculation**: The logic to determine which content to display was recalculating on every render.
 
+4. **ReactMarkdown Components Prop**: In `TypewriterText.tsx`, the `components` prop for ReactMarkdown was being created inline, causing new object creation on every render.
+
 ### Fixes Applied
 
 #### 1. **Memoized Content Sanitization in MessageList.tsx**
@@ -583,6 +585,31 @@ const safeDisplayContent = useMemo(() => {
 }, [displayContent]);
 ```
 
+#### 3. **Memoized ReactMarkdown Components in TypewriterText.tsx**
+
+```javascript
+// Memoize the markdown components to prevent re-creating on every render
+const markdownComponents = useMemo(() => ({
+  pre: ({ ...props }: any) => (
+    <pre className="overflow-x-auto rounded-lg bg-background p-3" {...props} />
+  ),
+  code: ({ children, className, ...props }: any) => {
+    const match = /language-(\w+)/.exec(className || '');
+    const isInline = !match;
+    
+    return isInline ? (
+      <code className="rounded bg-background px-1 py-0.5" {...props}>
+        {children}
+      </code>
+    ) : (
+      <code className={className} {...props}>
+        {children}
+      </code>
+    );
+  },
+}), []); // Empty dependency array since these components never change
+```
+
 ### Technical Explanation
 
 The infinite loop was occurring because:
@@ -614,7 +641,8 @@ By memoizing these expensive operations, we ensure they only run when their depe
 1. The content sanitization now only runs when the content actually changes
 2. Artifact validation only runs when relevant props change
 3. Display content calculation is cached between renders
-4. No more infinite re-render loops should occur
+4. ReactMarkdown components are created once and reused
+5. No more infinite re-render loops should occur
 
 ### Next Steps if Issues Persist
 
@@ -623,3 +651,89 @@ By memoizing these expensive operations, we ensure they only run when their depe
 3. Verify all dependency arrays are correct
 4. Consider using React.memo on child components
 5. Profile with React DevTools to identify any remaining performance issues
+
+---
+
+## Debug Tools Added (2025-06-24)
+
+### New Debug Hooks
+
+To help identify the source of infinite re-render loops, we've added debug hooks in `/packages/client/src/hooks/useRenderDebug.ts`:
+
+#### 1. **useRenderDebug**
+
+This hook tracks component renders and detects infinite loops:
+
+```javascript
+import { useRenderDebug } from '@/hooks/useRenderDebug';
+
+function MyComponent({ prop1, prop2 }) {
+  // Add this at the top of any component you want to debug
+  useRenderDebug('MyComponent', { prop1, prop2 });
+  
+  // ... rest of component
+}
+```
+
+Features:
+- Logs render count
+- Detects rapid re-renders (>5 renders in 100ms)
+- Shows which props changed between renders
+- Alerts when infinite loop is detected
+
+#### 2. **useEffectDebug**
+
+This hook helps debug useEffect dependencies:
+
+```javascript
+import { useEffectDebug } from '@/hooks/useRenderDebug';
+
+function MyComponent() {
+  const [state1, setState1] = useState();
+  const [state2, setState2] = useState();
+  
+  // Replace useEffect with useEffectDebug during debugging
+  useEffectDebug(() => {
+    // Effect logic
+  }, [state1, state2], 'MyComponent effect');
+}
+```
+
+Features:
+- Shows which dependencies changed
+- Logs old and new values
+- Helps identify unnecessary effect triggers
+
+### How to Use Debug Tools
+
+1. **Identify the problematic component**: Look at the React error to see which component is causing the loop
+
+2. **Add useRenderDebug**: Add the hook to the component and its parents
+
+3. **Check console logs**: Look for "[INFINITE LOOP DETECTED]" messages
+
+4. **Track prop changes**: See which props are changing rapidly
+
+5. **Debug effects**: Replace useEffect with useEffectDebug to see dependency changes
+
+6. **Remove debug hooks**: Once fixed, remove the debug hooks for production
+
+### Common Patterns to Look For
+
+1. **Objects created in render**: Look for objects/arrays created without useMemo
+2. **Functions created in render**: Look for inline functions in props
+3. **Circular state updates**: Effect A updates state B, Effect B updates state A
+4. **Missing dependencies**: Effects with incomplete dependency arrays
+5. **Direct state mutations**: Mutating state instead of creating new objects
+
+### Final Checklist
+
+- [ ] All expensive computations are memoized with `useMemo`
+- [ ] All callback functions are memoized with `useCallback`
+- [ ] All objects/arrays passed as props are memoized
+- [ ] All effect dependency arrays are complete and accurate
+- [ ] No functions are called during render (only on events)
+- [ ] State updates don't trigger circular dependencies
+- [ ] ReactMarkdown components props are memoized
+- [ ] Content sanitization is memoized
+- [ ] Store selectors are used properly (not direct method calls)
