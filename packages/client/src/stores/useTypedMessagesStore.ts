@@ -271,3 +271,11 @@ export const useTypedMessagesStore = create<TypedMessagesStore>()(
     }
   )
 );
+
+// Create a selector hook to properly subscribe to streaming content changes
+export const useStreamedContent = (conversationId: string | null): string => {
+  return useTypedMessagesStore((state) => {
+    if (!conversationId) return '';
+    return state.streamingContentByConversation.get(conversationId) || '';
+  });
+};
