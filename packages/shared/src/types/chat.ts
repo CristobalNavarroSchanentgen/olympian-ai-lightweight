@@ -1,5 +1,5 @@
 export interface Conversation {
-  _id?: string;
+  _id?: string; // Always a string - MongoDB ObjectIds are converted to strings on the frontend
   title: string;
   model: string;
   createdAt: Date;
@@ -8,8 +8,8 @@ export interface Conversation {
 }
 
 export interface Message {
-  _id?: string;
-  conversationId: string;
+  _id?: string; // Always a string - MongoDB ObjectIds are converted to strings on the frontend
+  conversationId: string; // Always a string - ensures consistent type handling
   role: 'user' | 'assistant' | 'system';
   content: string;
   images?: string[]; // Array of base64 images
@@ -33,7 +33,7 @@ export interface MessageMetadata {
 }
 
 export interface ChatRequest {
-  conversationId?: string;
+  conversationId?: string; // Optional string - for existing conversations
   content: string;
   images?: string[];
   model: string;
