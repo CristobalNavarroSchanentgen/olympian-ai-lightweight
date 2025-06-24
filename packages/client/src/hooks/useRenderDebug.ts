@@ -86,7 +86,7 @@ export function useRenderDebug(componentName: string, props?: Record<string, any
     if (props && prevPropsRef.current) {
       const propAnalysis = analyzePropsChanges(props, prevPropsRef.current);
       
-      if (propAnalysis.hasChanges) {
+      if (propAnalysis.hasChanges && (hasInfiniteLoop || hasHighFrequency)) {
         console.group(`[PROP CHANGES] ${componentName} render #${renderCount.current}`);
         
         if (propAnalysis.changedProps.length > 0) {
