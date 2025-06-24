@@ -54,7 +54,6 @@ class WebSocketChatService {
   private readonly HANDLER_CLEANUP_DELAY = 2000; // 2 second grace period for multi-host
   private readonly EVENT_QUEUE_MAX_SIZE = 50;
   private readonly EVENT_QUEUE_MAX_AGE = 10000; // 10 seconds
-  private readonly MAX_RETRY_COUNT = 3;
 
   connect(): Promise<void> {
     return new Promise((resolve, reject) => {
