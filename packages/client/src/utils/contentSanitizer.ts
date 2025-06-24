@@ -1,30 +1,81 @@
 /**
  * Content sanitization utilities for safe rendering in React components
  * Enhanced for multi-host deployment scenarios (Subproject 3)
+ * Integrated with UI debug system for comprehensive logging
  */
+
+// Import UI logger for enhanced debugging
+let uiLogger: any = null;
+const isDebugMode = typeof window !== 'undefined' && 
+  (import.meta.env?.VITE_UI_DEBUG_MODE === 'true' || 
+   import.meta.env?.VITE_CONTENT_SANITIZER_DEBUG === 'true');
+
+// Dynamic import of UI logger to handle environments where it might not be available
+if (isDebugMode) {
+  try {
+    import('@/utils/debug/uiLogger').then(module => {
+      uiLogger = module.uiLogger;
+    }).catch(() => {
+      console.debug('[ContentSanitizer] UI debug logger not available');
+    });
+  } catch {
+    // Fallback for environments where dynamic imports aren't supported
+  }
+}
+
+/**
+ * Enhanced logging for content sanitization operations
+ */
+function debugLog(operation: string, data: any, componentName?: string) {
+  if (!isDebugMode) return;
+  
+  // Log to UI logger if available
+  if (uiLogger) {
+    try {
+      uiLogger.contentSanitization(componentName || 'Unknown', operation, data);
+    } catch (error) {
+      console.warn('[ContentSanitizer] Failed to log to UI logger:', error);
+    }
+  }
+  
+  // Also log to console in debug mode
+  console.debug(`[ContentSanitizer] ${operation}:`, data);
+}
 
 /**
  * Remove control characters and normalize content for safe rendering
  * Following React best practices for content validation
  */
-export function sanitizeContent(content: string | undefined | null): string {
+export function sanitizeContent(content: string | undefined | null, componentName?: string): string {
   try {
     // Guard against invalid input following React patterns
     if (!content || typeof content !== 'string') {
-      console.warn('[ContentSanitizer] Invalid content type:', typeof content);
+      const warning = `Invalid content type: ${typeof content}`;
+      console.warn('[ContentSanitizer]', warning);
+      debugLog('Invalid Input', { type: typeof content, warning }, componentName);
       return '';
     }
     
     // Enhanced logging for special characters using proper Unicode patterns
-    const hasSpecialChars = /[\u2018\u2019\u201C\u201D\u2026]/.test(content) || content.includes('...');
+    const specialCharAnalysis = {
+      hasEllipsis: content.includes('...'),
+      hasUnicodeEllipsis: content.includes('\u2026'),
+      hasSmartQuotes: /[\u2018\u2019\u201C\u201D]/.test(content),
+      hasControlChars: /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/.test(content),
+      hasZeroWidthChars: /[\u200B-\u200D\uFEFF]/.test(content),
+      length: content.length,
+      preview: content.substring(0, 100)
+    };
+    
+    const hasSpecialChars = specialCharAnalysis.hasEllipsis || 
+                           specialCharAnalysis.hasUnicodeEllipsis || 
+                           specialCharAnalysis.hasSmartQuotes ||
+                           specialCharAnalysis.hasControlChars ||
+                           specialCharAnalysis.hasZeroWidthChars;
+    
     if (hasSpecialChars) {
-      console.log('[ContentSanitizer] Processing content with special characters:', {
-        length: content.length,
-        hasEllipsis: content.includes('...'),
-        hasUnicodeEllipsis: content.includes('\u2026'),
-        hasSmartQuotes: /[\u2018\u2019\u201C\u201D]/.test(content),
-        preview: content.substring(0, 100)
-      });
+      console.log('[ContentSanitizer] Processing content with special characters:', specialCharAnalysis);
+      debugLog('Special Characters Detected', specialCharAnalysis, componentName);
     }
     
     const sanitized = content
@@ -50,14 +101,39 @@ export function sanitizeContent(content: string | undefined | null): string {
       // Trim excessive whitespace
       .trim();
 
-    // Validate result
-    if (!sanitized && content.length > 0) {
+    // Validate result and log detailed information
+    const sanitizationResult = {
+      originalLength: content.length,
+      sanitizedLength: sanitized.length,
+      charactersRemoved: content.length - sanitized.length,
+      isEmpty: !sanitized && content.length > 0,
+      success: true
+    };
+
+    if (sanitizationResult.isEmpty) {
       console.warn('[ContentSanitizer] Sanitization resulted in empty string from non-empty input');
+      debugLog('Empty Result Warning', sanitizationResult, componentName);
+    } else if (sanitizationResult.charactersRemoved > 0) {
+      debugLog('Characters Removed', sanitizationResult, componentName);
+    }
+    
+    // Log successful sanitization in debug mode
+    if (isDebugMode && hasSpecialChars) {
+      debugLog('Sanitization Complete', sanitizationResult, componentName);
     }
     
     return sanitized;
   } catch (error) {
+    const errorInfo = {
+      error: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+      inputType: typeof content,
+      inputLength: content ? content.length : 0
+    };
+    
     console.error('[ContentSanitizer] Error in sanitizeContent:', error);
+    debugLog('Sanitization Error', errorInfo, componentName);
+    
     // Return the original content as fallback, but escaped
     return String(content || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
@@ -67,54 +143,90 @@ export function sanitizeContent(content: string | undefined | null): string {
  * Enhanced validation for markdown content safety
  * Includes checks for multi-host deployment edge cases
  */
-export function isValidMarkdownContent(content: string): boolean {
+export function isValidMarkdownContent(content: string, componentName?: string): boolean {
   try {
     if (!content || typeof content !== 'string') {
-      console.warn('[ContentSanitizer] Invalid content for validation:', typeof content);
+      const warning = `Invalid content for validation: ${typeof content}`;
+      console.warn('[ContentSanitizer]', warning);
+      debugLog('Validation Failed - Invalid Type', { type: typeof content }, componentName);
       return false;
     }
+    
+    const validationChecks = {
+      codeBlockBalance: true,
+      lineLength: true,
+      contentLength: true,
+      suspiciousPatterns: true,
+      details: {} as any
+    };
     
     // Check for balanced code blocks
     const codeBlockMatches = content.match(/```/g);
     const codeBlockCount = codeBlockMatches ? codeBlockMatches.length : 0;
+    validationChecks.details.codeBlockCount = codeBlockCount;
+    
     if (codeBlockCount % 2 !== 0) {
       console.warn('[ContentSanitizer] Unbalanced code blocks detected:', codeBlockCount);
-      return false;
+      validationChecks.codeBlockBalance = false;
     }
     
     // Check for extremely long lines that might cause performance issues
     const lines = content.split('\n');
     const maxLineLength = 10000; // Reasonable limit for web display
-    const hasExtremelyLongLines = lines.some(line => line.length > maxLineLength);
-    if (hasExtremelyLongLines) {
-      console.warn('[ContentSanitizer] Extremely long lines detected (>10k chars)');
-      return false;
+    const longLines = lines.filter(line => line.length > maxLineLength);
+    validationChecks.details.maxLineLength = Math.max(...lines.map(line => line.length));
+    validationChecks.details.longLinesCount = longLines.length;
+    
+    if (longLines.length > 0) {
+      console.warn('[ContentSanitizer] Extremely long lines detected (>10k chars):', longLines.length);
+      validationChecks.lineLength = false;
     }
     
     // Check for excessive content length (multi-host might receive large payloads)
     const maxContentLength = 500000; // 500KB limit
+    validationChecks.details.contentLength = content.length;
+    
     if (content.length > maxContentLength) {
       console.warn('[ContentSanitizer] Content exceeds maximum length:', content.length);
-      return false;
+      validationChecks.contentLength = false;
     }
     
     // Check for suspicious patterns that might indicate corrupted data
     const suspiciousPatterns = [
-      /\x00/,                    // Null bytes
-      /[\x01-\x08\x0B\x0C\x0E-\x1F]/, // Other control characters
-      /\uFFFD/,                  // Replacement character (indicates encoding issues)
+      { name: 'null_bytes', pattern: /\x00/, description: 'Null bytes detected' },
+      { name: 'control_chars', pattern: /[\x01-\x08\x0B\x0C\x0E-\x1F]/, description: 'Control characters detected' },
+      { name: 'replacement_char', pattern: /\uFFFD/, description: 'Replacement character (encoding issues)' },
     ];
     
-    for (const pattern of suspiciousPatterns) {
+    const detectedPatterns: string[] = [];
+    for (const { name, pattern, description } of suspiciousPatterns) {
       if (pattern.test(content)) {
-        console.warn('[ContentSanitizer] Suspicious pattern detected:', pattern);
-        return false;
+        console.warn('[ContentSanitizer] Suspicious pattern detected:', description);
+        detectedPatterns.push(name);
+        validationChecks.suspiciousPatterns = false;
       }
     }
+    validationChecks.details.suspiciousPatterns = detectedPatterns;
     
-    return true;
+    const isValid = validationChecks.codeBlockBalance && 
+                   validationChecks.lineLength && 
+                   validationChecks.contentLength && 
+                   validationChecks.suspiciousPatterns;
+    
+    // Log validation results in debug mode
+    if (isDebugMode || !isValid) {
+      debugLog('Content Validation', { isValid, checks: validationChecks }, componentName);
+    }
+    
+    return isValid;
   } catch (error) {
+    const errorInfo = {
+      error: error instanceof Error ? error.message : 'Unknown error',
+      contentLength: content ? content.length : 0
+    };
+    
     console.error('[ContentSanitizer] Error validating content:', error);
+    debugLog('Validation Error', errorInfo, componentName);
     return false;
   }
 }
@@ -123,29 +235,33 @@ export function isValidMarkdownContent(content: string): boolean {
  * Comprehensive content preparation for safe markdown rendering
  * Enhanced for multi-host deployment reliability
  */
-export function prepareMarkdownContent(content: string | undefined | null): string {
+export function prepareMarkdownContent(content: string | undefined | null, componentName?: string): string {
   try {
-    const sanitized = sanitizeContent(content);
+    const sanitized = sanitizeContent(content, componentName);
     
     if (!sanitized) {
       console.log('[ContentSanitizer] No content after sanitization');
+      debugLog('Empty Content After Sanitization', { originalLength: (content || '').length }, componentName);
       return '';
     }
     
     // Pre-validation
-    if (!isValidMarkdownContent(sanitized)) {
+    if (!isValidMarkdownContent(sanitized, componentName)) {
       console.warn('[ContentSanitizer] Content failed initial validation');
+      debugLog('Initial Validation Failed', { contentLength: sanitized.length }, componentName);
       // Return escaped plain text as safe fallback
       return sanitized.replace(/</g, '&lt;').replace(/>/g, '&gt;');
     }
     
     let prepared = sanitized;
+    const preparations: string[] = [];
     
     // Fix unbalanced code blocks (common issue in streaming content)
     const codeBlockCount = (prepared.match(/```/g) || []).length;
     if (codeBlockCount % 2 !== 0) {
       console.warn('[ContentSanitizer] Fixing unbalanced code blocks');
       prepared += '\n```'; // Close unclosed code block
+      preparations.push('fixed_code_blocks');
     }
     
     // Fix unbalanced inline code (single backticks)
@@ -153,32 +269,57 @@ export function prepareMarkdownContent(content: string | undefined | null): stri
     if (inlineCodeCount % 2 !== 0) {
       console.warn('[ContentSanitizer] Fixing unbalanced inline code');
       prepared += '`'; // Close unclosed inline code
+      preparations.push('fixed_inline_code');
     }
     
     // Escape HTML-like content outside of code blocks to prevent XSS
+    const beforeHtmlEscape = prepared.length;
     prepared = escapeHtmlOutsideCodeBlocks(prepared);
+    if (prepared.length !== beforeHtmlEscape) {
+      preparations.push('escaped_html');
+    }
     
     // Final validation
-    if (!isValidMarkdownContent(prepared)) {
-      console.error('[ContentSanitizer] Content failed final validation:', {
+    const finalValidation = isValidMarkdownContent(prepared, componentName);
+    if (!finalValidation) {
+      const errorDetails = {
         length: prepared.length,
-        preview: prepared.substring(0, 200)
-      });
+        preview: prepared.substring(0, 200),
+        preparations
+      };
+      
+      console.error('[ContentSanitizer] Content failed final validation:', errorDetails);
+      debugLog('Final Validation Failed', errorDetails, componentName);
+      
       // Return escaped version as ultimate fallback
       return sanitized.replace(/</g, '&lt;').replace(/>/g, '&gt;');
     }
     
-    console.log('[ContentSanitizer] Content prepared successfully:', {
+    const result = {
       originalLength: (content || '').length,
-      finalLength: prepared.length
-    });
+      finalLength: prepared.length,
+      preparations,
+      success: true
+    };
+    
+    console.log('[ContentSanitizer] Content prepared successfully:', result);
+    debugLog('Content Preparation Complete', result, componentName);
     
     return prepared;
   } catch (error) {
+    const errorInfo = {
+      error: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+      inputLength: (content || '').length
+    };
+    
     console.error('[ContentSanitizer] Error preparing content:', error);
+    debugLog('Preparation Error', errorInfo, componentName);
+    
     // Return escaped plain text as ultimate fallback
     const fallback = String(content || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     console.log('[ContentSanitizer] Using fallback content');
+    debugLog('Using Fallback Content', { fallbackLength: fallback.length }, componentName);
     return fallback;
   }
 }
@@ -246,7 +387,7 @@ function escapeHtmlOutsideCodeBlocks(content: string): string {
  * Truncate content if it exceeds safe rendering limits
  * Enhanced for multi-host deployment memory management
  */
-export function truncateForSafety(content: string, maxLength: number = 100000): string {
+export function truncateForSafety(content: string, maxLength: number = 100000, componentName?: string): string {
   try {
     if (!content || typeof content !== 'string') {
       return '';
@@ -256,11 +397,14 @@ export function truncateForSafety(content: string, maxLength: number = 100000): 
       return content;
     }
     
-    console.warn('[ContentSanitizer] Content truncated:', {
+    const truncationInfo = {
       originalLength: content.length,
       maxLength,
       truncated: content.length - maxLength
-    });
+    };
+    
+    console.warn('[ContentSanitizer] Content truncated:', truncationInfo);
+    debugLog('Content Truncated', truncationInfo, componentName);
     
     // Try to truncate at a reasonable boundary (end of sentence or paragraph)
     const truncated = content.substring(0, maxLength);
@@ -274,7 +418,13 @@ export function truncateForSafety(content: string, maxLength: number = 100000): 
     
     return truncated + '\n\n... (content truncated for safety)';
   } catch (error) {
+    const errorInfo = {
+      error: error instanceof Error ? error.message : 'Unknown error',
+      contentLength: content ? content.length : 0
+    };
+    
     console.error('[ContentSanitizer] Error truncating content:', error);
+    debugLog('Truncation Error', errorInfo, componentName);
     return String(content || '').substring(0, 1000) + '... (error in truncation)';
   }
 }
@@ -283,7 +433,7 @@ export function truncateForSafety(content: string, maxLength: number = 100000): 
  * Comprehensive content health check for multi-host deployment
  * Returns detailed diagnostic information
  */
-export function validateContentHealth(content: string): {
+export function validateContentHealth(content: string, componentName?: string): {
   isValid: boolean;
   issues: string[];
   metrics: {
@@ -308,6 +458,7 @@ export function validateContentHealth(content: string): {
     if (!content || typeof content !== 'string') {
       result.isValid = false;
       result.issues.push('Invalid content type');
+      debugLog('Health Check Failed - Invalid Type', { type: typeof content }, componentName);
       return result;
     }
     
@@ -334,11 +485,92 @@ export function validateContentHealth(content: string): {
       result.isValid = false;
     }
     
+    // Log health check results in debug mode
+    if (isDebugMode || !result.isValid) {
+      debugLog('Content Health Check', { result, componentName }, componentName);
+    }
+    
     return result;
   } catch (error) {
+    const errorInfo = {
+      error: error instanceof Error ? error.message : 'Unknown error'
+    };
+    
     console.error('[ContentSanitizer] Error in health check:', error);
+    debugLog('Health Check Error', errorInfo, componentName);
+    
     result.isValid = false;
     result.issues.push('Health check failed');
+    return result;
+  }
+}
+
+/**
+ * Enhanced markdown rendering safety wrapper
+ * Provides comprehensive error handling and logging for ReactMarkdown
+ */
+export function safeMarkdownRender(content: string, componentName?: string): {
+  content: string;
+  isValid: boolean;
+  warnings: string[];
+} {
+  const result = {
+    content: '',
+    isValid: true,
+    warnings: [] as string[]
+  };
+  
+  try {
+    // Validate input
+    if (!content || typeof content !== 'string') {
+      result.isValid = false;
+      result.warnings.push('Invalid content type');
+      debugLog('Safe Render Failed - Invalid Input', { type: typeof content }, componentName);
+      return result;
+    }
+    
+    // Run health check
+    const healthCheck = validateContentHealth(content, componentName);
+    if (!healthCheck.isValid) {
+      result.warnings.push(...healthCheck.issues);
+    }
+    
+    // Prepare content for rendering
+    const preparedContent = prepareMarkdownContent(content, componentName);
+    
+    // Final validation
+    if (!preparedContent) {
+      result.isValid = false;
+      result.warnings.push('Content preparation failed');
+      result.content = 'Content could not be prepared for safe rendering';
+      debugLog('Safe Render Failed - Preparation Failed', {}, componentName);
+      return result;
+    }
+    
+    result.content = preparedContent;
+    
+    // Log successful preparation
+    if (isDebugMode) {
+      debugLog('Safe Render Success', {
+        originalLength: content.length,
+        preparedLength: preparedContent.length,
+        warnings: result.warnings
+      }, componentName);
+    }
+    
+    return result;
+  } catch (error) {
+    const errorInfo = {
+      error: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined
+    };
+    
+    console.error('[ContentSanitizer] Error in safe markdown render:', error);
+    debugLog('Safe Render Error', errorInfo, componentName);
+    
+    result.isValid = false;
+    result.warnings.push('Rendering preparation failed');
+    result.content = 'Error preparing content for safe rendering';
     return result;
   }
 }
