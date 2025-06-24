@@ -197,69 +197,112 @@ class WebSocketChatService {
   private setupChatHandlers() {
     if (!this.socket) return;
 
-    // Chat events with enhanced logging
+    // Chat events with enhanced logging and error handling
     this.socket.on('chat:thinking', (data: ServerEvents['chat:thinking']) => {
-      console.log('[WebSocketChat] 🤔 Received chat:thinking', data);
-      const handlers = this.chatHandlers.get(data.messageId);
-      if (handlers?.onThinking) {
-        handlers.onThinking(data);
-      } else {
-        console.warn('[WebSocketChat] ⚠️ No handlers found for thinking event:', data.messageId);
+      try {
+        console.log('[WebSocketChat] 🤔 Received chat:thinking', data);
+        const handlers = this.chatHandlers.get(data.messageId);
+        if (handlers?.onThinking) {
+          handlers.onThinking(data);
+        } else {
+          console.warn('[WebSocketChat] ⚠️ No handlers found for thinking event:', data.messageId);
+        }
+      } catch (error) {
+        console.error('[WebSocketChat] ❌ Error in thinking handler:', error);
       }
     });
 
     this.socket.on('chat:generating', (data: ServerEvents['chat:generating']) => {
-      console.log('[WebSocketChat] ⚡ Received chat:generating', data);
-      const handlers = this.chatHandlers.get(data.messageId);
-      if (handlers?.onGenerating) {
-        handlers.onGenerating(data);
-      } else {
-        console.warn('[WebSocketChat] ⚠️ No handlers found for generating event:', data.messageId);
+      try {
+        console.log('[WebSocketChat] ⚡ Received chat:generating', data);
+        const handlers = this.chatHandlers.get(data.messageId);
+        if (handlers?.onGenerating) {
+          handlers.onGenerating(data);
+        } else {
+          console.warn('[WebSocketChat] ⚠️ No handlers found for generating event:', data.messageId);
+        }
+      } catch (error) {
+        console.error('[WebSocketChat] ❌ Error in generating handler:', error);
       }
     });
 
     this.socket.on('chat:token', (data: ServerEvents['chat:token']) => {
-      console.log('[WebSocketChat] 🔤 Received chat:token', data.messageId, 'token length:', data.token.length);
-      const handlers = this.chatHandlers.get(data.messageId);
-      if (handlers?.onToken) {
-        handlers.onToken(data);
-      } else {
-        console.warn('[WebSocketChat] ⚠️ No handlers found for token event:', data.messageId);
+      try {
+        console.log('[WebSocketChat] 🔤 Received chat:token', data.messageId, 'token length:', data.token.length);
+        const handlers = this.chatHandlers.get(data.messageId);
+        if (handlers?.onToken) {
+          handlers.onToken(data);
+        } else {
+          console.warn('[WebSocketChat] ⚠️ No handlers found for token event:', data.messageId);
+        }
+      } catch (error) {
+        console.error('[WebSocketChat] ❌ Error in token handler:', error);
       }
     });
 
     this.socket.on('chat:complete', (data: ServerEvents['chat:complete']) => {
-      console.log('[WebSocketChat] ✅ Received chat:complete', data);
-      const handlers = this.chatHandlers.get(data.messageId);
-      if (handlers?.onComplete) {
-        handlers.onComplete(data);
-      } else {
-        console.warn('[WebSocketChat] ⚠️ No handlers found for complete event:', data.messageId);
+      try {
+        console.log('[WebSocketChat] ✅ Received chat:complete', data);
+        const handlers = this.chatHandlers.get(data.messageId);
+        if (handlers?.onComplete) {
+          // Wrap handler execution in try-catch to prevent disconnection
+          try {
+            handlers.onComplete(data);
+          } catch (handlerError) {
+            console.error('[WebSocketChat] ❌ Error in complete handler callback:', handlerError);
+            // Still clean up even if handler fails
+          }
+        } else {
+          console.warn('[WebSocketChat] ⚠️ No handlers found for complete event:', data.messageId);
+        }
+        // Clean up handlers after completion
+        this.chatHandlers.delete(data.messageId);
+        console.log('[WebSocketChat] 🧹 Cleaned up handlers for message:', data.messageId);
+      } catch (error) {
+        console.error('[WebSocketChat] ❌ Error in complete handler:', error);
+        // Still try to clean up
+        this.chatHandlers.delete(data.messageId);
       }
-      // Clean up handlers after completion
-      this.chatHandlers.delete(data.messageId);
-      console.log('[WebSocketChat] 🧹 Cleaned up handlers for message:', data.messageId);
     });
 
     this.socket.on('chat:error', (data: ServerEvents['chat:error']) => {
-      console.error('[WebSocketChat] ❌ Received chat:error', data);
-      const handlers = this.chatHandlers.get(data.messageId);
-      if (handlers?.onError) {
-        handlers.onError(data);
-      } else {
-        console.warn('[WebSocketChat] ⚠️ No handlers found for error event:', data.messageId);
+      try {
+        console.error('[WebSocketChat] ❌ Received chat:error', data);
+        const handlers = this.chatHandlers.get(data.messageId);
+        if (handlers?.onError) {
+          // Wrap handler execution in try-catch
+          try {
+            handlers.onError(data);
+          } catch (handlerError) {
+            console.error('[WebSocketChat] ❌ Error in error handler callback:', handlerError);
+          }
+        } else {
+          console.warn('[WebSocketChat] ⚠️ No handlers found for error event:', data.messageId);
+        }
+        // Clean up handlers after error
+        this.chatHandlers.delete(data.messageId);
+        console.log('[WebSocketChat] 🧹 Cleaned up handlers for message after error:', data.messageId);
+      } catch (error) {
+        console.error('[WebSocketChat] ❌ Error in error handler:', error);
+        // Still try to clean up
+        this.chatHandlers.delete(data.messageId);
       }
-      // Clean up handlers after error
-      this.chatHandlers.delete(data.messageId);
-      console.log('[WebSocketChat] 🧹 Cleaned up handlers for message after error:', data.messageId);
     });
 
     this.socket.on('conversation:created', (data: ServerEvents['conversation:created']) => {
-      console.log('[WebSocketChat] 🆕 Received conversation:created', data);
-      // Broadcast to all active chat handlers
-      this.chatHandlers.forEach(handlers => {
-        handlers.onConversationCreated?.(data);
-      });
+      try {
+        console.log('[WebSocketChat] 🆕 Received conversation:created', data);
+        // Broadcast to all active chat handlers
+        this.chatHandlers.forEach(handlers => {
+          try {
+            handlers.onConversationCreated?.(data);
+          } catch (handlerError) {
+            console.error('[WebSocketChat] ❌ Error in conversation:created handler:', handlerError);
+          }
+        });
+      } catch (error) {
+        console.error('[WebSocketChat] ❌ Error in conversation:created handler:', error);
+      }
     });
 
     // Handle pong response
