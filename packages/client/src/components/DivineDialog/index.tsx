@@ -1,7 +1,7 @@
-import { useState, useEffect, useRef, useTransition, Suspense } from 'react';
+import { useState, useEffect, useRef, useTransition, Suspense, useMemo } from 'react';
 import { useChatStore } from '@/stores/useChatStore';
 import { useArtifactStore } from '@/stores/useArtifactStore';
-import { useTypedMessagesStore } from '@/stores/useTypedMessagesStore';
+import { useTypedMessagesStore, useStreamedContent } from '@/stores/useTypedMessagesStore';
 import { webSocketChatService } from '@/services/websocketChat';
 import { ChatInput } from './ChatInput';
 import { MessageList } from './MessageList';
@@ -61,6 +61,12 @@ export function DivineDialog() {
   
   // Use React 18's useTransition for non-urgent updates
   const [isPending, startTransition] = useTransition();
+  
+  // Get conversation ID with memoization to prevent re-calculations
+  const currentConversationId = useMemo(() => getConversationId(currentConversation), [currentConversation]);
+  
+  // Use the new selector hook to properly subscribe to streaming content
+  const streamedContent = useStreamedContent(currentConversationId);
 
   useEffect(() => {
     fetchModels();
@@ -99,33 +105,37 @@ export function DivineDialog() {
 
   // Sync artifact panel state with conversation changes
   useEffect(() => {
-    if (!currentConversation) {
+    if (!currentConversationId) {
       // No conversation selected, clear artifacts
       selectArtifact(null);
       setArtifactPanelOpen(false);
       return;
     }
 
-    const conversationId = getConversationId(currentConversation);
-    const artifactsForConversation = getArtifactsForConversation(conversationId);
-    
-    console.log('🎨 [DivineDialog] Conversation changed, artifacts:', artifactsForConversation.length);
-    
-    // If conversation has artifacts, ensure panel is open and select most recent
-    if (artifactsForConversation.length > 0) {
-      const mostRecentArtifact = artifactsForConversation.sort((a, b) => 
-        new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-      )[0];
+    // Debounce artifact loading to prevent rapid updates
+    const timeoutId = setTimeout(() => {
+      const artifactsForConversation = getArtifactsForConversation(currentConversationId);
       
-      selectArtifact(mostRecentArtifact);
-      setArtifactPanelOpen(true);
-      console.log('🎨 [DivineDialog] Auto-selected artifact for conversation:', mostRecentArtifact.id);
-    } else {
-      // No artifacts, clear selection but keep panel state as user preference
-      selectArtifact(null);
-      console.log('🎨 [DivineDialog] No artifacts found for conversation');
-    }
-  }, [currentConversation, getArtifactsForConversation, selectArtifact, setArtifactPanelOpen]);
+      console.log('🎨 [DivineDialog] Conversation changed, artifacts:', artifactsForConversation.length);
+      
+      // If conversation has artifacts, ensure panel is open and select most recent
+      if (artifactsForConversation.length > 0) {
+        const mostRecentArtifact = artifactsForConversation.sort((a, b) => 
+          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+        )[0];
+        
+        selectArtifact(mostRecentArtifact);
+        setArtifactPanelOpen(true);
+        console.log('🎨 [DivineDialog] Auto-selected artifact for conversation:', mostRecentArtifact.id);
+      } else {
+        // No artifacts, clear selection but keep panel state as user preference
+        selectArtifact(null);
+        console.log('🎨 [DivineDialog] No artifacts found for conversation');
+      }
+    }, 100); // Small debounce to prevent rapid updates
+    
+    return () => clearTimeout(timeoutId);
+  }, [currentConversationId, getArtifactsForConversation, selectArtifact, setArtifactPanelOpen]);
 
   const handleNewConversation = () => {
     // Clear typed messages and artifact state when creating a new conversation
@@ -151,7 +161,7 @@ export function DivineDialog() {
 
     // Add user message to store
     const userMessage: Message = {
-      conversationId: getConversationId(currentConversation) || '',
+      conversationId: currentConversationId || '',
       role: 'user',
       content,
       images,
@@ -175,7 +185,7 @@ export function DivineDialog() {
           content,
           model: selectedModel,
           visionModel: selectedVisionModel || undefined,
-          conversationId: getConversationId(currentConversation) || undefined,
+          conversationId: currentConversationId || undefined,
           images,
         },
         {
@@ -238,7 +248,6 @@ export function DivineDialog() {
               }
 
               // Get the final content (either from typed messages or from assistant content)
-              const currentConversationId = getConversationId(currentConversation);
               const finalContent = currentConversationId 
                 ? getTypedContent(currentConversationId) || assistantContent
                 : assistantContent;
@@ -440,12 +449,6 @@ export function DivineDialog() {
   };
 
   const defaultLayout = getDefaultLayout();
-
-  // Get the current streamed content for display
-  const currentConversationId = getConversationId(currentConversation);
-  const streamedContent = currentConversationId 
-    ? getTypedContent(currentConversationId) || ''
-    : '';
 
   const renderChatPanel = () => (
     <div className="h-full flex flex-col bg-gray-900">
