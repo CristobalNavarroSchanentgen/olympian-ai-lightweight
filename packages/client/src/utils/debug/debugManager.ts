@@ -4,6 +4,7 @@
  * and provides easy access to debug utilities for all components
  */
 
+import React from 'react';
 import { uiLogger } from './uiLogger';
 import { crashAnalyzer } from './crashAnalyzer';
 
