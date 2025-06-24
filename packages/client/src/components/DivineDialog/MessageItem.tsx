@@ -11,7 +11,7 @@ import { prepareMarkdownContent, truncateForSafety } from '@/utils/contentSaniti
 import { useArtifactStore } from '@/stores/useArtifactStore';
 import { useChatStore } from '@/stores/useChatStore';
 import { useTypedMessagesStore } from '@/stores/useTypedMessagesStore';
-import { Suspense } from 'react';
+import { Suspense, useMemo } from 'react';
 import { Spinner } from '@/components/ui/spinner';
 import { 
   FileText, 
@@ -79,8 +79,8 @@ export function MessageItem({ message, isLatest = false, isStreaming = false }: 
     !isStreaming && 
     shouldTriggerTypewriter(conversationId, messageId, isLatest);
 
-  // Enhanced artifact validation
-  const getValidatedArtifact = () => {
+  // Memoize artifact validation to prevent expensive re-calculations
+  const artifact = useMemo(() => {
     if (!message.metadata?.artifactId) {
       return null;
     }
@@ -103,9 +103,7 @@ export function MessageItem({ message, isLatest = false, isStreaming = false }: 
     }
 
     return artifact;
-  };
-
-  const artifact = getValidatedArtifact();
+  }, [message.metadata?.artifactId, currentConversation, getArtifactById]);
 
   // Check if this message should display original content with code blocks
   // This happens when an artifact is expected but missing/invalid
@@ -114,9 +112,8 @@ export function MessageItem({ message, isLatest = false, isStreaming = false }: 
     message.metadata?.originalContent &&
     message.metadata?.codeBlocksRemoved;
 
-  // For typewriter effect, always use the processed content (message.content)
-  // For static display when artifacts are missing, use original content as fallback
-  const getDisplayContent = () => {
+  // Memoize display content calculation
+  const displayContent = useMemo(() => {
     if (shouldShowTypewriter) {
       // Always use processed content for typewriting
       return message.content;
@@ -126,12 +123,12 @@ export function MessageItem({ message, isLatest = false, isStreaming = false }: 
     return shouldShowOriginalContent 
       ? (message.metadata?.originalContent || message.content)
       : message.content;
-  };
-
-  const displayContent = getDisplayContent();
+  }, [shouldShowTypewriter, shouldShowOriginalContent, message.content, message.metadata?.originalContent]);
   
-  // Sanitize content for safe rendering
-  const safeDisplayContent = prepareMarkdownContent(truncateForSafety(displayContent));
+  // Memoize sanitized content to prevent re-processing on every render
+  const safeDisplayContent = useMemo(() => {
+    return prepareMarkdownContent(truncateForSafety(displayContent));
+  }, [displayContent]);
 
   const getArtifactIcon = (type: string) => {
     switch (type) {
