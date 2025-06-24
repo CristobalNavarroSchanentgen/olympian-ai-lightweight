@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useTransition, Suspense, useMemo } from 'react';
+import { useState, useEffect, useRef, useTransition, Suspense, useMemo, useCallback } from 'react';
 import { useChatStore } from '@/stores/useChatStore';
 import { useArtifactStore } from '@/stores/useArtifactStore';
 import { useTypedMessagesStore, useStreamedContent } from '@/stores/useTypedMessagesStore';
@@ -22,7 +22,7 @@ function getConversationId(conversation: any): string {
   return String(conversation._id);
 }
 
-// Loading fallback for Suspense
+// Loading fallback for Suspense - moved outside component to prevent recreation
 const DialogLoadingFallback = () => (
   <div className="h-full flex items-center justify-center">
     <div className="flex items-center gap-2 text-gray-400">
@@ -150,16 +150,16 @@ export function DivineDialog() {
     return () => clearTimeout(timeoutId);
   }, [currentConversationId, getArtifactsForConversation, selectArtifact, setArtifactPanelOpen]);
 
-  const handleNewConversation = () => {
+  const handleNewConversation = useCallback(() => {
     // Clear typed messages and artifact state when creating a new conversation
     clearTypedMessages();
     selectArtifact(null);
     setArtifactPanelOpen(false);
     createConversation();
     console.log('🆕 [DivineDialog] Created new conversation, cleared artifacts');
-  };
+  }, [clearTypedMessages, selectArtifact, setArtifactPanelOpen, createConversation]);
 
-  const handleSendMessage = async (content: string, images?: string[]) => {
+  const handleSendMessage = useCallback(async (content: string, images?: string[]) => {
     if (!selectedModel) {
       toast({
         title: 'Error',
@@ -421,9 +421,11 @@ export function DivineDialog() {
         clearTypedMessages();
       }
     }
-  };
+  }, [selectedModel, selectedVisionModel, currentConversationId, addMessage, currentConversation, 
+      clearTypedMessages, getTypedContent, addTypedContent, createArtifact, setArtifactPanelOpen, 
+      setCurrentConversation]);
 
-  const handleCancelMessage = () => {
+  const handleCancelMessage = useCallback(() => {
     if (currentMessageId) {
       console.log('[DivineDialog] ❌ Cancelling message:', currentMessageId);
       webSocketChatService.cancelMessage(currentMessageId);
@@ -437,15 +439,15 @@ export function DivineDialog() {
     if (currentConversation) {
       clearTypedMessages();
     }
-  };
+  }, [currentMessageId, currentConversation, clearTypedMessages]);
 
-  const handleLayoutChange = (sizes: number[]) => {
+  const handleLayoutChange = useCallback((sizes: number[]) => {
     // Persist layout to localStorage
     localStorage.setItem('olympian-dialog-layout', JSON.stringify(sizes));
-  };
+  }, []);
 
   // Get default layout from localStorage or use defaults
-  const getDefaultLayout = (): [number, number] => {
+  const defaultLayout = useMemo((): [number, number] => {
     try {
       const savedLayout = localStorage.getItem('olympian-dialog-layout');
       if (savedLayout) {
@@ -459,11 +461,10 @@ export function DivineDialog() {
     }
     // Default layout: 60% chat, 40% artifacts when both panels are open
     return [60, 40];
-  };
+  }, []);
 
-  const defaultLayout = getDefaultLayout();
-
-  const renderChatPanel = () => (
+  // Memoize the chat panel to prevent recreation on every render
+  const renderChatPanel = useMemo(() => (
     <div className="h-full flex flex-col bg-gray-900">
       {/* Header */}
       <div className="border-b border-gray-800 px-4 py-2 flex-shrink-0 bg-gray-900/80 backdrop-blur-sm">
@@ -515,7 +516,8 @@ export function DivineDialog() {
         />
       </div>
     </div>
-  );
+  ), [currentConversation, hasImages, messages, streamedContent, isThinking, isGenerating, 
+      isPending, handleNewConversation, handleSendMessage, handleCancelMessage]);
 
   return (
     <div className="h-full flex bg-gray-900">
@@ -533,7 +535,7 @@ export function DivineDialog() {
             id="chat-panel"
             order={1}
           >
-            {renderChatPanel()}
+            {renderChatPanel}
           </Panel>
 
           {/* Resizable Handle */}
@@ -555,7 +557,7 @@ export function DivineDialog() {
       ) : (
         // When artifact panel is closed, use single panel
         <div className="flex-1 flex flex-col bg-gray-900">
-          {renderChatPanel()}
+          {renderChatPanel}
         </div>
       )}
     </div>
