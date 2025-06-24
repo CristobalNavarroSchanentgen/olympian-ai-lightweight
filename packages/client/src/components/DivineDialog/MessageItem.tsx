@@ -25,6 +25,12 @@ interface MessageItemProps {
   isStreaming?: boolean;
 }
 
+// Utility function to safely convert conversation ID to string
+function getConversationId(conversation: any): string {
+  if (!conversation?._id) return '';
+  return String(conversation._id);
+}
+
 export function MessageItem({ message, isLatest = false, isStreaming = false }: MessageItemProps) {
   const isUser = message.role === 'user';
   const messageId = message._id?.toString() || `${message.conversationId}-${message.createdAt}`;
@@ -61,7 +67,7 @@ export function MessageItem({ message, isLatest = false, isStreaming = false }: 
     }
 
     // Verify the artifact belongs to the current conversation
-    const currentConversationId = currentConversation?._id?.toString() || '';
+    const currentConversationId = getConversationId(currentConversation);
     if (artifact.conversationId !== currentConversationId) {
       console.warn('🎨 [MessageItem] Artifact belongs to wrong conversation:', {
         artifactId: artifact.id,
