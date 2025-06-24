@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useTransition, Suspense } from 'react';
 import { useChatStore } from '@/stores/useChatStore';
 import { useArtifactStore } from '@/stores/useArtifactStore';
 import { useTypedMessagesStore } from '@/stores/useTypedMessagesStore';
@@ -13,12 +13,23 @@ import { toast } from '@/hooks/useToast';
 import { detectArtifact } from '@/lib/artifactDetection';
 import { Plus } from 'lucide-react';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
+import { Spinner } from '@/components/ui/spinner';
 
 // Utility function to safely convert conversation ID to string
 function getConversationId(conversation: any): string {
   if (!conversation?._id) return '';
   return String(conversation._id);
 }
+
+// Loading fallback for Suspense
+const DialogLoadingFallback = () => (
+  <div className="h-full flex items-center justify-center">
+    <div className="flex items-center gap-2 text-gray-400">
+      <Spinner size="lg" />
+      <span>Loading conversation...</span>
+    </div>
+  </div>
+);
 
 export function DivineDialog() {
   const {
@@ -47,6 +58,9 @@ export function DivineDialog() {
   const [hasImages, setHasImages] = useState(false);
   const [currentMessageId, setCurrentMessageId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  
+  // Use React 18's useTransition for non-urgent updates
+  const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
     fetchModels();
@@ -185,11 +199,14 @@ export function DivineDialog() {
             console.log('[DivineDialog] 🔤 Received token:', data.token);
             assistantContent += data.token;
             
-            // Add token to typed messages store for real-time display
-            if (currentConversation) {
-              const conversationId = getConversationId(currentConversation);
-              addTypedContent(conversationId, data.token);
-            }
+            // Use startTransition for non-urgent content updates
+            startTransition(() => {
+              // Add token to typed messages store for real-time display
+              if (currentConversation) {
+                const conversationId = getConversationId(currentConversation);
+                addTypedContent(conversationId, data.token);
+              }
+            });
           },
 
           onComplete: (data) => {
@@ -277,13 +294,16 @@ export function DivineDialog() {
                 createdAt: new Date(),
               };
               
-              try {
-                addMessage(assistantMessage);
-                console.log('[DivineDialog] ✅ Successfully added assistant message');
-              } catch (msgError) {
-                console.error('[DivineDialog] ❌ Error adding message:', msgError);
-                // Don't throw - we still want to reset UI states
-              }
+              // Use startTransition for adding message to avoid blocking UI
+              startTransition(() => {
+                try {
+                  addMessage(assistantMessage);
+                  console.log('[DivineDialog] ✅ Successfully added assistant message');
+                } catch (msgError) {
+                  console.error('[DivineDialog] ❌ Error adding message:', msgError);
+                  // Don't throw - we still want to reset UI states
+                }
+              });
 
               // Clear typed messages after adding the final message
               if (currentConversation) {
@@ -427,6 +447,60 @@ export function DivineDialog() {
     ? getTypedContent(currentConversationId) || ''
     : '';
 
+  const renderChatPanel = () => (
+    <div className="h-full flex flex-col bg-gray-900">
+      {/* Header */}
+      <div className="border-b border-gray-800 px-4 py-2 flex-shrink-0 bg-gray-900/80 backdrop-blur-sm">
+        <div className="flex items-center justify-between">
+          {/* Left side - New button */}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleNewConversation}
+            className="flex items-center gap-2 text-gray-300 hover:text-white hover:bg-gray-800"
+          >
+            <Plus className="h-4 w-4" />
+            New
+          </Button>
+
+          {/* Center - Conversation title */}
+          <div className="text-lg font-semibold text-center flex-1 text-white">
+            {currentConversation ? currentConversation.title : 'New Conversation'}
+          </div>
+
+          {/* Right side - Model selector */}
+          <div className="flex items-center gap-2 justify-end">
+            <ModelSelector hasImages={hasImages} />
+          </div>
+        </div>
+      </div>
+
+      {/* Messages - This takes all available space */}
+      <div className="flex-1 overflow-y-auto p-4 bg-gray-900">
+        <Suspense fallback={<DialogLoadingFallback />}>
+          <MessageList
+            messages={messages}
+            streamedContent={streamedContent}
+            isThinking={isThinking}
+            isGenerating={isGenerating}
+            isTransitioning={isPending}
+          />
+        </Suspense>
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* Input - Fixed at bottom */}
+      <div className="border-t border-gray-800 p-4 flex-shrink-0 bg-gray-900/80 backdrop-blur-sm">
+        <ChatInput
+          onSendMessage={handleSendMessage}
+          onCancel={handleCancelMessage}
+          isDisabled={isThinking || isGenerating}
+          isGenerating={isGenerating}
+        />
+      </div>
+    </div>
+  );
+
   return (
     <div className="h-full flex bg-gray-900">
       {isArtifactPanelOpen ? (
@@ -443,55 +517,7 @@ export function DivineDialog() {
             id="chat-panel"
             order={1}
           >
-            <div className="h-full flex flex-col bg-gray-900">
-              {/* Header */}
-              <div className="border-b border-gray-800 px-4 py-2 flex-shrink-0 bg-gray-900/80 backdrop-blur-sm">
-                <div className="flex items-center justify-between">
-                  {/* Left side - New button */}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleNewConversation}
-                    className="flex items-center gap-2 text-gray-300 hover:text-white hover:bg-gray-800"
-                  >
-                    <Plus className="h-4 w-4" />
-                    New
-                  </Button>
-
-                  {/* Center - Conversation title */}
-                  <div className="text-lg font-semibold text-center flex-1 text-white">
-                    {currentConversation ? currentConversation.title : 'New Conversation'}
-                  </div>
-
-                  {/* Right side - Model selector */}
-                  <div className="flex items-center gap-2 justify-end">
-                    <ModelSelector hasImages={hasImages} />
-                  </div>
-                </div>
-              </div>
-
-              {/* Messages - This takes all available space */}
-              <div className="flex-1 overflow-y-auto p-4 bg-gray-900">
-                <MessageList
-                  messages={messages}
-                  streamedContent={streamedContent}
-                  isThinking={isThinking}
-                  isGenerating={isGenerating}
-                  isTransitioning={false}
-                />
-                <div ref={messagesEndRef} />
-              </div>
-
-              {/* Input - Fixed at bottom */}
-              <div className="border-t border-gray-800 p-4 flex-shrink-0 bg-gray-900/80 backdrop-blur-sm">
-                <ChatInput
-                  onSendMessage={handleSendMessage}
-                  onCancel={handleCancelMessage}
-                  isDisabled={isThinking || isGenerating}
-                  isGenerating={isGenerating}
-                />
-              </div>
-            </div>
+            {renderChatPanel()}
           </Panel>
 
           {/* Resizable Handle */}
@@ -513,53 +539,7 @@ export function DivineDialog() {
       ) : (
         // When artifact panel is closed, use single panel
         <div className="flex-1 flex flex-col bg-gray-900">
-          {/* Header */}
-          <div className="border-b border-gray-800 px-4 py-2 flex-shrink-0 bg-gray-900/80 backdrop-blur-sm">
-            <div className="flex items-center justify-between">
-              {/* Left side - New button */}
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleNewConversation}
-                className="flex items-center gap-2 text-gray-300 hover:text-white hover:bg-gray-800"
-              >
-                <Plus className="h-4 w-4" />
-                New
-              </Button>
-
-              {/* Center - Conversation title */}
-              <div className="text-lg font-semibold text-center flex-1 text-white">
-                {currentConversation ? currentConversation.title : 'New Conversation'}
-              </div>
-
-              {/* Right side - Model selector */}
-              <div className="flex items-center gap-2 justify-end">
-                <ModelSelector hasImages={hasImages} />
-              </div>
-            </div>
-          </div>
-
-          {/* Messages - This takes all available space */}
-          <div className="flex-1 overflow-y-auto p-4 bg-gray-900">
-            <MessageList
-              messages={messages}
-              streamedContent={streamedContent}
-              isThinking={isThinking}
-              isGenerating={isGenerating}
-              isTransitioning={false}
-            />
-            <div ref={messagesEndRef} />
-          </div>
-
-          {/* Input - Fixed at bottom */}
-          <div className="border-t border-gray-800 p-4 flex-shrink-0 bg-gray-900/80 backdrop-blur-sm">
-            <ChatInput
-              onSendMessage={handleSendMessage}
-              onCancel={handleCancelMessage}
-              isDisabled={isThinking || isGenerating}
-              isGenerating={isGenerating}
-            />
-          </div>
+          {renderChatPanel()}
         </div>
       )}
     </div>
