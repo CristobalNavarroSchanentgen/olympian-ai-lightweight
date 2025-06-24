@@ -193,10 +193,8 @@ export function DivineDialog() {
 
             // If this was a new conversation, update the current conversation
             if (!currentConversation && data.conversationId) {
-              // Safely convert conversationId to string and create conversation object
-              const conversationId = typeof data.conversationId === 'object' 
-                ? data.conversationId.toString() 
-                : String(data.conversationId);
+              // Safely convert conversationId to string
+              const conversationId = String(data.conversationId);
               
               console.log('[DivineDialog] 🆕 Creating new conversation with ID:', conversationId);
               
@@ -238,9 +236,7 @@ export function DivineDialog() {
 
             if (artifactDetection.shouldCreateArtifact && artifactDetection.content) {
               // Create the artifact
-              const conversationId = typeof data.conversationId === 'object' 
-                ? data.conversationId.toString() 
-                : String(data.conversationId);
+              const conversationId = String(data.conversationId);
               
               const artifact = createArtifact({
                 title: artifactDetection.title || 'Untitled Artifact',
@@ -259,9 +255,7 @@ export function DivineDialog() {
 
             // Add the assistant message to the store with enhanced metadata
             const assistantMessage: Message = {
-              conversationId: typeof data.conversationId === 'object' 
-                ? data.conversationId.toString() 
-                : String(data.conversationId),
+              conversationId: String(data.conversationId),
               role: 'assistant',
               content: chatDisplayContent, // Use processed content when code blocks are in artifacts
               metadata: {
@@ -314,9 +308,7 @@ export function DivineDialog() {
             console.log('[DivineDialog] 🆕 New conversation created:', data.conversationId);
             // Update current conversation if we don't have one
             if (!currentConversation) {
-              const conversationId = typeof data.conversationId === 'object' 
-                ? data.conversationId.toString() 
-                : String(data.conversationId);
+              const conversationId = String(data.conversationId);
               
               try {
                 setCurrentConversation({
