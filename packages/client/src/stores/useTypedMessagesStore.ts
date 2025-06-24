@@ -14,6 +14,7 @@ interface TypedMessagesStore {
   setLastTypingMessage: (messageId: string | null) => void;
   shouldTriggerTypewriter: (conversationId: string, messageId: string, isLatest: boolean) => boolean;
   clearTypedMessages: (conversationId?: string) => void;
+  clearStreamingContent: (conversationId: string) => void;  // New method to clear only streaming content
   cleanupOldConversations: (activeConversationIds: string[]) => void;
   
   // Streaming content methods
@@ -129,6 +130,16 @@ export const useTypedMessagesStore = create<TypedMessagesStore>()(
             lastTypingMessageId: null
           });
         }
+      },
+      
+      clearStreamingContent: (conversationId: string) => {
+        set((state) => {
+          const newStreamingMap = new Map(state.streamingContentByConversation);
+          newStreamingMap.delete(conversationId);
+          return {
+            streamingContentByConversation: newStreamingMap
+          };
+        });
       },
       
       cleanupOldConversations: (activeConversationIds: string[]) => {
