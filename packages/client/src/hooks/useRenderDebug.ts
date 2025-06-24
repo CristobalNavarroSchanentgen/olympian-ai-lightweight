@@ -1,22 +1,9 @@
 import { useEffect, useRef, useCallback } from 'react';
+import { uiLogger } from '@/utils/debug/uiLogger';
 
-// Import UI logger for enhanced debugging
-let uiLogger: any = null;
+// Debug configuration
 const isDebugMode = import.meta.env.VITE_UI_DEBUG_MODE === 'true' || 
                    import.meta.env.VITE_RENDER_DEBUG === 'true';
-
-// Dynamic import of UI logger
-if (isDebugMode) {
-  try {
-    import('@/utils/debug/uiLogger').then(module => {
-      uiLogger = module.uiLogger;
-    }).catch(() => {
-      console.debug('[useRenderDebug] UI debug logger not available');
-    });
-  } catch {
-    // Fallback for environments where dynamic imports aren't supported
-  }
-}
 
 /**
  * Enhanced render debug hook with comprehensive tracking
@@ -50,10 +37,12 @@ export function useRenderDebug(componentName: string, props?: Record<string, any
           console.error(`[INFINITE LOOP DETECTED] ${message}`);
           console.trace('Component stack trace:');
           
-          // Log to UI logger if available
-          if (uiLogger) {
-            uiLogger.infiniteLoopDetected(componentName, recentRenders.length, windowMs);
-          }
+          // Log to UI logger
+          uiLogger.error('Infinite Loop Detected', message, {
+            componentName,
+            renderCount: recentRenders.length,
+            windowMs
+          }, componentName);
         } else {
           console.warn(`[HIGH RENDER FREQUENCY] ${message}`);
         }
@@ -91,17 +80,13 @@ export function useRenderDebug(componentName: string, props?: Record<string, any
     }
 
     // Log render with enhanced information
-    if (uiLogger) {
-      uiLogger.componentRender(componentName, props, renderCount.current);
-    }
+    uiLogger.componentRender(componentName, props, renderCount.current);
 
     // Enhanced prop change analysis
     if (props && prevPropsRef.current) {
       const propAnalysis = analyzePropsChanges(props, prevPropsRef.current);
       
       if (propAnalysis.hasChanges) {
-        const logLevel = hasInfiniteLoop ? 'error' : hasHighFrequency ? 'warn' : 'debug';
-        
         console.group(`[PROP CHANGES] ${componentName} render #${renderCount.current}`);
         
         if (propAnalysis.changedProps.length > 0) {
@@ -156,9 +141,7 @@ export function useRenderDebug(componentName: string, props?: Record<string, any
         
         console.log(`[UNMOUNT] ${componentName} unmounted:`, summary);
         
-        if (uiLogger) {
-          uiLogger.debug('Component Unmount', `${componentName} unmounted`, summary, componentName);
-        }
+        uiLogger.debug('Component Unmount', `${componentName} unmounted`, summary, componentName);
       }
     };
   }, [componentName]);
@@ -316,9 +299,11 @@ export function useEffectDebug(
         console.groupEnd();
 
         // Log to UI logger
-        if (uiLogger) {
-          uiLogger.effectTrigger(componentName || 'Unknown', debugName, deps);
-        }
+        uiLogger.debug('Effect Trigger', `${debugName} triggered`, {
+          deps,
+          runCount: effectRunCount.current,
+          componentName: componentName || 'Unknown'
+        }, componentName);
       }
     } else {
       console.log(`[EFFECT] ${debugName} (initial run)`);
@@ -398,9 +383,7 @@ export function useStateDebug<T>(
       console.log(`[STATE CHANGE] ${componentName || 'Unknown'}.${stateName}:`, stateChange);
       
       // Log to UI logger
-      if (uiLogger) {
-        uiLogger.stateChange(componentName || 'Unknown', stateName, prevStateRef.current, state);
-      }
+      uiLogger.debug('State Change', `${stateName} changed`, stateChange, componentName);
       
       prevStateRef.current = state;
     }
@@ -425,12 +408,10 @@ export function usePerformanceMonitor(componentName: string, threshold: number =
         if (renderTime > threshold) {
           console.warn(`[SLOW RENDER] ${componentName} took ${renderTime.toFixed(2)}ms to render (threshold: ${threshold}ms)`);
           
-          if (uiLogger) {
-            uiLogger.warn('Slow Render', `${componentName} slow render`, {
-              renderTime,
-              threshold
-            }, componentName);
-          }
+          uiLogger.warn('Slow Render', `${componentName} slow render`, {
+            renderTime,
+            threshold
+          }, componentName);
         }
       }
     };
