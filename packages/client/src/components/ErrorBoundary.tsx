@@ -1,18 +1,5 @@
 import { Component, ReactNode, ErrorInfo } from 'react';
-
-// Import the UI logger for enhanced error tracking
-let uiLogger: any = null;
-try {
-  // Dynamic import to handle cases where debug utilities might not be available
-  import('@/utils/debug/uiLogger').then(module => {
-    uiLogger = module.uiLogger;
-  }).catch(() => {
-    // Fallback if debug utilities are not available
-    console.debug('[ErrorBoundary] UI debug logger not available');
-  });
-} catch {
-  // Fallback for environments where dynamic imports aren't supported
-}
+import { uiLogger } from '@/utils/debug/uiLogger';
 
 interface Props {
   children: ReactNode;
@@ -58,6 +45,7 @@ export class ErrorBoundary extends Component<Props, State> {
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     this.errorCount++;
     const componentName = this.props.componentName || 'Unknown Component';
+    const componentStack = errorInfo.componentStack || 'No component stack available';
     
     // Enhanced logging for debug mode
     if (this.isDebugMode) {
@@ -66,7 +54,7 @@ export class ErrorBoundary extends Component<Props, State> {
       console.error('Error message:', error.message);
       console.error('Error name:', error.name);
       console.error('Error stack:', error.stack);
-      console.error('Component stack:', errorInfo.componentStack);
+      console.error('Component stack:', componentStack);
       
       // Additional debug information
       console.log('Error ID:', this.state.errorId);
@@ -92,21 +80,19 @@ export class ErrorBoundary extends Component<Props, State> {
     } else {
       // Standard logging for production
       console.error('[ErrorBoundary] Caught error:', error);
-      console.error('[ErrorBoundary] Component stack:', errorInfo.componentStack);
+      console.error('[ErrorBoundary] Component stack:', componentStack);
     }
     
-    // Log to UI logger if available
-    if (uiLogger) {
-      try {
-        uiLogger.componentError(componentName, error, {
-          componentStack: errorInfo.componentStack,
-          errorId: this.state.errorId,
-          errorCount: this.errorCount,
-          props: this.isDebugMode ? this.props : undefined, // Only log props in debug mode
-        });
-      } catch (logError) {
-        console.warn('[ErrorBoundary] Failed to log to UI logger:', logError);
-      }
+    // Log to UI logger
+    try {
+      uiLogger.componentError(componentName, error, {
+        componentStack,
+        errorId: this.state.errorId,
+        errorCount: this.errorCount,
+        props: this.isDebugMode ? this.props : undefined, // Only log props in debug mode
+      });
+    } catch (logError) {
+      console.warn('[ErrorBoundary] Failed to log to UI logger:', logError);
     }
     
     // Additional error tracking based on error type
@@ -154,7 +140,7 @@ export class ErrorBoundary extends Component<Props, State> {
     }
     
     // Analyze component stack for problematic components
-    const componentStack = errorInfo.componentStack;
+    const componentStack = errorInfo.componentStack || '';
     const componentMatches = componentStack.match(/at (\w+)/g);
     if (componentMatches) {
       console.log('📍 Component Chain:', componentMatches.map(match => match.replace('at ', '')));
