@@ -23,6 +23,14 @@ interface MessageState {
   handlers: ChatHandlers;
 }
 
+// Event queue for temporarily missing handlers
+interface QueuedEvent {
+  event: string;
+  data: any;
+  timestamp: number;
+  retryCount: number;
+}
+
 class WebSocketChatService {
   private socket: Socket | null = null;
   private chatHandlers: Map<string, ChatHandlers> = new Map();
@@ -37,6 +45,16 @@ class WebSocketChatService {
   private eventTimeouts: Map<string, NodeJS.Timeout> = new Map();
   private lastHeartbeat = Date.now();
   private heartbeatInterval: NodeJS.Timeout | null = null;
+
+  // CRITICAL FIX: Event queue for missing handlers (multi-host timing issues)
+  private eventQueue: Map<string, QueuedEvent[]> = new Map();
+  private cleanupTimeouts: Map<string, NodeJS.Timeout> = new Map();
+  
+  // Multi-host deployment specific constants
+  private readonly HANDLER_CLEANUP_DELAY = 2000; // 2 second grace period for multi-host
+  private readonly EVENT_QUEUE_MAX_SIZE = 50;
+  private readonly EVENT_QUEUE_MAX_AGE = 10000; // 10 seconds
+  private readonly MAX_RETRY_COUNT = 3;
 
   connect(): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -55,6 +73,7 @@ class WebSocketChatService {
       
       console.log('[WebSocketChat] 🚀 Connecting to:', this.baseUrl);
       console.log('[WebSocketChat] Environment:', { protocol, hostname, port });
+      console.log('[WebSocketChat] 🏗️ Multi-host deployment mode active');
 
       this.socket = io(this.baseUrl, {
         path: '/socket.io/',
@@ -64,7 +83,7 @@ class WebSocketChatService {
         reconnectionAttempts: this.maxReconnectAttempts,
         reconnectionDelay: this.reconnectDelay,
         reconnectionDelayMax: 10000,
-        timeout: 30000, // Increased timeout
+        timeout: 30000, // Increased timeout for multi-host
         autoConnect: true,
         // Enhanced options for proxy compatibility
         withCredentials: true,
@@ -80,7 +99,7 @@ class WebSocketChatService {
           // Add deployment mode for server-side handling
           deploymentMode: 'multi-host'
         },
-        // Enhanced acknowledgment settings for critical events
+        // Enhanced acknowledgment settings for critical events (multi-host)
         ackTimeout: 15000, // 15 second timeout for acknowledgments
         retries: 3 // Retry failed events 3 times
       });
@@ -92,6 +111,7 @@ class WebSocketChatService {
         console.log('[WebSocketChat] Transport:', this.socket?.io.engine.transport.name);
         console.log('[WebSocketChat] Engine ID:', this.socket?.io.engine.id);
         console.log('[WebSocketChat] Ready state:', this.socket?.io.engine.readyState);
+        console.log('[WebSocketChat] 🔄 Connection recovered:', (this.socket as any)?.recovered || false);
         
         this.reconnectAttempts = 0;
         this.lastHeartbeat = Date.now();
@@ -99,11 +119,19 @@ class WebSocketChatService {
         this.startConnectionCheck();
         this.startStateMonitor();
         this.startHeartbeat();
+        
+        // Process any queued events after reconnection
+        this.processAllQueuedEvents();
+        
         resolve();
       });
 
-      this.socket.on('disconnect', (reason) => {
+      this.socket.on('disconnect', (reason, details) => {
         console.log('[WebSocketChat] ❌ Disconnected:', reason);
+        if (details) {
+          console.log('[WebSocketChat] 📋 Disconnect details:', details);
+        }
+        
         this.stopKeepAlive();
         this.stopConnectionCheck();
         this.stopStateMonitor();
@@ -115,16 +143,21 @@ class WebSocketChatService {
         } else if (reason === 'io client disconnect') {
           console.log('[WebSocketChat] Client initiated disconnect');
         } else if (reason === 'transport close') {
-          console.log('[WebSocketChat] Transport closed - network issue');
+          console.log('[WebSocketChat] Transport closed - network issue (preserve handlers for multi-host)');
+          // Don't clear handlers on transport issues in multi-host mode
+          return;
         } else if (reason === 'transport error') {
-          console.log('[WebSocketChat] Transport error - connection problem');
+          console.log('[WebSocketChat] Transport error - connection problem (preserve handlers for multi-host)');
+          // Don't clear handlers on transport errors in multi-host mode
+          return;
         } else {
           console.log('[WebSocketChat] Unknown disconnect reason:', reason);
         }
         
-        // Enhanced reconnection logic
+        // Enhanced reconnection logic - preserve handlers for reconnection in multi-host
         if (reason !== 'io client disconnect') {
           console.log('[WebSocketChat] 🔄 Will attempt to reconnect automatically...');
+          console.log('[WebSocketChat] 🛡️ Preserving', this.chatHandlers.size, 'handlers for reconnection');
         }
       });
 
@@ -150,11 +183,16 @@ class WebSocketChatService {
       this.socket.on('reconnect', (attemptNumber) => {
         console.log('[WebSocketChat] ✅ Reconnected successfully after', attemptNumber, 'attempts');
         console.log('[WebSocketChat] New transport:', this.socket?.io.engine.transport.name);
+        console.log('[WebSocketChat] 🔄 Connection recovered:', (this.socket as any)?.recovered || false);
+        
         this.lastHeartbeat = Date.now();
         this.startKeepAlive();
         this.startConnectionCheck();
         this.startStateMonitor();
         this.startHeartbeat();
+        
+        // Process any queued events after reconnection
+        this.processAllQueuedEvents();
       });
 
       this.socket.on('reconnect_failed', () => {
@@ -184,7 +222,7 @@ class WebSocketChatService {
           console.error('[WebSocketChat] ⏰ Initial connection timeout');
           reject(new Error('WebSocket connection timeout - check network and server availability'));
         }
-      }, 15000); // Increased timeout
+      }, 15000); // Increased timeout for multi-host
     });
   }
 
@@ -216,6 +254,7 @@ class WebSocketChatService {
         console.log('  - Ready state:', this.socket.io.engine.readyState);
         console.log('  - Active chats:', this.chatHandlers.size);
         console.log('  - Message states:', this.messageStates.size);
+        console.log('  - Queued events:', this.getTotalQueuedEvents());
         console.log('  - Last heartbeat:', Math.round((Date.now() - this.lastHeartbeat) / 1000) + 's ago');
       }
     }, 60000);
@@ -232,6 +271,9 @@ class WebSocketChatService {
     // Enhanced heartbeat for event delivery validation
     this.heartbeatInterval = setInterval(() => {
       this.lastHeartbeat = Date.now();
+      
+      // Clean up old queued events
+      this.cleanOldQueuedEvents();
       
       // Check for stuck message states and auto-recover
       this.messageStates.forEach((state, messageId) => {
@@ -268,6 +310,13 @@ class WebSocketChatService {
           console.log(`  - ${messageId}: ${state.phase} (${duration}s total, ${lastActivity}s since activity, ${state.tokenCount} tokens)`);
         });
       }
+      
+      if (this.eventQueue.size > 0) {
+        console.log('[WebSocketChat] 📦 Queued events by messageId:');
+        this.eventQueue.forEach((events, messageId) => {
+          console.log(`  - ${messageId}: ${events.length} events (oldest: ${Math.round((Date.now() - events[0]?.timestamp) / 1000)}s ago)`);
+        });
+      }
     }, 30000); // Every 30 seconds
   }
 
@@ -293,16 +342,180 @@ class WebSocketChatService {
       }
     }
     
-    // Clean up
-    this.messageStates.delete(messageId);
-    this.chatHandlers.delete(messageId);
+    // Clean up with delay
+    this.scheduleHandlerCleanup(messageId, 0); // Immediate cleanup for stuck messages
+  }
+
+  // CRITICAL FIX: Validate and process events with fallback to queue
+  private validateAndProcessEvent(messageId: string, eventName: string, data: any, processor: () => void): void {
+    const handlers = this.chatHandlers.get(messageId);
     
-    // Clear any pending timeouts
-    const timeout = this.eventTimeouts.get(messageId);
-    if (timeout) {
-      clearTimeout(timeout);
-      this.eventTimeouts.delete(messageId);
+    if (handlers) {
+      // Handlers exist, process immediately
+      try {
+        processor();
+        console.log(`[WebSocketChat] ✅ Processed ${eventName} for ${messageId}`);
+      } catch (error) {
+        console.error(`[WebSocketChat] ❌ Error processing ${eventName}:`, error);
+      }
+    } else {
+      // Handlers missing, queue the event
+      console.warn(`[WebSocketChat] ⚠️ No handlers found for ${eventName} event: ${messageId} - queuing for later`);
+      this.queueEvent(messageId, eventName, data);
+      
+      // Log handler status for debugging
+      console.log(`[WebSocketChat] 🔍 Available handler messageIds:`, Array.from(this.chatHandlers.keys()));
     }
+  }
+
+  // CRITICAL FIX: Queue events when handlers are missing
+  private queueEvent(messageId: string, eventName: string, data: any): void {
+    if (!this.eventQueue.has(messageId)) {
+      this.eventQueue.set(messageId, []);
+    }
+    
+    const queue = this.eventQueue.get(messageId)!;
+    
+    // Prevent queue overflow
+    if (queue.length >= this.EVENT_QUEUE_MAX_SIZE) {
+      console.warn(`[WebSocketChat] ⚠️ Event queue full for ${messageId}, dropping oldest event`);
+      queue.shift();
+    }
+    
+    queue.push({
+      event: eventName,
+      data,
+      timestamp: Date.now(),
+      retryCount: 0
+    });
+    
+    console.log(`[WebSocketChat] 📦 Queued ${eventName} for ${messageId} (queue size: ${queue.length})`);
+  }
+
+  // CRITICAL FIX: Process queued events when handlers become available
+  private processQueuedEvents(messageId: string): void {
+    const queue = this.eventQueue.get(messageId);
+    if (!queue || queue.length === 0) {
+      return;
+    }
+    
+    console.log(`[WebSocketChat] 🔄 Processing ${queue.length} queued events for ${messageId}`);
+    
+    const handlers = this.chatHandlers.get(messageId);
+    if (!handlers) {
+      console.warn(`[WebSocketChat] ⚠️ Still no handlers available for ${messageId}`);
+      return;
+    }
+    
+    // Process all queued events
+    const eventsToProcess = [...queue];
+    this.eventQueue.delete(messageId);
+    
+    eventsToProcess.forEach(queuedEvent => {
+      try {
+        console.log(`[WebSocketChat] 🔄 Processing queued ${queuedEvent.event} for ${messageId}`);
+        this.processEventByName(queuedEvent.event, queuedEvent.data, handlers);
+      } catch (error) {
+        console.error(`[WebSocketChat] ❌ Error processing queued ${queuedEvent.event}:`, error);
+      }
+    });
+  }
+
+  // CRITICAL FIX: Process all queued events (after reconnection)
+  private processAllQueuedEvents(): void {
+    if (this.eventQueue.size === 0) {
+      return;
+    }
+    
+    console.log(`[WebSocketChat] 🔄 Processing all queued events for ${this.eventQueue.size} messages`);
+    
+    Array.from(this.eventQueue.keys()).forEach(messageId => {
+      this.processQueuedEvents(messageId);
+    });
+  }
+
+  // CRITICAL FIX: Clean up old queued events
+  private cleanOldQueuedEvents(): void {
+    const now = Date.now();
+    
+    this.eventQueue.forEach((queue, messageId) => {
+      const validEvents = queue.filter(event => (now - event.timestamp) < this.EVENT_QUEUE_MAX_AGE);
+      
+      if (validEvents.length !== queue.length) {
+        console.log(`[WebSocketChat] 🧹 Cleaned ${queue.length - validEvents.length} old events for ${messageId}`);
+      }
+      
+      if (validEvents.length === 0) {
+        this.eventQueue.delete(messageId);
+      } else {
+        this.eventQueue.set(messageId, validEvents);
+      }
+    });
+  }
+
+  // Helper method to get total queued events
+  private getTotalQueuedEvents(): number {
+    let total = 0;
+    this.eventQueue.forEach(queue => total += queue.length);
+    return total;
+  }
+
+  // CRITICAL FIX: Helper method to process events by name
+  private processEventByName(eventName: string, data: any, handlers: ChatHandlers): void {
+    switch (eventName) {
+      case 'thinking':
+        handlers.onThinking?.(data);
+        break;
+      case 'generating':
+        handlers.onGenerating?.(data);
+        break;
+      case 'token':
+        handlers.onToken?.(data);
+        break;
+      case 'complete':
+        handlers.onComplete?.(data);
+        break;
+      case 'error':
+        handlers.onError?.(data);
+        break;
+      default:
+        console.warn(`[WebSocketChat] ⚠️ Unknown event type: ${eventName}`);
+    }
+  }
+
+  // CRITICAL FIX: Schedule delayed handler cleanup
+  private scheduleHandlerCleanup(messageId: string, delay: number = this.HANDLER_CLEANUP_DELAY): void {
+    // Cancel any existing cleanup timeout
+    const existingTimeout = this.cleanupTimeouts.get(messageId);
+    if (existingTimeout) {
+      clearTimeout(existingTimeout);
+    }
+    
+    // Schedule new cleanup
+    const timeoutId = setTimeout(() => {
+      console.log(`[WebSocketChat] 🧹 Delayed cleanup for message: ${messageId}`);
+      
+      // Final attempt to process any remaining queued events
+      this.processQueuedEvents(messageId);
+      
+      // Clean up
+      this.messageStates.delete(messageId);
+      this.chatHandlers.delete(messageId);
+      this.eventQueue.delete(messageId);
+      this.cleanupTimeouts.delete(messageId);
+      
+      // Clear any pending timeouts
+      const timeout = this.eventTimeouts.get(messageId);
+      if (timeout) {
+        clearTimeout(timeout);
+        this.eventTimeouts.delete(messageId);
+      }
+      
+      console.log(`[WebSocketChat] ✅ Cleanup completed for message: ${messageId}`);
+    }, delay);
+    
+    this.cleanupTimeouts.set(messageId, timeoutId);
+    console.log(`[WebSocketChat] ⏱️ Scheduled cleanup for ${messageId} in ${delay}ms`);
   }
 
   private setupChatHandlers() {
@@ -310,141 +523,94 @@ class WebSocketChatService {
 
     // Chat events with enhanced logging and error handling
     this.socket.on('chat:thinking', (data: ServerEvents['chat:thinking']) => {
-      try {
-        console.log('[WebSocketChat] 🤔 Received chat:thinking', data);
-        
-        // Update message state
-        this.updateMessageState(data.messageId, 'thinking');
-        
+      console.log('[WebSocketChat] 🤔 Received chat:thinking', data);
+      
+      // Update message state
+      this.updateMessageState(data.messageId, 'thinking');
+      
+      // Validate and process with fallback to queue
+      this.validateAndProcessEvent(data.messageId, 'thinking', data, () => {
         const handlers = this.chatHandlers.get(data.messageId);
-        if (handlers?.onThinking) {
-          handlers.onThinking(data);
-        } else {
-          console.warn('[WebSocketChat] ⚠️ No handlers found for thinking event:', data.messageId);
-        }
-      } catch (error) {
-        console.error('[WebSocketChat] ❌ Error in thinking handler:', error);
-      }
+        handlers?.onThinking?.(data);
+      });
     });
 
     this.socket.on('chat:generating', (data: ServerEvents['chat:generating']) => {
-      try {
-        console.log('[WebSocketChat] ⚡ Received chat:generating', data);
-        
-        // Update message state
-        this.updateMessageState(data.messageId, 'generating');
-        
+      console.log('[WebSocketChat] ⚡ Received chat:generating', data);
+      
+      // Update message state
+      this.updateMessageState(data.messageId, 'generating');
+      
+      // Validate and process with fallback to queue
+      this.validateAndProcessEvent(data.messageId, 'generating', data, () => {
         const handlers = this.chatHandlers.get(data.messageId);
-        if (handlers?.onGenerating) {
-          handlers.onGenerating(data);
-        } else {
-          console.warn('[WebSocketChat] ⚠️ No handlers found for generating event:', data.messageId);
-        }
-      } catch (error) {
-        console.error('[WebSocketChat] ❌ Error in generating handler:', error);
-      }
+        handlers?.onGenerating?.(data);
+      });
     });
 
     this.socket.on('chat:token', (data: ServerEvents['chat:token']) => {
-      try {
-        console.log('[WebSocketChat] 🔤 Received chat:token', data.messageId, 'token length:', data.token.length);
-        
-        // Update message state with token activity
-        const state = this.messageStates.get(data.messageId);
-        if (state) {
-          state.lastActivity = Date.now();
-          state.tokenCount++;
-        }
-        
-        const handlers = this.chatHandlers.get(data.messageId);
-        if (handlers?.onToken) {
-          handlers.onToken(data);
-        } else {
-          console.warn('[WebSocketChat] ⚠️ No handlers found for token event:', data.messageId);
-        }
-      } catch (error) {
-        console.error('[WebSocketChat] ❌ Error in token handler:', error);
+      console.log('[WebSocketChat] 🔤 Received chat:token', data.messageId, 'token length:', data.token.length);
+      
+      // Update message state with token activity
+      const state = this.messageStates.get(data.messageId);
+      if (state) {
+        state.lastActivity = Date.now();
+        state.tokenCount++;
       }
+      
+      // Validate and process with fallback to queue
+      this.validateAndProcessEvent(data.messageId, 'token', data, () => {
+        const handlers = this.chatHandlers.get(data.messageId);
+        handlers?.onToken?.(data);
+      });
     });
 
     this.socket.on('chat:complete', (data: ServerEvents['chat:complete']) => {
-      try {
-        console.log('[WebSocketChat] ✅ Received chat:complete', data);
-        
-        // Update message state
-        this.updateMessageState(data.messageId, 'complete');
-        
-        const handlers = this.chatHandlers.get(data.messageId);
-        if (handlers?.onComplete) {
-          // Wrap handler execution in try-catch to prevent disconnection
-          try {
-            handlers.onComplete(data);
-            console.log('[WebSocketChat] ✅ Successfully executed completion handler for:', data.messageId);
-          } catch (handlerError) {
-            console.error('[WebSocketChat] ❌ Error in complete handler callback:', handlerError);
-            // Still clean up even if handler fails
-          }
-        } else {
-          console.warn('[WebSocketChat] ⚠️ No handlers found for complete event:', data.messageId);
+      console.log('[WebSocketChat] ✅ Received chat:complete', data);
+      
+      // Update message state
+      this.updateMessageState(data.messageId, 'complete');
+      
+      // Process the completion event immediately
+      const handlers = this.chatHandlers.get(data.messageId);
+      if (handlers?.onComplete) {
+        // Wrap handler execution in try-catch to prevent disconnection
+        try {
+          handlers.onComplete(data);
+          console.log('[WebSocketChat] ✅ Successfully executed completion handler for:', data.messageId);
+        } catch (handlerError) {
+          console.error('[WebSocketChat] ❌ Error in complete handler callback:', handlerError);
         }
-        
-        // Clean up handlers and state after completion
-        this.messageStates.delete(data.messageId);
-        this.chatHandlers.delete(data.messageId);
-        
-        // Clear any pending timeouts
-        const timeout = this.eventTimeouts.get(data.messageId);
-        if (timeout) {
-          clearTimeout(timeout);
-          this.eventTimeouts.delete(data.messageId);
-        }
-        
-        console.log('[WebSocketChat] 🧹 Cleaned up handlers for message:', data.messageId);
-      } catch (error) {
-        console.error('[WebSocketChat] ❌ Error in complete handler:', error);
-        // Still try to clean up
-        this.messageStates.delete(data.messageId);
-        this.chatHandlers.delete(data.messageId);
+      } else {
+        console.warn('[WebSocketChat] ⚠️ No handlers found for complete event:', data.messageId);
+        // Still proceed with delayed cleanup
       }
+      
+      // CRITICAL FIX: Schedule delayed cleanup instead of immediate
+      this.scheduleHandlerCleanup(data.messageId);
     });
 
     this.socket.on('chat:error', (data: ServerEvents['chat:error']) => {
-      try {
-        console.error('[WebSocketChat] ❌ Received chat:error', data);
-        
-        // Update message state
-        this.updateMessageState(data.messageId, 'error');
-        
-        const handlers = this.chatHandlers.get(data.messageId);
-        if (handlers?.onError) {
-          // Wrap handler execution in try-catch
-          try {
-            handlers.onError(data);
-          } catch (handlerError) {
-            console.error('[WebSocketChat] ❌ Error in error handler callback:', handlerError);
-          }
-        } else {
-          console.warn('[WebSocketChat] ⚠️ No handlers found for error event:', data.messageId);
+      console.error('[WebSocketChat] ❌ Received chat:error', data);
+      
+      // Update message state
+      this.updateMessageState(data.messageId, 'error');
+      
+      // Process the error event immediately
+      const handlers = this.chatHandlers.get(data.messageId);
+      if (handlers?.onError) {
+        // Wrap handler execution in try-catch
+        try {
+          handlers.onError(data);
+        } catch (handlerError) {
+          console.error('[WebSocketChat] ❌ Error in error handler callback:', handlerError);
         }
-        
-        // Clean up handlers and state after error
-        this.messageStates.delete(data.messageId);
-        this.chatHandlers.delete(data.messageId);
-        
-        // Clear any pending timeouts
-        const timeout = this.eventTimeouts.get(data.messageId);
-        if (timeout) {
-          clearTimeout(timeout);
-          this.eventTimeouts.delete(data.messageId);
-        }
-        
-        console.log('[WebSocketChat] 🧹 Cleaned up handlers for message after error:', data.messageId);
-      } catch (error) {
-        console.error('[WebSocketChat] ❌ Error in error handler:', error);
-        // Still try to clean up
-        this.messageStates.delete(data.messageId);
-        this.chatHandlers.delete(data.messageId);
+      } else {
+        console.warn('[WebSocketChat] ⚠️ No handlers found for error event:', data.messageId);
       }
+      
+      // CRITICAL FIX: Schedule delayed cleanup instead of immediate
+      this.scheduleHandlerCleanup(data.messageId);
     });
 
     this.socket.on('conversation:created', (data: ServerEvents['conversation:created']) => {
@@ -518,8 +684,10 @@ class WebSocketChatService {
       images: params.images?.length || 0 
     });
     
-    // Register handlers for this message
+    // CRITICAL FIX: Register handlers for this message
     this.chatHandlers.set(messageId, handlers);
+    console.log('[WebSocketChat] 📝 Registered handlers for message:', messageId);
+    console.log('[WebSocketChat] 📊 Total active chats:', this.chatHandlers.size);
     
     // Initialize message state
     this.messageStates.set(messageId, {
@@ -531,8 +699,8 @@ class WebSocketChatService {
       handlers
     });
     
-    console.log('[WebSocketChat] 📝 Registered handlers for message:', messageId);
-    console.log('[WebSocketChat] 📊 Total active chats:', this.chatHandlers.size);
+    // Process any queued events for this messageId (in case of reconnection)
+    this.processQueuedEvents(messageId);
 
     // Set up a timeout to auto-complete stuck messages
     const timeoutId = setTimeout(() => {
@@ -565,18 +733,8 @@ class WebSocketChatService {
       console.warn('[WebSocketChat] ⚠️ Cannot cancel message - socket not connected:', messageId);
     }
     
-    // Clean up local state
-    this.messageStates.delete(messageId);
-    this.chatHandlers.delete(messageId);
-    
-    // Clear any pending timeouts
-    const timeout = this.eventTimeouts.get(messageId);
-    if (timeout) {
-      clearTimeout(timeout);
-      this.eventTimeouts.delete(messageId);
-    }
-    
-    console.log('[WebSocketChat] 🧹 Cleaned up handlers for cancelled message:', messageId);
+    // CRITICAL FIX: Use delayed cleanup for cancellation too
+    this.scheduleHandlerCleanup(messageId, 0); // Immediate cleanup for cancelled messages
   }
 
   disconnect() {
@@ -590,11 +748,16 @@ class WebSocketChatService {
     this.eventTimeouts.forEach(timeout => clearTimeout(timeout));
     this.eventTimeouts.clear();
     
+    // Clear cleanup timeouts
+    this.cleanupTimeouts.forEach(timeout => clearTimeout(timeout));
+    this.cleanupTimeouts.clear();
+    
     if (this.socket) {
       this.socket.disconnect();
       this.socket = null;
       this.chatHandlers.clear();
       this.messageStates.clear();
+      this.eventQueue.clear();
       console.log('[WebSocketChat] ✅ Disconnected and cleaned up');
     }
   }
@@ -633,9 +796,11 @@ class WebSocketChatService {
       reconnectAttempts: this.reconnectAttempts,
       activeChats: this.chatHandlers.size,
       messageStates: this.messageStates.size,
+      queuedEvents: this.getTotalQueuedEvents(),
       url: this.baseUrl,
       lastHeartbeat: this.lastHeartbeat,
-      heartbeatAge: Math.round((Date.now() - this.lastHeartbeat) / 1000)
+      heartbeatAge: Math.round((Date.now() - this.lastHeartbeat) / 1000),
+      recovered: (this.socket as any)?.recovered || false
     };
   }
 
@@ -648,6 +813,19 @@ class WebSocketChatService {
       lastActivity: Math.round((Date.now() - state.lastActivity) / 1000),
       tokenCount: state.tokenCount
     }));
+  }
+
+  // Debug method to get queued events
+  getQueuedEvents() {
+    const result: Record<string, any[]> = {};
+    this.eventQueue.forEach((events, messageId) => {
+      result[messageId] = events.map(event => ({
+        event: event.event,
+        age: Math.round((Date.now() - event.timestamp) / 1000),
+        retryCount: event.retryCount
+      }));
+    });
+    return result;
   }
 }
 
