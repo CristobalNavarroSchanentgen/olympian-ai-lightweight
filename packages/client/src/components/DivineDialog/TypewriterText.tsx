@@ -2,6 +2,7 @@ import { useEffect, useState, useRef, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { cn } from '@/lib/utils';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { prepareMarkdownContent, truncateForSafety } from '@/utils/contentSanitizer';
 
 interface TypewriterTextProps {
   content: string;
@@ -39,15 +40,30 @@ export function TypewriterText({
   const [hasError, setHasError] = useState(false);
   const lastStreamedIndexRef = useRef(0);
 
-  // Debug problematic content
-  useEffect(() => {
-    if (content && (content.includes('...') || content.includes('\u2019') || content.includes('\u2018'))) {
-      console.log('[TypewriterText] Processing content with special characters:', {
-        length: content.length,
-        hasEllipsis: content.includes('...'),
-        hasSmartQuotes: /[\u2018\u2019]/.test(content),
-        preview: content.substring(0, 100)
-      });
+  // Apply content sanitization as a safety net, even though content should already be sanitized
+  const safeContent = useMemo(() => {
+    try {
+      if (!content) return '';
+      
+      // Debug log for problematic content
+      if (content.includes('...') || content.includes('\u2019') || content.includes('\u2018')) {
+        console.log('[TypewriterText] Processing content with special characters:', {
+          length: content.length,
+          hasEllipsis: content.includes('...'),
+          hasSmartQuotes: /[\u2018\u2019]/.test(content),
+          preview: content.substring(0, 100)
+        });
+      }
+      
+      // Apply sanitization as safety net
+      const sanitized = prepareMarkdownContent(truncateForSafety(content));
+      console.log('[TypewriterText] Content sanitized successfully');
+      return sanitized;
+    } catch (error) {
+      console.error('[TypewriterText] Error sanitizing content:', error);
+      setHasError(true);
+      // Return plain text as fallback
+      return content.replace(/</g, '&lt;').replace(/>/g, '&gt;');
     }
   }, [content]);
 
@@ -84,15 +100,21 @@ export function TypewriterText({
 
   useEffect(() => {
     try {
+      console.log('[TypewriterText] Content update effect triggered:', {
+        isStreaming,
+        contentLength: safeContent.length,
+        lastStreamedIndex: lastStreamedIndexRef.current
+      });
+
       // When content changes in streaming mode, continue from where we left off
       if (isStreaming) {
         // During streaming, only show the new content that hasn't been displayed yet
-        const newContent = content.slice(0, lastStreamedIndexRef.current + 1);
+        const newContent = safeContent.slice(0, lastStreamedIndexRef.current + 1);
         setDisplayedContent(newContent);
         
         // Update our tracking of what's been shown
-        if (content.length > lastStreamedIndexRef.current) {
-          lastStreamedIndexRef.current = content.length;
+        if (safeContent.length > lastStreamedIndexRef.current) {
+          lastStreamedIndexRef.current = safeContent.length;
         }
         
         setIsTyping(true);
@@ -100,16 +122,17 @@ export function TypewriterText({
       }
       
       // For non-streaming mode (final typewriter effect), reset everything
+      console.log('[TypewriterText] Resetting for non-streaming mode');
       setDisplayedContent('');
       setCurrentIndex(0);
       setIsTyping(true);
       setHasStarted(false);
       lastStreamedIndexRef.current = 0;
     } catch (error) {
-      console.error('[TypewriterText] Error in content update:', error);
+      console.error('[TypewriterText] Error in content update effect:', error);
       setHasError(true);
     }
-  }, [content, isStreaming]);
+  }, [safeContent, isStreaming]);
 
   useEffect(() => {
     try {
@@ -119,25 +142,27 @@ export function TypewriterText({
       }
 
       // Call onStart when typewriter begins (only once)
-      if (currentIndex === 0 && content.length > 0 && !hasStarted) {
+      if (currentIndex === 0 && safeContent.length > 0 && !hasStarted) {
+        console.log('[TypewriterText] Starting typewriter effect');
         setHasStarted(true);
         onStart?.();
       }
 
       // Original typewriter behavior for non-streaming content
-      if (currentIndex < content.length) {
+      if (currentIndex < safeContent.length) {
         const timeout = setTimeout(() => {
           try {
-            setDisplayedContent(content.slice(0, currentIndex + 1));
+            setDisplayedContent(safeContent.slice(0, currentIndex + 1));
             setCurrentIndex(currentIndex + 1);
           } catch (error) {
-            console.error('[TypewriterText] Error during typing:', error);
+            console.error('[TypewriterText] Error during typing animation:', error);
             setHasError(true);
           }
         }, speed);
 
         return () => clearTimeout(timeout);
-      } else if (currentIndex === content.length && isTyping) {
+      } else if (currentIndex === safeContent.length && isTyping) {
+        console.log('[TypewriterText] Typewriter effect completed');
         setIsTyping(false);
         onComplete?.();
       }
@@ -145,18 +170,18 @@ export function TypewriterText({
       console.error('[TypewriterText] Error in typewriter effect:', error);
       setHasError(true);
     }
-  }, [currentIndex, content, speed, isTyping, onComplete, onStart, isStreaming, hasStarted]);
+  }, [currentIndex, safeContent, speed, isTyping, onComplete, onStart, isStreaming, hasStarted]);
 
   // During streaming, progressively show content as it arrives
   useEffect(() => {
     try {
-      if (isStreaming && content.length > displayedContent.length) {
+      if (isStreaming && safeContent.length > displayedContent.length) {
         // Smoothly add new characters during streaming
         const timeout = setTimeout(() => {
           try {
-            setDisplayedContent(content.slice(0, displayedContent.length + 1));
+            setDisplayedContent(safeContent.slice(0, displayedContent.length + 1));
           } catch (error) {
-            console.error('[TypewriterText] Error during streaming display:', error);
+            console.error('[TypewriterText] Error during streaming display update:', error);
             setHasError(true);
           }
         }, 5); // Fast display during streaming
@@ -167,16 +192,23 @@ export function TypewriterText({
       console.error('[TypewriterText] Error in streaming effect:', error);
       setHasError(true);
     }
-  }, [content, displayedContent, isStreaming]);
+  }, [safeContent, displayedContent, isStreaming]);
 
   // If there's an error, show the content directly
   if (hasError) {
-    return <TypewriterErrorFallback content={content} />;
+    console.warn('[TypewriterText] Rendering fallback due to error');
+    return <TypewriterErrorFallback content={safeContent} />;
+  }
+
+  // Validate content before rendering
+  if (!safeContent) {
+    console.warn('[TypewriterText] No content to display');
+    return null;
   }
 
   return (
     <div className={cn("relative", className)}>
-      <ErrorBoundary fallback={<TypewriterErrorFallback content={displayedContent || content} />}>
+      <ErrorBoundary fallback={<TypewriterErrorFallback content={displayedContent || safeContent} />}>
         <ReactMarkdown
           className="prose prose-sm dark:prose-invert max-w-none"
           components={markdownComponents}
