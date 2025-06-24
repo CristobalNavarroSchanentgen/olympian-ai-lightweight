@@ -4,24 +4,12 @@
  * Integrated with UI debug system for comprehensive logging
  */
 
-// Import UI logger for enhanced debugging
-let uiLogger: any = null;
+import { uiLogger } from '@/utils/debug/uiLogger';
+
+// Debug configuration
 const isDebugMode = typeof window !== 'undefined' && 
   (import.meta.env?.VITE_UI_DEBUG_MODE === 'true' || 
    import.meta.env?.VITE_CONTENT_SANITIZER_DEBUG === 'true');
-
-// Dynamic import of UI logger to handle environments where it might not be available
-if (isDebugMode) {
-  try {
-    import('@/utils/debug/uiLogger').then(module => {
-      uiLogger = module.uiLogger;
-    }).catch(() => {
-      console.debug('[ContentSanitizer] UI debug logger not available');
-    });
-  } catch {
-    // Fallback for environments where dynamic imports aren't supported
-  }
-}
 
 /**
  * Enhanced logging for content sanitization operations
@@ -29,13 +17,11 @@ if (isDebugMode) {
 function debugLog(operation: string, data: any, componentName?: string) {
   if (!isDebugMode) return;
   
-  // Log to UI logger if available
-  if (uiLogger) {
-    try {
-      uiLogger.contentSanitization(componentName || 'Unknown', operation, data);
-    } catch (error) {
-      console.warn('[ContentSanitizer] Failed to log to UI logger:', error);
-    }
+  // Log to UI logger
+  try {
+    uiLogger.debug('Content Sanitization', operation, data, componentName);
+  } catch (error) {
+    console.warn('[ContentSanitizer] Failed to log to UI logger:', error);
   }
   
   // Also log to console in debug mode
