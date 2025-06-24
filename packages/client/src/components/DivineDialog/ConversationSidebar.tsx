@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useChatStore } from '@/stores/useChatStore';
 import { useArtifactStore } from '@/stores/useArtifactStore';
-import { useTypedMessagesStore } from '@/stores/useTypedMessagesStore';
+import { useBulletproofTypedMessagesStore } from '@/stores/useBulletproofTypedMessagesStore';
 import { formatDistanceToNow } from 'date-fns';
 import { MessageSquare, Plus, Trash } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -19,7 +19,7 @@ export function ConversationSidebar() {
     deleteConversation,
   } = useChatStore();
 
-  const { clearTypedMessages } = useTypedMessagesStore();
+  const { clearTypedMessages } = useBulletproofTypedMessagesStore();
   const { selectArtifact, setArtifactPanelOpen, getArtifactsForConversation } = useArtifactStore();
 
   useEffect(() => {
