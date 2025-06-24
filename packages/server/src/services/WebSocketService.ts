@@ -48,14 +48,40 @@ export class WebSocketService {
 
       // Chat events
       socket.on('chat:message', async (data: ClientEvents['chat:message']) => {
+        // CRITICAL: Validate message ID before processing
+        if (!data.messageId) {
+          logger.error(`❌ CRITICAL: No messageId provided by client ${socket.id}! Data:`, data);
+          socket.emit('chat:error', {
+            messageId: 'unknown',
+            error: 'No message ID provided - this indicates a frontend/backend sync issue'
+          });
+          return;
+        }
+
         logger.info(`📨 Received chat:message from ${socket.id}:`, {
-          messageId: data.messageId,  // Log the client-provided messageId
+          messageId: data.messageId,  // CRITICAL: Log the client-provided messageId
           model: data.model,
           contentLength: data.content?.length || 0,
           hasImages: !!data.images?.length,
           imageCount: data.images?.length || 0,
           conversationId: data.conversationId
         });
+
+        // CRITICAL: Additional validation for multi-host deployment
+        if (typeof data.messageId !== 'string' || data.messageId.length < 10) {
+          logger.error(`❌ CRITICAL: Invalid messageId format from client ${socket.id}:`, {
+            messageId: data.messageId,
+            type: typeof data.messageId,
+            length: data.messageId?.length
+          });
+          socket.emit('chat:error', {
+            messageId: data.messageId || 'invalid',
+            error: 'Invalid message ID format - frontend/backend compatibility issue'
+          });
+          return;
+        }
+
+        logger.info(`✅ CRITICAL: Valid messageId confirmed: ${data.messageId}`);
         await this.handleChatMessage(socket, data);
       });
 
@@ -164,13 +190,30 @@ export class WebSocketService {
     socket: Socket,
     data: ClientEvents['chat:message']
   ): Promise<void> {
-    // Use the messageId provided by the client instead of generating a new one
+    // CRITICAL: Use the messageId provided by the client instead of generating a new one
     const messageId = data.messageId;
+    
+    // CRITICAL: Double-check message ID is being used correctly
+    if (!messageId || messageId !== data.messageId) {
+      logger.error(`❌ CRITICAL: Message ID assignment failed!`, {
+        originalMessageId: data.messageId,
+        assignedMessageId: messageId,
+        socketId: socket.id
+      });
+      socket.emit('chat:error', {
+        messageId: data.messageId,
+        error: 'Message ID assignment error - contact support'
+      });
+      return;
+    }
+
+    logger.info(`🎯 CRITICAL: Using client-provided messageId: ${messageId} (verified match)`);
+
     const abortController = new AbortController();
     this.activeChats.set(messageId, abortController);
 
     logger.info(`🚀 Starting chat message processing`, {
-      messageId,
+      messageId, // This MUST match data.messageId
       socketId: socket.id,
       model: data.model,
       hasImages: !!data.images?.length,
@@ -181,6 +224,15 @@ export class WebSocketService {
     });
 
     try {
+      // CRITICAL: Validate messageId before emitting
+      if (messageId !== data.messageId) {
+        logger.error(`❌ CRITICAL: Message ID mismatch before emitting thinking!`, {
+          originalMessageId: data.messageId,
+          currentMessageId: messageId
+        });
+        throw new Error('Message ID consistency error');
+      }
+
       // Emit thinking state with enhanced logging
       logger.info(`🤔 Emitting thinking state for message ${messageId} to socket ${socket.id}`);
       socket.emit('chat:thinking', { messageId });
@@ -229,6 +281,15 @@ export class WebSocketService {
         messageCount: processedRequest.messages.length
       });
 
+      // CRITICAL: Final validation before generating
+      if (messageId !== data.messageId) {
+        logger.error(`❌ CRITICAL: Message ID mismatch before generating!`, {
+          originalMessageId: data.messageId,
+          currentMessageId: messageId
+        });
+        throw new Error('Message ID consistency error before generation');
+      }
+
       // Emit generating state with enhanced logging
       logger.info(`⚡ Emitting generating state for message ${messageId} to socket ${socket.id}`);
       socket.emit('chat:generating', { messageId });
@@ -262,6 +323,7 @@ export class WebSocketService {
           logger.debug(`🔤 Emitting token ${tokenCount} for message ${messageId} to socket ${socket.id}`);
         }
         
+        // CRITICAL: Ensure messageId consistency in token emission
         socket.emit('chat:token', { messageId, token });
         
         if (tokenCount === 1) {
@@ -310,10 +372,19 @@ export class WebSocketService {
         await this.memoryService.clearOldMessages(conversationId, 100);
       }
 
+      // CRITICAL: Final messageId validation before completion
+      if (messageId !== data.messageId) {
+        logger.error(`❌ CRITICAL: Message ID mismatch at completion!`, {
+          originalMessageId: data.messageId,
+          currentMessageId: messageId
+        });
+        throw new Error('Message ID consistency error at completion');
+      }
+
       // Emit completion with enhanced logging
       logger.info(`🎉 Emitting completion for message ${messageId} to socket ${socket.id}`);
       socket.emit('chat:complete', {
-        messageId,
+        messageId, // CRITICAL: This MUST be data.messageId
         conversationId,
         metadata: assistantMessage.metadata!,
       });
