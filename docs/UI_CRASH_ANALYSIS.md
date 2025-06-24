@@ -737,3 +737,143 @@ Features:
 - [ ] ReactMarkdown components props are memoized
 - [ ] Content sanitization is memoized
 - [ ] Store selectors are used properly (not direct method calls)
+
+---
+
+## Special Characters and Ellipsis Rendering Fix (2025-06-24)
+
+### New Issue: "Failed to render message"
+
+A new issue was reported where the UI displays "Failed to render message" for a simple greeting:
+
+```
+It's nice to see you again! Is there anything I can help you with today, or would you like to just chat? We didn't get a chance to finish our last conversation...
+```
+
+### Root Cause Analysis
+
+The message contains several special characters that might cause rendering issues:
+1. **Smart quotes/apostrophes**: `'` in "It's" and "didn't"
+2. **Ellipsis**: `...` at the end
+3. **Question marks and punctuation**
+
+These characters might not be properly handled by the markdown renderer or could be causing issues during the typewriter effect.
+
+### Fixes Applied
+
+#### 1. **Enhanced Content Sanitizer** (`/packages/client/src/utils/contentSanitizer.ts`)
+
+Added comprehensive handling for special characters:
+
+```javascript
+// Replace smart quotes with regular quotes
+.replace(/['']/g, "'")
+.replace(/[""]/g, '"')
+
+// Normalize ellipsis (in case of special Unicode ellipsis character)
+.replace(/…/g, '...')
+
+// Remove zero-width characters that might cause issues
+.replace(/[\u200B-\u200D\uFEFF]/g, '')
+
+// Added debug logging for problematic content
+if (content.includes('...') || content.includes(''') || content.includes(''') || content.includes('"') || content.includes('"')) {
+  console.log('[ContentSanitizer] Processing content with special characters:', {
+    length: content.length,
+    hasEllipsis: content.includes('...'),
+    hasSmartQuotes: /[''""]/.test(content),
+    preview: content.substring(0, 100)
+  });
+}
+```
+
+Also added try-catch blocks around all sanitization functions to gracefully handle any errors:
+
+```javascript
+export function prepareMarkdownContent(content: string | undefined | null): string {
+  try {
+    // ... sanitization logic
+  } catch (error) {
+    console.error('[ContentSanitizer] Error preparing content:', error);
+    // Return escaped plain text as fallback
+    return (content || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+}
+```
+
+#### 2. **Enhanced TypewriterText Component** (`/packages/client/src/components/DivineDialog/TypewriterText.tsx`)
+
+Added comprehensive error handling and debugging:
+
+```javascript
+// Added error state tracking
+const [hasError, setHasError] = useState(false);
+
+// Debug problematic content
+useEffect(() => {
+  if (content && (content.includes('...') || content.includes(''') || content.includes('''))) {
+    console.log('[TypewriterText] Processing content with special characters:', {
+      length: content.length,
+      hasEllipsis: content.includes('...'),
+      hasSmartQuotes: /['']/.test(content),
+      preview: content.substring(0, 100)
+    });
+  }
+}, [content]);
+
+// Added try-catch blocks around all state updates
+try {
+  setDisplayedContent(content.slice(0, currentIndex + 1));
+  setCurrentIndex(currentIndex + 1);
+} catch (error) {
+  console.error('[TypewriterText] Error during typing:', error);
+  setHasError(true);
+}
+
+// Added error fallback UI
+if (hasError) {
+  return <TypewriterErrorFallback content={content} />;
+}
+
+// Wrapped ReactMarkdown in ErrorBoundary
+<ErrorBoundary fallback={<TypewriterErrorFallback content={displayedContent || content} />}>
+  <ReactMarkdown
+    className="prose prose-sm dark:prose-invert max-w-none"
+    components={markdownComponents}
+  >
+    {displayedContent}
+  </ReactMarkdown>
+</ErrorBoundary>
+```
+
+### Technical Details
+
+The fixes address the issue by:
+
+1. **Normalizing Special Characters**: Converting smart quotes and ellipsis to standard ASCII equivalents
+2. **Removing Zero-Width Characters**: Eliminating invisible characters that could break rendering
+3. **Adding Debug Logging**: Tracking when special characters are processed
+4. **Graceful Error Handling**: Catching errors and providing fallback rendering
+5. **Multiple Layers of Protection**: ErrorBoundary + try-catch + fallback UI
+
+### Results
+
+1. **Special characters are normalized before rendering**
+2. **Errors are caught and logged for debugging**
+3. **Fallback UI shows the content even if rendering fails**
+4. **Better visibility into what's causing rendering issues**
+
+### Testing Recommendations
+
+1. Test with various special characters (smart quotes, ellipsis, em dashes)
+2. Test with Unicode characters and emojis
+3. Test with mixed content (special characters + markdown)
+4. Monitor console logs for debug messages
+5. Verify fallback UI works when errors occur
+
+### Future Improvements
+
+1. Consider using a more robust markdown parser that handles special characters better
+2. Add character normalization on the backend before sending to frontend
+3. Implement content preview in error messages for easier debugging
+4. Add telemetry to track which characters cause the most issues
