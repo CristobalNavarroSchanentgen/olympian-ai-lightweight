@@ -10,7 +10,7 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { prepareMarkdownContent, truncateForSafety } from '@/utils/contentSanitizer';
 import { useArtifactStore } from '@/stores/useArtifactStore';
 import { useChatStore } from '@/stores/useChatStore';
-import { useTypedMessagesStore } from '@/stores/useTypedMessagesStore';
+import { useBulletproofTypedMessagesStore } from '@/stores/useBulletproofTypedMessagesStore';
 import { Suspense, useMemo } from 'react';
 import { Spinner } from '@/components/ui/spinner';
 import { 
@@ -72,7 +72,7 @@ export function MessageItem({ message, isLatest = false, isStreaming = false }: 
     shouldTriggerTypewriter,
     markAsTyped,
     setLastTypingMessage
-  } = useTypedMessagesStore();
+  } = useBulletproofTypedMessagesStore();
 
   // Only trigger typewriter for assistant messages that haven't been typed yet
   const shouldShowTypewriter = !isUser && 
