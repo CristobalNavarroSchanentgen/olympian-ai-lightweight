@@ -193,16 +193,27 @@ export function DivineDialog() {
 
             // If this was a new conversation, update the current conversation
             if (!currentConversation && data.conversationId) {
-              // We'll need to fetch the conversation details
-              // For now, create a minimal conversation object
-              setCurrentConversation({
-                _id: data.conversationId,
-                title: content.substring(0, 50) + '...',
-                model: selectedModel,
-                createdAt: new Date(),
-                updatedAt: new Date(),
-                messageCount: 2,
-              });
+              // Safely convert conversationId to string and create conversation object
+              const conversationId = typeof data.conversationId === 'object' 
+                ? data.conversationId.toString() 
+                : String(data.conversationId);
+              
+              console.log('[DivineDialog] 🆕 Creating new conversation with ID:', conversationId);
+              
+              try {
+                setCurrentConversation({
+                  _id: conversationId,
+                  title: content.substring(0, 50) + '...',
+                  model: selectedModel,
+                  createdAt: new Date(),
+                  updatedAt: new Date(),
+                  messageCount: 2,
+                });
+                console.log('[DivineDialog] ✅ Successfully set new conversation');
+              } catch (convError) {
+                console.error('[DivineDialog] ❌ Error setting conversation:', convError);
+                // Continue processing even if conversation setting fails
+              }
             }
 
             // Get the final content (either from typed messages or from assistant content)
@@ -227,12 +238,16 @@ export function DivineDialog() {
 
             if (artifactDetection.shouldCreateArtifact && artifactDetection.content) {
               // Create the artifact
+              const conversationId = typeof data.conversationId === 'object' 
+                ? data.conversationId.toString() 
+                : String(data.conversationId);
+              
               const artifact = createArtifact({
                 title: artifactDetection.title || 'Untitled Artifact',
                 type: artifactDetection.type!,
                 content: artifactDetection.content,
                 language: artifactDetection.language,
-                conversationId: data.conversationId,
+                conversationId,
                 version: 1,
               });
               artifactId = artifact.id;
@@ -244,7 +259,9 @@ export function DivineDialog() {
 
             // Add the assistant message to the store with enhanced metadata
             const assistantMessage: Message = {
-              conversationId: data.conversationId,
+              conversationId: typeof data.conversationId === 'object' 
+                ? data.conversationId.toString() 
+                : String(data.conversationId),
               role: 'assistant',
               content: chatDisplayContent, // Use processed content when code blocks are in artifacts
               metadata: {
@@ -258,7 +275,13 @@ export function DivineDialog() {
               },
               createdAt: new Date(),
             };
-            addMessage(assistantMessage);
+            
+            try {
+              addMessage(assistantMessage);
+              console.log('[DivineDialog] ✅ Successfully added assistant message');
+            } catch (msgError) {
+              console.error('[DivineDialog] ❌ Error adding message:', msgError);
+            }
 
             // Clear typed messages after adding the final message
             if (currentConversation) {
@@ -291,14 +314,23 @@ export function DivineDialog() {
             console.log('[DivineDialog] 🆕 New conversation created:', data.conversationId);
             // Update current conversation if we don't have one
             if (!currentConversation) {
-              setCurrentConversation({
-                _id: data.conversationId,
-                title: content.substring(0, 50) + '...',
-                model: selectedModel,
-                createdAt: new Date(),
-                updatedAt: new Date(),
-                messageCount: 1,
-              });
+              const conversationId = typeof data.conversationId === 'object' 
+                ? data.conversationId.toString() 
+                : String(data.conversationId);
+              
+              try {
+                setCurrentConversation({
+                  _id: conversationId,
+                  title: content.substring(0, 50) + '...',
+                  model: selectedModel,
+                  createdAt: new Date(),
+                  updatedAt: new Date(),
+                  messageCount: 1,
+                });
+                console.log('[DivineDialog] ✅ Set conversation from conversation:created event');
+              } catch (convError) {
+                console.error('[DivineDialog] ❌ Error setting conversation from event:', convError);
+              }
             }
           },
         }
