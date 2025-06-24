@@ -14,6 +14,7 @@ import { detectArtifact } from '@/lib/artifactDetection';
 import { Plus } from 'lucide-react';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { Spinner } from '@/components/ui/spinner';
+import { useRenderDebug } from '@/hooks/useRenderDebug';
 
 // Utility function to safely convert conversation ID to string
 function getConversationId(conversation: any): string {
@@ -67,6 +68,18 @@ export function DivineDialog() {
   
   // Use the new selector hook to properly subscribe to streaming content
   const streamedContent = useStreamedContent(currentConversationId);
+
+  // Debug hook to track renders and identify infinite loops
+  useRenderDebug('DivineDialog', {
+    currentConversation: currentConversation?._id,
+    messages: messages.length,
+    selectedModel,
+    isArtifactPanelOpen,
+    isThinking,
+    isGenerating,
+    streamedContent: streamedContent.length,
+    currentConversationId,
+  });
 
   useEffect(() => {
     fetchModels();
