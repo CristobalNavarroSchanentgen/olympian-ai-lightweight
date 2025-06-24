@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { cn } from '@/lib/utils';
 
@@ -24,6 +24,27 @@ export function TypewriterText({
   const [isTyping, setIsTyping] = useState(true);
   const [hasStarted, setHasStarted] = useState(false);
   const lastStreamedIndexRef = useRef(0);
+
+  // Memoize the markdown components to prevent re-creating on every render
+  const markdownComponents = useMemo(() => ({
+    pre: ({ ...props }: any) => (
+      <pre className="overflow-x-auto rounded-lg bg-background p-3" {...props} />
+    ),
+    code: ({ children, className, ...props }: any) => {
+      const match = /language-(\w+)/.exec(className || '');
+      const isInline = !match;
+      
+      return isInline ? (
+        <code className="rounded bg-background px-1 py-0.5" {...props}>
+          {children}
+        </code>
+      ) : (
+        <code className={className} {...props}>
+          {children}
+        </code>
+      );
+    },
+  }), []); // Empty dependency array since these components never change
 
   useEffect(() => {
     // When content changes in streaming mode, continue from where we left off
@@ -91,25 +112,7 @@ export function TypewriterText({
     <div className={cn("relative", className)}>
       <ReactMarkdown
         className="prose prose-sm dark:prose-invert max-w-none"
-        components={{
-          pre: ({ node, ...props }) => (
-            <pre className="overflow-x-auto rounded-lg bg-background p-3" {...props} />
-          ),
-          code: ({ node, children, className, ...props }) => {
-            const match = /language-(\w+)/.exec(className || '');
-            const isInline = !match;
-            
-            return isInline ? (
-              <code className="rounded bg-background px-1 py-0.5" {...props}>
-                {children}
-              </code>
-            ) : (
-              <code className={className} {...props}>
-                {children}
-              </code>
-            );
-          },
-        }}
+        components={markdownComponents}
       >
         {displayedContent}
       </ReactMarkdown>
