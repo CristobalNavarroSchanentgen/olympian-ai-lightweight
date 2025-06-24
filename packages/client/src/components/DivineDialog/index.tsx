@@ -14,6 +14,12 @@ import { detectArtifact } from '@/lib/artifactDetection';
 import { Plus } from 'lucide-react';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 
+// Utility function to safely convert conversation ID to string
+function getConversationId(conversation: any): string {
+  if (!conversation?._id) return '';
+  return String(conversation._id);
+}
+
 export function DivineDialog() {
   const {
     currentConversation,
@@ -86,7 +92,7 @@ export function DivineDialog() {
       return;
     }
 
-    const conversationId = currentConversation._id?.toString() || '';
+    const conversationId = getConversationId(currentConversation);
     const artifactsForConversation = getArtifactsForConversation(conversationId);
     
     console.log('🎨 [DivineDialog] Conversation changed, artifacts:', artifactsForConversation.length);
@@ -131,7 +137,7 @@ export function DivineDialog() {
 
     // Add user message to store
     const userMessage: Message = {
-      conversationId: currentConversation?._id || '',
+      conversationId: getConversationId(currentConversation) || '',
       role: 'user',
       content,
       images,
@@ -155,7 +161,7 @@ export function DivineDialog() {
           content,
           model: selectedModel,
           visionModel: selectedVisionModel || undefined,
-          conversationId: currentConversation?._id,
+          conversationId: getConversationId(currentConversation) || undefined,
           images,
         },
         {
@@ -181,7 +187,8 @@ export function DivineDialog() {
             
             // Add token to typed messages store for real-time display
             if (currentConversation) {
-              addTypedContent(currentConversation._id?.toString() || '', data.token);
+              const conversationId = getConversationId(currentConversation);
+              addTypedContent(conversationId, data.token);
             }
           },
 
@@ -215,8 +222,9 @@ export function DivineDialog() {
             }
 
             // Get the final content (either from typed messages or from assistant content)
-            const finalContent = currentConversation 
-              ? getTypedContent(currentConversation._id?.toString() || '') || assistantContent
+            const currentConversationId = getConversationId(currentConversation);
+            const finalContent = currentConversationId 
+              ? getTypedContent(currentConversationId) || assistantContent
               : assistantContent;
 
             // Detect if the response should create an artifact
@@ -392,8 +400,9 @@ export function DivineDialog() {
   const defaultLayout = getDefaultLayout();
 
   // Get the current streamed content for display
-  const streamedContent = currentConversation 
-    ? getTypedContent(currentConversation._id?.toString() || '') || ''
+  const currentConversationId = getConversationId(currentConversation);
+  const streamedContent = currentConversationId 
+    ? getTypedContent(currentConversationId) || ''
     : '';
 
   return (
