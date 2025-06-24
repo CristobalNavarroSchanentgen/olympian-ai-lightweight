@@ -512,19 +512,19 @@ export function useComponentDebugger(componentName: string) {
     };
   }
 
-  const debugger = new ComponentDebugger(componentName);
+  const componentDebugger = new ComponentDebugger(componentName);
   
   // Cleanup on unmount
   React.useEffect(() => {
-    return () => debugger.cleanup();
+    return () => componentDebugger.cleanup();
   }, []);
   
   return {
-    logRender: debugger.logRender.bind(debugger),
-    logError: debugger.logError.bind(debugger),
-    logWarning: debugger.logWarning.bind(debugger),
-    logInfo: debugger.logInfo.bind(debugger),
-    logDebug: debugger.logDebug.bind(debugger),
+    logRender: componentDebugger.logRender.bind(componentDebugger),
+    logError: componentDebugger.logError.bind(componentDebugger),
+    logWarning: componentDebugger.logWarning.bind(componentDebugger),
+    logInfo: componentDebugger.logInfo.bind(componentDebugger),
+    logDebug: componentDebugger.logDebug.bind(componentDebugger),
   };
 }
 
