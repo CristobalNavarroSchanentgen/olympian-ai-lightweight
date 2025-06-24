@@ -11,6 +11,8 @@ import { prepareMarkdownContent, truncateForSafety } from '@/utils/contentSaniti
 import { useArtifactStore } from '@/stores/useArtifactStore';
 import { useChatStore } from '@/stores/useChatStore';
 import { useTypedMessagesStore } from '@/stores/useTypedMessagesStore';
+import { Suspense } from 'react';
+import { Spinner } from '@/components/ui/spinner';
 import { 
   FileText, 
   Code, 
@@ -43,6 +45,14 @@ const MessageErrorFallback = ({ content }: { content: string }) => (
       {content.substring(0, 500)}
       {content.length > 500 && '...'}
     </pre>
+  </div>
+);
+
+// Loading fallback for Suspense
+const ContentLoadingFallback = () => (
+  <div className="flex items-center gap-2 text-sm text-gray-400">
+    <Spinner size="sm" />
+    <span>Loading content...</span>
   </div>
 );
 
@@ -225,53 +235,55 @@ export function MessageItem({ message, isLatest = false, isStreaming = false }: 
           {isUser ? (
             <p className="text-sm text-white/90">{safeDisplayContent}</p>
           ) : (
-            <ErrorBoundary fallback={<MessageErrorFallback content={safeDisplayContent} />}>
-              {shouldShowTypewriter ? (
-                <TypewriterText
-                  content={safeDisplayContent}
-                  speed={15}
-                  onStart={handleTypewriterStart}
-                  onComplete={handleTypewriterComplete}
-                />
-              ) : (
-                <ReactMarkdown
-                  className="prose prose-invert prose-sm max-w-none prose-p:leading-relaxed"
-                  components={{
-                    pre: ({ children }) => {
-                      // Extract the code content and language from the children
-                      if (children && typeof children === 'object' && 'props' in children) {
-                        const { className, children: codeChildren } = (children as any).props;
+            <Suspense fallback={<ContentLoadingFallback />}>
+              <ErrorBoundary fallback={<MessageErrorFallback content={safeDisplayContent} />}>
+                {shouldShowTypewriter ? (
+                  <TypewriterText
+                    content={safeDisplayContent}
+                    speed={15}
+                    onStart={handleTypewriterStart}
+                    onComplete={handleTypewriterComplete}
+                  />
+                ) : (
+                  <ReactMarkdown
+                    className="prose prose-invert prose-sm max-w-none prose-p:leading-relaxed"
+                    components={{
+                      pre: ({ children }) => {
+                        // Extract the code content and language from the children
+                        if (children && typeof children === 'object' && 'props' in children) {
+                          const { className, children: codeChildren } = (children as any).props;
+                          return (
+                            <CodeBlock className={className} showLineNumbers={false}>
+                              {codeChildren}
+                            </CodeBlock>
+                          );
+                        }
                         return (
-                          <CodeBlock className={className} showLineNumbers={false}>
-                            {codeChildren}
+                          <CodeBlock showLineNumbers={false}>
+                            {children}
                           </CodeBlock>
                         );
-                      }
-                      return (
-                        <CodeBlock showLineNumbers={false}>
-                          {children}
-                        </CodeBlock>
-                      );
-                    },
-                    code: ({ children, className, ...props }) => {
-                      const match = /language-(\w+)/.exec(className || '');
-                      const isInline = !match;
-                      
-                      return isInline ? (
-                        <code className="rounded bg-gray-800 px-1 py-0.5 text-sm" {...props}>
-                          {children}
-                        </code>
-                      ) : (
-                        // For code blocks, let the parent pre element handle the rendering
-                        <>{children}</>
-                      );
-                    },
-                  }}
-                >
-                  {safeDisplayContent}
-                </ReactMarkdown>
-              )}
-            </ErrorBoundary>
+                      },
+                      code: ({ children, className, ...props }) => {
+                        const match = /language-(\w+)/.exec(className || '');
+                        const isInline = !match;
+                        
+                        return isInline ? (
+                          <code className="rounded bg-gray-800 px-1 py-0.5 text-sm" {...props}>
+                            {children}
+                          </code>
+                        ) : (
+                          // For code blocks, let the parent pre element handle the rendering
+                          <>{children}</>
+                        );
+                      },
+                    }}
+                  >
+                    {safeDisplayContent}
+                  </ReactMarkdown>
+                )}
+              </ErrorBoundary>
+            </Suspense>
           )}
           
           {/* Artifact - Only show after typing is complete or if no typewriter */}
