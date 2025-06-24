@@ -879,3 +879,132 @@ The fixes address the issue by:
 2. Add character normalization on the backend before sending to frontend
 3. Implement content preview in error messages for easier debugging
 4. Add telemetry to track which characters cause the most issues
+
+---
+
+## TypewriterText Missing Sanitization Fix (2025-06-24) - CURRENT
+
+### Issue Identified
+
+After implementing all previous fixes, the TypewriterText component was still showing "Typewriter effect failed" for content with special characters. Investigation revealed that while MessageList and MessageItem components were properly sanitizing content, **the TypewriterText component itself was not applying any content sanitization**.
+
+The error message:
+```
+Typewriter effect failed. Showing content directly:
+It's nice to see you again! Is there anything I can help you with today, or would you like to just chat?
+```
+
+### Root Cause
+
+Although content was being sanitized in parent components (MessageList and MessageItem), the TypewriterText component was:
+
+1. **Not importing or using the content sanitization utilities**
+2. **Only performing debug logging for special characters without sanitizing them**
+3. **Missing a safety net for content that might slip through parent sanitization**
+4. **Lacking proper content validation before processing**
+
+### Fix Applied
+
+#### 1. **Added Missing Content Sanitization Import and Usage**
+
+```javascript
+import { prepareMarkdownContent, truncateForSafety } from '@/utils/contentSanitizer';
+
+// Apply content sanitization as a safety net, even though content should already be sanitized
+const safeContent = useMemo(() => {
+  try {
+    if (!content) return '';
+    
+    // Debug log for problematic content
+    if (content.includes('...') || content.includes('\u2019') || content.includes('\u2018')) {
+      console.log('[TypewriterText] Processing content with special characters:', {
+        length: content.length,
+        hasEllipsis: content.includes('...'),
+        hasSmartQuotes: /[\u2018\u2019]/.test(content),
+        preview: content.substring(0, 100)
+      });
+    }
+    
+    // Apply sanitization as safety net
+    const sanitized = prepareMarkdownContent(truncateForSafety(content));
+    console.log('[TypewriterText] Content sanitized successfully');
+    return sanitized;
+  } catch (error) {
+    console.error('[TypewriterText] Error sanitizing content:', error);
+    setHasError(true);
+    // Return plain text as fallback
+    return content.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+}, [content]);
+```
+
+#### 2. **Enhanced Error Handling and Logging**
+
+```javascript
+// Enhanced error tracking throughout the component
+useEffect(() => {
+  try {
+    console.log('[TypewriterText] Content update effect triggered:', {
+      isStreaming,
+      contentLength: safeContent.length,
+      lastStreamedIndex: lastStreamedIndexRef.current
+    });
+    
+    // ... content update logic with try-catch
+  } catch (error) {
+    console.error('[TypewriterText] Error in content update effect:', error);
+    setHasError(true);
+  }
+}, [safeContent, isStreaming]);
+
+// Added content validation before rendering
+if (!safeContent) {
+  console.warn('[TypewriterText] No content to display');
+  return null;
+}
+```
+
+#### 3. **Used Sanitized Content Throughout Component**
+
+All references to the original `content` prop were replaced with `safeContent`:
+- State updates use `safeContent`
+- ReactMarkdown receives `safeContent`  
+- All useEffect dependencies use `safeContent`
+- Length calculations use `safeContent.length`
+
+### Technical Implementation
+
+The fix ensures that:
+
+1. **Double Sanitization Safety**: Content is sanitized both in parent components and TypewriterText as a safety net
+2. **Memoized Sanitization**: Content sanitization is memoized to prevent re-processing on every render
+3. **Comprehensive Error Handling**: All state updates and effects are wrapped in try-catch blocks
+4. **Detailed Logging**: Enhanced logging to track content processing and identify issues
+5. **Graceful Fallbacks**: Multiple layers of fallback rendering when errors occur
+
+### Key Benefits
+
+1. **Resolves Special Character Issues**: Smart quotes, ellipsis, and other special characters are normalized
+2. **Prevents Component Crashes**: Error boundaries and try-catch blocks contain any remaining issues  
+3. **Improved Debugging**: Detailed logging helps identify root causes
+4. **Performance Optimized**: Memoized sanitization prevents unnecessary re-processing
+5. **Future-Proof**: Safety net catches content that might bypass parent sanitization
+
+### Results
+
+The TypewriterText component now:
+- ✅ Sanitizes content as a safety net
+- ✅ Handles special characters properly
+- ✅ Provides detailed error logging
+- ✅ Has multiple fallback mechanisms
+- ✅ Shows content even when typewriter effect fails
+
+### Testing Completed
+
+- [x] Special characters (smart quotes, ellipsis)
+- [x] Mixed markdown and special characters
+- [x] Error handling and fallback UI
+- [x] Memoization prevents infinite re-renders
+- [x] Debug logging provides visibility
+
+This fix completes the comprehensive solution for UI crash issues related to content rendering and special character handling.
