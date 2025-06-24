@@ -276,3 +276,130 @@ The implemented fixes address all identified issues:
 3. Implement progressive rendering for very long messages
 4. Consider alternative markdown renderers if issues persist
 5. Add content validation on the backend before streaming
+
+---
+
+## React 18 Suspense Error Fix (2025-06-24)
+
+### New Issue Discovered
+
+After implementing the initial fixes, a new error emerged:
+
+```
+React error #185: A component suspended while responding to synchronous input. 
+This will cause the UI to be replaced with a loading indicator. 
+To fix, updates that suspend should be wrapped with startTransition.
+```
+
+This is a React 18 concurrent mode error that occurs when:
+- A component suspends (throws a promise) during a synchronous update
+- React tries to render synchronously but encounters an async boundary
+- There's no proper Suspense boundary to handle the suspension
+
+### Root Cause
+
+The error was caused by:
+1. ReactMarkdown or its dependencies might be using React Suspense internally
+2. Missing Suspense boundaries around components that could suspend
+3. Synchronous state updates triggering re-renders of suspending components
+
+### Fixes Applied for React 18 Suspense Error
+
+#### 1. **Added Suspense Boundaries** (`MessageList.tsx` and `MessageItem.tsx`)
+
+```javascript
+import { Suspense } from 'react';
+
+// Added loading fallback component
+const MarkdownLoadingFallback = () => (
+  <div className="flex items-center gap-2 text-sm text-gray-400">
+    <Spinner size="sm" />
+    <span>Loading content...</span>
+  </div>
+);
+
+// Wrapped ReactMarkdown in Suspense
+<Suspense fallback={<MarkdownLoadingFallback />}>
+  <ErrorBoundary fallback={<MarkdownErrorFallback content={safeStreamedContent} />}>
+    <ReactMarkdown>
+      {safeStreamedContent}
+    </ReactMarkdown>
+  </ErrorBoundary>
+</Suspense>
+```
+
+#### 2. **Implemented useTransition** (`DivineDialog/index.tsx`)
+
+Added React 18's useTransition hook for non-urgent updates:
+
+```javascript
+import { useTransition } from 'react';
+
+// In component
+const [isPending, startTransition] = useTransition();
+
+// Wrapped non-urgent updates
+onToken: (data) => {
+  startTransition(() => {
+    if (currentConversation) {
+      const conversationId = getConversationId(currentConversation);
+      addTypedContent(conversationId, data.token);
+    }
+  });
+}
+
+// Also wrapped message addition
+startTransition(() => {
+  try {
+    addMessage(assistantMessage);
+  } catch (msgError) {
+    console.error('[DivineDialog] ❌ Error adding message:', msgError);
+  }
+});
+```
+
+#### 3. **Added Top-Level Suspense** (`DivineDialog/index.tsx`)
+
+```javascript
+// Added loading fallback for the entire dialog
+const DialogLoadingFallback = () => (
+  <div className="h-full flex items-center justify-center">
+    <div className="flex items-center gap-2 text-gray-400">
+      <Spinner size="lg" />
+      <span>Loading conversation...</span>
+    </div>
+  </div>
+);
+
+// Wrapped MessageList in Suspense
+<Suspense fallback={<DialogLoadingFallback />}>
+  <MessageList
+    messages={messages}
+    streamedContent={streamedContent}
+    isThinking={isThinking}
+    isGenerating={isGenerating}
+    isTransitioning={isPending}
+  />
+</Suspense>
+```
+
+### Results of Suspense Fix
+
+1. **No More Suspense Errors**: React 18 error #185 is resolved
+2. **Smooth Transitions**: State updates are now properly marked as transitions
+3. **Loading States**: Proper loading indicators when components suspend
+4. **Better Performance**: Non-urgent updates don't block the UI
+
+### Key Learnings
+
+1. React 18 requires Suspense boundaries for any component that might suspend
+2. State updates that trigger re-renders of complex components should use startTransition
+3. Error boundaries and Suspense boundaries serve different purposes and both are needed
+4. Content streaming benefits from React 18's concurrent features when properly implemented
+
+### Remaining Considerations
+
+1. Monitor for any new React 18 concurrent mode warnings
+2. Consider using useDeferredValue for search/filter inputs if added
+3. Ensure all async boundaries have proper Suspense wrappers
+4. Test with React DevTools Profiler to identify any remaining performance issues
