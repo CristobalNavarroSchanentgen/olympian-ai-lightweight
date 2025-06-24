@@ -518,3 +518,108 @@ The fix addresses the infinite loop by:
 2. Add performance monitoring to track render counts
 3. Consider using React Query or SWR for server state management
 4. Implement virtual scrolling for very long conversation histories
+
+---
+
+## Additional Infinite Re-render Loop Fix (2025-06-24) - LATEST
+
+### Persistent Issue
+
+Despite the previous fixes, the infinite re-render loop (React error #185) is still occurring. Further investigation revealed additional sources of the problem.
+
+### New Root Causes Identified
+
+1. **Non-memoized Content Sanitization**: Both `MessageList.tsx` and `MessageItem.tsx` were calling content sanitization functions directly in the render method without memoization:
+   ```javascript
+   // This runs on every render!
+   const safeStreamedContent = prepareMarkdownContent(truncateForSafety(streamedContent));
+   ```
+
+2. **Expensive Artifact Validation**: In `MessageItem.tsx`, the artifact validation function was being called on every render, potentially causing cascading updates.
+
+3. **Non-memoized Display Content Calculation**: The logic to determine which content to display was recalculating on every render.
+
+### Fixes Applied
+
+#### 1. **Memoized Content Sanitization in MessageList.tsx**
+
+```javascript
+import { Suspense, useMemo } from 'react';
+
+// Memoize the sanitized content to prevent re-processing on every render
+const safeStreamedContent = useMemo(() => {
+  if (!streamedContent) return '';
+  return prepareMarkdownContent(truncateForSafety(streamedContent));
+}, [streamedContent]);
+```
+
+#### 2. **Memoized Artifact Validation and Content in MessageItem.tsx**
+
+```javascript
+import { Suspense, useMemo } from 'react';
+
+// Memoize artifact validation to prevent expensive re-calculations
+const artifact = useMemo(() => {
+  if (!message.metadata?.artifactId) {
+    return null;
+  }
+  // ... validation logic
+  return artifact;
+}, [message.metadata?.artifactId, currentConversation, getArtifactById]);
+
+// Memoize display content calculation
+const displayContent = useMemo(() => {
+  if (shouldShowTypewriter) {
+    return message.content;
+  }
+  return shouldShowOriginalContent 
+    ? (message.metadata?.originalContent || message.content)
+    : message.content;
+}, [shouldShowTypewriter, shouldShowOriginalContent, message.content, message.metadata?.originalContent]);
+
+// Memoize sanitized content to prevent re-processing on every render
+const safeDisplayContent = useMemo(() => {
+  return prepareMarkdownContent(truncateForSafety(displayContent));
+}, [displayContent]);
+```
+
+### Technical Explanation
+
+The infinite loop was occurring because:
+
+1. **Content sanitization functions were creating new objects on every render**
+2. **These new objects would trigger re-renders in child components**
+3. **Re-renders would cause parent components to re-render**
+4. **Parent re-renders would trigger the sanitization functions again**
+5. **This created an infinite loop**
+
+By memoizing these expensive operations, we ensure they only run when their dependencies actually change.
+
+### Key Insights
+
+1. **Always memoize expensive operations in render methods**
+2. **Be careful with object creation in render - it can trigger unnecessary re-renders**
+3. **Use React DevTools Profiler to identify components that render too frequently**
+4. **Consider the cost of operations that run on every render**
+
+### Performance Best Practices Applied
+
+1. **Memoization Strategy**: Use `useMemo` for any expensive computation in render
+2. **Dependency Arrays**: Ensure dependency arrays are complete and accurate
+3. **Object Identity**: Be aware that creating new objects/arrays in render can break React's optimization
+4. **Pure Functions**: Ensure utility functions like sanitizers are pure and deterministic
+
+### Testing the Fix
+
+1. The content sanitization now only runs when the content actually changes
+2. Artifact validation only runs when relevant props change
+3. Display content calculation is cached between renders
+4. No more infinite re-render loops should occur
+
+### Next Steps if Issues Persist
+
+1. Check for any remaining non-memoized expensive operations
+2. Look for effects that might be updating state in a loop
+3. Verify all dependency arrays are correct
+4. Consider using React.memo on child components
+5. Profile with React DevTools to identify any remaining performance issues
