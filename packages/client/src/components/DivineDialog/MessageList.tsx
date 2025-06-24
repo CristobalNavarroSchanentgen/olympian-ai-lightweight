@@ -4,7 +4,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { prepareMarkdownContent, truncateForSafety } from '@/utils/contentSanitizer';
 import ReactMarkdown from 'react-markdown';
-import { Suspense } from 'react';
+import { Suspense, useMemo } from 'react';
 
 interface MessageListProps {
   messages: Message[];
@@ -42,6 +42,12 @@ export function MessageList({
   isGenerating,
   isTransitioning = false,
 }: MessageListProps) {
+  // Memoize the sanitized content to prevent re-processing on every render
+  const safeStreamedContent = useMemo(() => {
+    if (!streamedContent) return '';
+    return prepareMarkdownContent(truncateForSafety(streamedContent));
+  }, [streamedContent]);
+
   if (messages.length === 0 && !isThinking && !isGenerating) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-center">
@@ -52,9 +58,6 @@ export function MessageList({
       </div>
     );
   }
-
-  // Sanitize and prepare streamed content for safe rendering
-  const safeStreamedContent = prepareMarkdownContent(truncateForSafety(streamedContent));
 
   return (
     <div className="space-y-6">
