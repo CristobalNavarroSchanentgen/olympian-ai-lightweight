@@ -403,3 +403,118 @@ const DialogLoadingFallback = () => (
 2. Consider using useDeferredValue for search/filter inputs if added
 3. Ensure all async boundaries have proper Suspense wrappers
 4. Test with React DevTools Profiler to identify any remaining performance issues
+
+---
+
+## Infinite Re-render Loop Fix (2025-06-24)
+
+### New Issue Discovered
+
+After the previous fixes, a new React error #185 emerged with a different message:
+
+```
+Minified React error #185: Maximum update depth exceeded. 
+This can happen when a component repeatedly calls setState inside componentWillUpdate or componentDidUpdate. 
+React limits the number of nested updates to prevent infinite loops.
+```
+
+### Root Cause Analysis
+
+The infinite re-render loop was caused by:
+
+1. **Improper State Access in Render**: The `DivineDialog` component was calling `getTypedContent()` directly during render, which doesn't properly subscribe to Zustand state changes and can cause re-render issues.
+
+2. **Lack of Memoization**: The conversation ID was being recalculated on every render without memoization.
+
+3. **Rapid State Updates**: The artifact panel effect was running on every conversation change without debouncing, potentially causing cascading updates.
+
+### Fixes Applied for Infinite Re-render Loop
+
+#### 1. **Created Proper State Selector** (`useTypedMessagesStore.ts`)
+
+Added a new selector hook to properly subscribe to streaming content:
+
+```javascript
+// Create a selector hook to properly subscribe to streaming content changes
+export const useStreamedContent = (conversationId: string | null): string => {
+  return useTypedMessagesStore((state) => {
+    if (!conversationId) return '';
+    return state.streamingContentByConversation.get(conversationId) || '';
+  });
+};
+```
+
+#### 2. **Updated DivineDialog Component** (`DivineDialog/index.tsx`)
+
+Key changes:
+- Imported `useMemo` from React
+- Added proper imports for the new selector
+- Memoized the conversation ID calculation
+- Used the selector hook instead of direct state access
+- Added debouncing to the artifact panel effect
+
+```javascript
+import { useState, useEffect, useRef, useTransition, Suspense, useMemo } from 'react';
+import { useTypedMessagesStore, useStreamedContent } from '@/stores/useTypedMessagesStore';
+
+// In component:
+// Get conversation ID with memoization to prevent re-calculations
+const currentConversationId = useMemo(() => getConversationId(currentConversation), [currentConversation]);
+
+// Use the new selector hook to properly subscribe to streaming content
+const streamedContent = useStreamedContent(currentConversationId);
+
+// Added debounce to artifact panel effect
+useEffect(() => {
+  if (!currentConversationId) {
+    selectArtifact(null);
+    setArtifactPanelOpen(false);
+    return;
+  }
+
+  // Debounce artifact loading to prevent rapid updates
+  const timeoutId = setTimeout(() => {
+    // ... artifact loading logic
+  }, 100); // Small debounce to prevent rapid updates
+  
+  return () => clearTimeout(timeoutId);
+}, [currentConversationId, getArtifactsForConversation, selectArtifact, setArtifactPanelOpen]);
+```
+
+### Technical Details
+
+The fix addresses the infinite loop by:
+
+1. **Proper State Subscription**: Using Zustand's selector pattern ensures components only re-render when the specific state they depend on changes.
+
+2. **Memoization**: Preventing unnecessary recalculations of derived values that could trigger re-renders.
+
+3. **Debouncing Effects**: Preventing rapid cascading updates from effects that modify state.
+
+### Results
+
+1. **No More Infinite Loops**: The maximum update depth error is resolved
+2. **Better Performance**: Reduced unnecessary re-renders
+3. **Proper React Patterns**: Following React best practices for state management
+4. **Stable UI**: No more crashes from state update loops
+
+### Key Takeaways
+
+1. Always use proper selectors when accessing Zustand state in components
+2. Memoize derived values that are used in dependency arrays
+3. Debounce effects that can trigger rapid state updates
+4. Avoid calling store methods directly during render
+
+### Testing Recommendations
+
+1. Test rapid conversation switching
+2. Test with multiple simultaneous streaming responses
+3. Monitor React DevTools Profiler for excessive re-renders
+4. Test with React Strict Mode enabled to catch potential issues
+
+### Future Considerations
+
+1. Consider implementing React.memo on child components if performance issues persist
+2. Add performance monitoring to track render counts
+3. Consider using React Query or SWR for server state management
+4. Implement virtual scrolling for very long conversation histories
