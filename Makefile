@@ -1,4 +1,4 @@
-.PHONY: help setup build start stop restart logs logs-backend logs-frontend clean install dev test lint auto-build auto-build-same auto-build-same-existing auto-build-multi fix-streaming-rebuild generate-build-args dev-multi up-dev-multi clean-build-multi ultra-clean-multi build-prod-ultra-clean
+.PHONY: help setup build start stop restart logs logs-backend logs-frontend logs-ui clean install dev test lint auto-build auto-build-same auto-build-same-existing auto-build-multi fix-streaming-rebuild generate-build-args dev-multi up-dev-multi clean-build-multi ultra-clean-multi build-prod-ultra-clean
 .DEFAULT_GOAL := help
 
 # Colors for output
@@ -250,6 +250,30 @@ logs-frontend-dev: ## Show logs from frontend development service
 	else \
 		echo "$(RED)❌ Frontend development container is not running!$(RESET)"; \
 	fi
+
+logs-ui: ## Start UI with extensive debugging and enhanced logging for crash investigation
+	@echo "$(CYAN)🔍 Starting UI with extensive debugging and enhanced logging...$(RESET)"
+	@echo "$(YELLOW)This mode enables comprehensive React component debugging, render tracking,$(RESET)"
+	@echo "$(YELLOW)error boundaries logging, and UI crash investigation tools.$(RESET)"
+	@echo ""
+	@chmod +x scripts/setup-ui-debug.sh
+	@./scripts/setup-ui-debug.sh
+	@echo ""
+	@echo "$(CYAN)🚀 Starting development server with enhanced UI debugging...$(RESET)"
+	@cd packages/client && VITE_UI_DEBUG_MODE=true VITE_LOG_LEVEL=debug npm run dev
+	@echo ""
+	@echo "$(CYAN)📋 UI Debug Mode Features Enabled:$(RESET)"
+	@echo "  - Comprehensive component render tracking"
+	@echo "  - Error boundary detailed logging"
+	@echo "  - Content sanitization debug logs"
+	@echo "  - Infinite loop detection"
+	@echo "  - ReactMarkdown error tracking"
+	@echo "  - State change monitoring"
+	@echo "  - Performance profiling"
+	@echo ""
+	@echo "$(YELLOW)💡 Monitor the browser console for detailed debug information$(RESET)"
+	@echo "$(YELLOW)💡 Check the terminal output for server-side component logs$(RESET)"
+	@echo "$(YELLOW)💡 UI crashes will now provide detailed error reports$(RESET)"
 
 logs-mongodb: ## Show logs from MongoDB service
 	@echo "$(CYAN)📋 Showing MongoDB logs...$(RESET)"
