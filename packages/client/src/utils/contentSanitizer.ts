@@ -9,11 +9,11 @@ export function sanitizeContent(content: string | undefined | null): string {
   if (!content) return '';
   
   // Debug logging for problematic content
-  if (content.includes('...') || content.includes(''') || content.includes(''') || content.includes('"') || content.includes('"')) {
+  if (content.includes('...') || content.includes('\u2019') || content.includes('\u2018') || content.includes('\u201C') || content.includes('\u201D')) {
     console.log('[ContentSanitizer] Processing content with special characters:', {
       length: content.length,
       hasEllipsis: content.includes('...'),
-      hasSmartQuotes: /[''""]/.test(content),
+      hasSmartQuotes: /[\u2018\u2019\u201C\u201D]/.test(content),
       preview: content.substring(0, 100)
     });
   }
@@ -22,10 +22,10 @@ export function sanitizeContent(content: string | undefined | null): string {
     // Remove null bytes and other control characters except newlines and tabs
     .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
     // Replace smart quotes with regular quotes
-    .replace(/['']/g, "'")
-    .replace(/[""]/g, '"')
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201C\u201D]/g, '"')
     // Normalize ellipsis (in case of special Unicode ellipsis character)
-    .replace(/…/g, '...')
+    .replace(/\u2026/g, '...')
     // Normalize line endings
     .replace(/\r\n/g, '\n')
     // Remove excessive newlines (more than 3 in a row)
