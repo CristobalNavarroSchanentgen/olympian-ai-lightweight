@@ -13,7 +13,6 @@ interface DebugInfo {
 
 class OlympianDebugger {
   private eventLog: any[] = [];
-  private messageLog: any[] = [];
   private performanceLog: any[] = [];
   private verboseLogging = false;
 
@@ -64,7 +63,6 @@ class OlympianDebugger {
 
   clearEventLog() {
     this.eventLog = [];
-    this.messageLog = [];
     this.performanceLog = [];
     console.log('🐛 [OlympianDebug] Logs cleared.');
     return 'Logs cleared.';
