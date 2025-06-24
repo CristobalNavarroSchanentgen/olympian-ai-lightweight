@@ -8,13 +8,30 @@
 export function sanitizeContent(content: string | undefined | null): string {
   if (!content) return '';
   
+  // Debug logging for problematic content
+  if (content.includes('...') || content.includes(''') || content.includes(''') || content.includes('"') || content.includes('"')) {
+    console.log('[ContentSanitizer] Processing content with special characters:', {
+      length: content.length,
+      hasEllipsis: content.includes('...'),
+      hasSmartQuotes: /[''""]/.test(content),
+      preview: content.substring(0, 100)
+    });
+  }
+  
   return content
     // Remove null bytes and other control characters except newlines and tabs
     .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
+    // Replace smart quotes with regular quotes
+    .replace(/['']/g, "'")
+    .replace(/[""]/g, '"')
+    // Normalize ellipsis (in case of special Unicode ellipsis character)
+    .replace(/…/g, '...')
     // Normalize line endings
     .replace(/\r\n/g, '\n')
     // Remove excessive newlines (more than 3 in a row)
     .replace(/\n{4,}/g, '\n\n\n')
+    // Remove zero-width characters that might cause issues
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
     // Trim whitespace
     .trim();
 }
@@ -47,63 +64,84 @@ export function isValidMarkdownContent(content: string): boolean {
  * Prepares content for safe markdown rendering
  */
 export function prepareMarkdownContent(content: string | undefined | null): string {
-  const sanitized = sanitizeContent(content);
-  
-  if (!sanitized) return '';
-  
-  // Fix common markdown issues that could cause crashes
-  let prepared = sanitized;
-  
-  // Ensure code blocks are properly closed
-  const codeBlockCount = (prepared.match(/```/g) || []).length;
-  if (codeBlockCount % 2 !== 0) {
-    prepared += '\n```'; // Close unclosed code block
+  try {
+    const sanitized = sanitizeContent(content);
+    
+    if (!sanitized) return '';
+    
+    // Fix common markdown issues that could cause crashes
+    let prepared = sanitized;
+    
+    // Ensure code blocks are properly closed
+    const codeBlockCount = (prepared.match(/```/g) || []).length;
+    if (codeBlockCount % 2 !== 0) {
+      console.warn('[ContentSanitizer] Fixing unbalanced code blocks');
+      prepared += '\n```'; // Close unclosed code block
+    }
+    
+    // Escape HTML-like content that's not in code blocks
+    // This prevents XSS and rendering issues
+    prepared = escapeHtmlOutsideCodeBlocks(prepared);
+    
+    // Final validation
+    if (!isValidMarkdownContent(prepared)) {
+      console.error('[ContentSanitizer] Content failed validation after preparation:', {
+        length: prepared.length,
+        preview: prepared.substring(0, 200)
+      });
+    }
+    
+    return prepared;
+  } catch (error) {
+    console.error('[ContentSanitizer] Error preparing content:', error);
+    // Return escaped plain text as fallback
+    return (content || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
-  
-  // Escape HTML-like content that's not in code blocks
-  // This prevents XSS and rendering issues
-  prepared = escapeHtmlOutsideCodeBlocks(prepared);
-  
-  return prepared;
 }
 
 /**
  * Escapes HTML-like content outside of code blocks
  */
 function escapeHtmlOutsideCodeBlocks(content: string): string {
-  const codeBlockRegex = /```[\s\S]*?```/g;
-  const codeBlocks: string[] = [];
-  let match;
-  
-  // Extract code blocks
-  while ((match = codeBlockRegex.exec(content)) !== null) {
-    codeBlocks.push(match[0]);
+  try {
+    const codeBlockRegex = /```[\s\S]*?```/g;
+    const codeBlocks: string[] = [];
+    let match;
+    
+    // Extract code blocks
+    while ((match = codeBlockRegex.exec(content)) !== null) {
+      codeBlocks.push(match[0]);
+    }
+    
+    // Replace code blocks with placeholders
+    let processedContent = content;
+    codeBlocks.forEach((block, index) => {
+      processedContent = processedContent.replace(block, `__CODE_BLOCK_${index}__`);
+    });
+    
+    // Escape HTML in non-code-block content
+    processedContent = processedContent
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+    
+    // Restore code blocks
+    codeBlocks.forEach((block, index) => {
+      processedContent = processedContent.replace(`__CODE_BLOCK_${index}__`, block);
+    });
+    
+    return processedContent;
+  } catch (error) {
+    console.error('[ContentSanitizer] Error escaping HTML:', error);
+    // Return the original content if escaping fails
+    return content;
   }
-  
-  // Replace code blocks with placeholders
-  let processedContent = content;
-  codeBlocks.forEach((block, index) => {
-    processedContent = processedContent.replace(block, `__CODE_BLOCK_${index}__`);
-  });
-  
-  // Escape HTML in non-code-block content
-  processedContent = processedContent
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-  
-  // Restore code blocks
-  codeBlocks.forEach((block, index) => {
-    processedContent = processedContent.replace(`__CODE_BLOCK_${index}__`, block);
-  });
-  
-  return processedContent;
 }
 
 /**
  * Truncates content if it's too long for safe rendering
  */
 export function truncateForSafety(content: string, maxLength: number = 100000): string {
-  if (content.length <= maxLength) return content;
+  if (!content || content.length <= maxLength) return content || '';
   
   console.warn(`[ContentSanitizer] Content truncated from ${content.length} to ${maxLength} characters`);
   return content.substring(0, maxLength) + '\n\n... (content truncated for safety)';
