@@ -3,7 +3,7 @@
  * Tracks errors, performance issues, and system state for debugging
  */
 
-import { uiLogger, LogEntry } from './uiLogger';
+import { uiLogger } from './uiLogger';
 
 export interface CrashData {
   id: string;
