@@ -194,104 +194,126 @@ export function DivineDialog() {
 
           onComplete: (data) => {
             console.log('[DivineDialog] ✅ Message completed:', data);
-            setIsThinking(false);
-            setIsGenerating(false);
-            setCurrentMessageId(null);
+            
+            // Wrap all processing in try-catch-finally to ensure UI states are always reset
+            try {
+              // If this was a new conversation, update the current conversation
+              if (!currentConversation && data.conversationId) {
+                // Safely convert conversationId to string
+                const conversationId = String(data.conversationId);
+                
+                console.log('[DivineDialog] 🆕 Creating new conversation with ID:', conversationId);
+                
+                try {
+                  setCurrentConversation({
+                    _id: conversationId,
+                    title: content.substring(0, 50) + '...',
+                    model: selectedModel,
+                    createdAt: new Date(),
+                    updatedAt: new Date(),
+                    messageCount: 2,
+                  });
+                  console.log('[DivineDialog] ✅ Successfully set new conversation');
+                } catch (convError) {
+                  console.error('[DivineDialog] ❌ Error setting conversation:', convError);
+                  // Continue processing even if conversation setting fails
+                }
+              }
 
-            // If this was a new conversation, update the current conversation
-            if (!currentConversation && data.conversationId) {
-              // Safely convert conversationId to string
-              const conversationId = String(data.conversationId);
+              // Get the final content (either from typed messages or from assistant content)
+              const currentConversationId = getConversationId(currentConversation);
+              const finalContent = currentConversationId 
+                ? getTypedContent(currentConversationId) || assistantContent
+                : assistantContent;
+
+              // Detect if the response should create an artifact
+              const artifactDetection = detectArtifact(finalContent);
+              let artifactId: string | undefined;
+
+              // Store original response content
+              const originalContent = finalContent;
               
-              console.log('[DivineDialog] 🆕 Creating new conversation with ID:', conversationId);
+              // Determine what content to display in chat
+              let chatDisplayContent = originalContent;
+              
+              // Use processed content that removes code blocks when artifacts are created
+              if (artifactDetection.processedContent && artifactDetection.codeBlocksRemoved) {
+                chatDisplayContent = artifactDetection.processedContent;
+              }
+
+              if (artifactDetection.shouldCreateArtifact && artifactDetection.content) {
+                // Create the artifact
+                const conversationId = String(data.conversationId);
+                
+                const artifact = createArtifact({
+                  title: artifactDetection.title || 'Untitled Artifact',
+                  type: artifactDetection.type!,
+                  content: artifactDetection.content,
+                  language: artifactDetection.language,
+                  conversationId,
+                  version: 1,
+                });
+                artifactId = artifact.id;
+                
+                // Auto-open artifact panel when artifact is created
+                setArtifactPanelOpen(true);
+                console.log('🎨 [DivineDialog] Created new artifact:', artifact.id);
+              }
+
+              // Add the assistant message to the store with enhanced metadata
+              const assistantMessage: Message = {
+                conversationId: String(data.conversationId),
+                role: 'assistant',
+                content: chatDisplayContent, // Use processed content when code blocks are in artifacts
+                metadata: {
+                  ...data.metadata,
+                  artifactId,
+                  artifactType: artifactDetection.type,
+                  hasArtifact: artifactDetection.shouldCreateArtifact,
+                  // Store original content and code removal status
+                  originalContent: originalContent,
+                  codeBlocksRemoved: artifactDetection.codeBlocksRemoved || false,
+                },
+                createdAt: new Date(),
+              };
               
               try {
-                setCurrentConversation({
-                  _id: conversationId,
-                  title: content.substring(0, 50) + '...',
-                  model: selectedModel,
-                  createdAt: new Date(),
-                  updatedAt: new Date(),
-                  messageCount: 2,
-                });
-                console.log('[DivineDialog] ✅ Successfully set new conversation');
-              } catch (convError) {
-                console.error('[DivineDialog] ❌ Error setting conversation:', convError);
-                // Continue processing even if conversation setting fails
+                addMessage(assistantMessage);
+                console.log('[DivineDialog] ✅ Successfully added assistant message');
+              } catch (msgError) {
+                console.error('[DivineDialog] ❌ Error adding message:', msgError);
+                // Don't throw - we still want to reset UI states
               }
-            }
 
-            // Get the final content (either from typed messages or from assistant content)
-            const currentConversationId = getConversationId(currentConversation);
-            const finalContent = currentConversationId 
-              ? getTypedContent(currentConversationId) || assistantContent
-              : assistantContent;
+              // Clear typed messages after adding the final message
+              if (currentConversation) {
+                clearTypedMessages();
+              }
 
-            // Detect if the response should create an artifact
-            const artifactDetection = detectArtifact(finalContent);
-            let artifactId: string | undefined;
-
-            // Store original response content
-            const originalContent = finalContent;
-            
-            // Determine what content to display in chat
-            let chatDisplayContent = originalContent;
-            
-            // Use processed content that removes code blocks when artifacts are created
-            if (artifactDetection.processedContent && artifactDetection.codeBlocksRemoved) {
-              chatDisplayContent = artifactDetection.processedContent;
-            }
-
-            if (artifactDetection.shouldCreateArtifact && artifactDetection.content) {
-              // Create the artifact
-              const conversationId = String(data.conversationId);
+              // Reset states
+              setHasImages(false);
               
-              const artifact = createArtifact({
-                title: artifactDetection.title || 'Untitled Artifact',
-                type: artifactDetection.type!,
-                content: artifactDetection.content,
-                language: artifactDetection.language,
-                conversationId,
-                version: 1,
+            } catch (error) {
+              console.error('[DivineDialog] ❌ Error processing completion:', error);
+              
+              // Show error to user
+              toast({
+                title: 'Error',
+                description: 'Failed to process the response. The message may not have been saved properly.',
+                variant: 'destructive',
               });
-              artifactId = artifact.id;
               
-              // Auto-open artifact panel when artifact is created
-              setArtifactPanelOpen(true);
-              console.log('🎨 [DivineDialog] Created new artifact:', artifact.id);
+              // Clear typed messages on error
+              if (currentConversation) {
+                clearTypedMessages();
+              }
+            } finally {
+              // CRITICAL: Always reset UI states, no matter what happens above
+              setIsThinking(false);
+              setIsGenerating(false);
+              setCurrentMessageId(null);
+              console.log('[DivineDialog] ✅ UI states reset in finally block');
             }
-
-            // Add the assistant message to the store with enhanced metadata
-            const assistantMessage: Message = {
-              conversationId: String(data.conversationId),
-              role: 'assistant',
-              content: chatDisplayContent, // Use processed content when code blocks are in artifacts
-              metadata: {
-                ...data.metadata,
-                artifactId,
-                artifactType: artifactDetection.type,
-                hasArtifact: artifactDetection.shouldCreateArtifact,
-                // Store original content and code removal status
-                originalContent: originalContent,
-                codeBlocksRemoved: artifactDetection.codeBlocksRemoved || false,
-              },
-              createdAt: new Date(),
-            };
-            
-            try {
-              addMessage(assistantMessage);
-              console.log('[DivineDialog] ✅ Successfully added assistant message');
-            } catch (msgError) {
-              console.error('[DivineDialog] ❌ Error adding message:', msgError);
-            }
-
-            // Clear typed messages after adding the final message
-            if (currentConversation) {
-              clearTypedMessages();
-            }
-
-            // Reset states
-            setHasImages(false);
           },
 
           onError: (data) => {
