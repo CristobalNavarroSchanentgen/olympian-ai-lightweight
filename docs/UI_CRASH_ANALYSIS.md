@@ -55,10 +55,10 @@ The streaming content flow has multiple potential failure points:
 
 ```
 Token received → Added to store → Retrieved for display → Processed by ReactMarkdown
-                      ↓
-                Content cleared on completion
-                      ↓
-               UI tries to read cleared content → CRASH
+                     ↓
+               Content cleared on completion
+                     ↓
+              UI tries to read cleared content → CRASH
 ```
 
 #### 3. **Artifact Detection Content Modification**
@@ -1229,3 +1229,287 @@ The comprehensive rewrite addresses all identified issues:
 - [x] ReactMarkdown compliance and best practices
 
 This comprehensive solution should resolve the "Typewriter effect failed" issue in **Subproject 3 (Multi-host deployment)** by following React and ReactMarkdown best practices identified through Context7 research.
+
+---
+
+## CRITICAL: WebSocket Event Handler Lifecycle Issue - Subproject 3 Multi-host (2025-06-24) - LATEST DISCOVERY
+
+### **Root Cause Identified: Event Handler Registration/Cleanup Race Condition**
+
+After extensive analysis of the browser console logs and WebSocket service code, the **actual root cause** of the UI crash issue has been identified. This is **NOT a content rendering problem** but a **critical WebSocket event handler lifecycle management issue** specific to **Subproject 3 (Multi-host deployment)**.
+
+### **Console Log Analysis**
+
+The browser console clearly shows the problem:
+
+```javascript
+[WebSocketChat] 🆕 Received conversation:created 
+Object { conversationId: "685b116a156b6f3482d35ccd" }
+
+[WebSocketChat] ⚡ Received chat:generating
+Object { messageId: "17507985380386gs8pqqxu" }
+
+[WebSocketChat] 📊 Message 17507985380386gs8pqqxu state updated to: generating
+
+[WebSocketChat] ⚠️ No handlers found for generating event: 17507985380386gs8pqqxu
+[WebSocketChat] ⚠️ No handlers found for token event: 17507985380386gs8pqqxu
+```
+
+**Key Observations:**
+1. ✅ WebSocket connection is working perfectly
+2. ✅ Backend is processing requests and sending events 
+3. ✅ Frontend is receiving all WebSocket events
+4. ❌ **Event handlers are missing/lost when events arrive**
+
+### **Technical Analysis**
+
+#### **Event Flow Breakdown**
+
+```mermaid
+sequenceDiagram
+    participant UI as DivineDialog
+    participant WS as WebSocketService
+    participant BE as Backend
+    
+    UI->>WS: sendMessage() with handlers
+    WS->>WS: Register handlers in chatHandlers Map
+    WS->>BE: Emit chat:message with messageId
+    BE->>WS: chat:generating event
+    WS->>WS: Look for handlers with messageId
+    WS-->>WS: ❌ No handlers found!
+    BE->>WS: chat:token events (multiple)
+    WS->>WS: Look for handlers with messageId
+    WS-->>WS: ❌ No handlers found!
+```
+
+#### **Handler Registration in WebSocket Service**
+
+Looking at `/packages/client/src/services/websocketChat.ts`:
+
+```javascript
+async sendMessage(params, handlers) {
+  // Generate message ID
+  const messageId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+  
+  // Register handlers - THIS IS WHERE THEY SHOULD BE STORED
+  this.chatHandlers.set(messageId, handlers);
+  
+  // Send message to backend
+  this.socket!.emit('chat:message', { messageId, ...params });
+  
+  return messageId;
+}
+```
+
+#### **Handler Lookup in Event Processing**
+
+```javascript
+this.socket.on('chat:generating', (data) => {
+  const handlers = this.chatHandlers.get(data.messageId);
+  if (handlers?.onGenerating) {
+    handlers.onGenerating(data);
+  } else {
+    console.warn('⚠️ No handlers found for generating event:', data.messageId);
+  }
+});
+```
+
+### **Root Cause: Handler Cleanup Race Condition**
+
+The handlers are being **prematurely cleared** before all events are processed. Analysis of the cleanup code shows multiple places where handlers are deleted:
+
+#### **1. Early Cleanup in `chat:complete`**
+```javascript
+this.socket.on('chat:complete', (data) => {
+  // Handler execution...
+  
+  // PROBLEM: Immediate cleanup
+  this.messageStates.delete(data.messageId);
+  this.chatHandlers.delete(data.messageId); // ❌ Handlers deleted too early
+});
+```
+
+#### **2. Timeout-Based Cleanup**
+```javascript
+const timeoutId = setTimeout(() => {
+  const state = this.messageStates.get(messageId);
+  if (state && (state.phase === 'thinking' || state.phase === 'generating')) {
+    this.handleStuckMessage(messageId, state); // ❌ Premature cleanup
+  }
+}, 120000);
+```
+
+#### **3. Connection Reset Cleanup**
+```javascript
+this.socket.on('disconnect', () => {
+  // All handlers cleared on disconnect - potential race condition
+  this.chatHandlers.clear();
+  this.messageStates.clear();
+});
+```
+
+### **Multi-host Deployment Specific Issues**
+
+In **Subproject 3 (Multi-host deployment)**, additional factors contribute to the problem:
+
+#### **1. Nginx Proxy Timing**
+- Nginx proxy may introduce slight delays in event delivery
+- Events might arrive out of order due to proxy buffering
+- Network latency between containers can affect event timing
+
+#### **2. Container Network Communication**
+- WebSocket events travel through Docker network
+- Additional network hops can cause timing variations
+- Load balancing or proxy configurations may affect event delivery
+
+#### **3. Enhanced Reconnection Logic**
+The multi-host configuration has more aggressive reconnection logic that may interfere:
+
+```javascript
+// Multi-host specific configuration
+transports: ['websocket', 'polling'],
+reconnection: true,
+reconnectionAttempts: this.maxReconnectAttempts,
+// This could be causing connection resets that clear handlers
+```
+
+### **Event Timing Analysis**
+
+The logs show this sequence:
+1. `conversation:created` ✅ (received)
+2. `chat:generating` ✅ (received, state updated)
+3. **Missing handlers warning** ❌ (handlers already gone)
+4. `chat:token` events ✅ (received but no handlers)
+
+This indicates handlers are being cleared **between** `chat:generating` and the handler lookup.
+
+### **Proposed Solutions**
+
+#### **1. Immediate Fix: Delay Handler Cleanup**
+
+```javascript
+// In chat:complete handler, delay cleanup
+this.socket.on('chat:complete', (data) => {
+  // Process completion...
+  
+  // Delay cleanup to allow any pending events to process
+  setTimeout(() => {
+    this.messageStates.delete(data.messageId);
+    this.chatHandlers.delete(data.messageId);
+    this.eventTimeouts.delete(data.messageId);
+  }, 1000); // 1 second grace period
+});
+```
+
+#### **2. Event Queue Implementation**
+
+```javascript
+// Queue events if handlers aren't ready
+private eventQueue: Map<string, Array<{event: string, data: any}>> = new Map();
+
+private queueOrProcess(messageId: string, event: string, data: any) {
+  const handlers = this.chatHandlers.get(messageId);
+  if (handlers) {
+    // Process immediately
+    this.processEvent(event, data, handlers);
+  } else {
+    // Queue for later processing
+    if (!this.eventQueue.has(messageId)) {
+      this.eventQueue.set(messageId, []);
+    }
+    this.eventQueue.get(messageId)!.push({event, data});
+  }
+}
+```
+
+#### **3. Handler Registration Validation**
+
+```javascript
+// Validate handlers exist before processing
+private validateHandlers(messageId: string): boolean {
+  const handlers = this.chatHandlers.get(messageId);
+  const exists = !!handlers;
+  
+  if (!exists) {
+    console.warn(`[WebSocketChat] ⚠️ Handlers missing for ${messageId}. Active handlers:`, 
+      Array.from(this.chatHandlers.keys()));
+  }
+  
+  return exists;
+}
+```
+
+### **Multi-host Specific Fixes**
+
+#### **1. Enhanced Event Ordering**
+```javascript
+// Add sequence numbers for event ordering
+let eventSequence = 0;
+this.socket.emit('chat:message', { 
+  messageId, 
+  sequence: ++eventSequence,
+  ...params 
+});
+```
+
+#### **2. Connection State Management**
+```javascript
+// Don't clear handlers on temporary disconnections
+this.socket.on('disconnect', (reason) => {
+  if (reason === 'transport close' || reason === 'transport error') {
+    // Keep handlers for potential reconnection
+    console.log('[WebSocketChat] Preserving handlers for reconnection');
+  } else {
+    // Only clear on permanent disconnect
+    this.chatHandlers.clear();
+    this.messageStates.clear();
+  }
+});
+```
+
+### **Testing and Validation**
+
+#### **1. Debug Handler Lifecycle**
+```javascript
+// Add debug logging for handler lifecycle
+this.chatHandlers.set(messageId, handlers);
+console.log(`[WebSocketChat] 📝 Registered handlers for ${messageId}. Total: ${this.chatHandlers.size}`);
+
+// Before handler lookup
+console.log(`[WebSocketChat] 🔍 Looking for handlers for ${messageId}. Available:`, 
+  Array.from(this.chatHandlers.keys()));
+```
+
+#### **2. Handler Persistence Monitoring**
+```javascript
+// Monitor handler cleanup
+setInterval(() => {
+  console.log(`[WebSocketChat] 📊 Handler status: ${this.chatHandlers.size} active`);
+  if (this.chatHandlers.size > 10) {
+    console.warn('[WebSocketChat] ⚠️ High number of active handlers - potential leak');
+  }
+}, 30000);
+```
+
+### **Impact and Urgency**
+
+This issue affects **all message responses** in **Subproject 3 (Multi-host deployment)**:
+
+- ❌ **No messages can be displayed** due to missing handlers
+- ❌ **20+ versions of failed fixes** because the real issue was misidentified  
+- ❌ **Complete UI failure** for the core chat functionality
+- ❌ **Multi-host deployment unusable** in production
+
+### **Next Steps**
+
+1. **Implement handler cleanup delay** as immediate fix
+2. **Add comprehensive handler lifecycle logging** for debugging
+3. **Test with multi-host network latency** scenarios
+4. **Validate event ordering** in nginx proxy configuration
+5. **Consider WebSocket reconnection strategy** optimization
+
+### **Conclusion**
+
+The 20+ versions of UI crash have been caused by **incorrectly identifying this as a content rendering issue** when it's actually a **WebSocket event handler lifecycle management problem**. The React component fixes, content sanitization, and error boundaries were all addressing symptoms, not the root cause.
+
+**The real fix requires modifying the WebSocket service handler cleanup timing and event processing logic, specifically for the multi-host deployment scenario where network timing can affect event delivery order.**
