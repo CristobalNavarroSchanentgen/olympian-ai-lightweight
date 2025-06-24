@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useTransition, Suspense, useMemo, useCallback } from 'react';
 import { useChatStore } from '@/stores/useChatStore';
 import { useArtifactStore } from '@/stores/useArtifactStore';
-import { useTypedMessagesStore, useStreamedContent } from '@/stores/useTypedMessagesStore';
-import { webSocketChatService } from '@/services/websocketChat';
+import { useBulletproofTypedMessagesStore, useCurrentStreamingContent } from '@/stores/useBulletproofTypedMessagesStore';
+import { bulletproofWebSocketChatService } from '@/services/bulletproofWebSocketChat';
 import { ChatInput } from './ChatInput';
 import { MessageList } from './MessageList';
 import { ModelSelector } from './ModelSelector';
@@ -52,7 +52,14 @@ export function DivineDialog() {
     getArtifactsForConversation
   } = useArtifactStore();
   
-  const { clearTypedMessages, addTypedContent, getTypedContent } = useTypedMessagesStore();
+  const { 
+    clearTypedMessages, 
+    addTypedContent, 
+    getTypedContent,
+    startStreaming,
+    addStreamingToken,
+    completeStreaming 
+  } = useBulletproofTypedMessagesStore();
   
   const [isThinking, setIsThinking] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -67,7 +74,7 @@ export function DivineDialog() {
   const currentConversationId = useMemo(() => getConversationId(currentConversation), [currentConversation]);
   
   // Use the new selector hook to properly subscribe to streaming content
-  const streamedContent = useStreamedContent(currentConversationId);
+  const streamedContent = useCurrentStreamingContent(currentConversationId);
 
   // Debug hook to track renders and identify infinite loops
   useRenderDebug('DivineDialog', {
@@ -95,7 +102,7 @@ export function DivineDialog() {
     const initializeWebSocket = async () => {
       try {
         console.log('[DivineDialog] Initializing WebSocket connection...');
-        await webSocketChatService.connect();
+        await bulletproofWebSocketChatService.connect();
         console.log('[DivineDialog] ✅ WebSocket connected successfully');
       } catch (error) {
         console.error('[DivineDialog] ❌ Failed to connect WebSocket:', error);
@@ -112,7 +119,7 @@ export function DivineDialog() {
     // Cleanup on unmount
     return () => {
       console.log('[DivineDialog] Cleaning up WebSocket connection...');
-      webSocketChatService.disconnect();
+      bulletproofWebSocketChatService.disconnect();
     };
   }, []);
 
@@ -193,7 +200,7 @@ export function DivineDialog() {
       console.log('[DivineDialog] 📤 Sending message via WebSocket...');
       
       // Send message via WebSocket with handlers
-      messageId = await webSocketChatService.sendMessage(
+      messageId = await bulletproofWebSocketChatService.sendMessage(
         {
           content,
           model: selectedModel,
@@ -212,9 +219,9 @@ export function DivineDialog() {
             console.log('[DivineDialog] ⚡ Model started generating...', data);
             setIsThinking(false);
             setIsGenerating(true);
-            // Clear any previous typed content for this conversation
-            if (currentConversation) {
-              clearTypedMessages();
+            // Start streaming for this message
+            if (currentConversationId && data.messageId) {
+              startStreaming(data.messageId, currentConversationId);
             }
           },
 
@@ -224,10 +231,9 @@ export function DivineDialog() {
             
             // Use startTransition for non-urgent content updates
             startTransition(() => {
-              // Add token to typed messages store for real-time display
-              if (currentConversation) {
-                const conversationId = getConversationId(currentConversation);
-                addTypedContent(conversationId, data.token);
+              // Add token to bulletproof streaming store
+              if (data.messageId) {
+                addStreamingToken(data.messageId, data.token);
               }
             });
           },
@@ -237,6 +243,11 @@ export function DivineDialog() {
             
             // Wrap all processing in try-catch-finally to ensure UI states are always reset
             try {
+              // Complete streaming
+              if (data.messageId) {
+                completeStreaming(data.messageId);
+              }
+
               // If this was a new conversation, update the current conversation
               if (!currentConversation && data.conversationId) {
                 // Safely convert conversationId to string
@@ -328,8 +339,8 @@ export function DivineDialog() {
               });
 
               // Clear typed messages after adding the final message
-              if (currentConversation) {
-                clearTypedMessages();
+              if (currentConversationId) {
+                clearTypedMessages(currentConversationId);
               }
 
               // Reset states
@@ -346,8 +357,8 @@ export function DivineDialog() {
               });
               
               // Clear typed messages on error
-              if (currentConversation) {
-                clearTypedMessages();
+              if (currentConversationId) {
+                clearTypedMessages(currentConversationId);
               }
             } finally {
               // CRITICAL: Always reset UI states, no matter what happens above
@@ -371,8 +382,8 @@ export function DivineDialog() {
             });
 
             // Clear typed messages on error
-            if (currentConversation) {
-              clearTypedMessages();
+            if (currentConversationId) {
+              clearTypedMessages(currentConversationId);
             }
           },
 
@@ -417,18 +428,18 @@ export function DivineDialog() {
       });
 
       // Clear typed messages on error
-      if (currentConversation) {
-        clearTypedMessages();
+      if (currentConversationId) {
+        clearTypedMessages(currentConversationId);
       }
     }
   }, [selectedModel, selectedVisionModel, currentConversationId, addMessage, currentConversation, 
       clearTypedMessages, getTypedContent, addTypedContent, createArtifact, setArtifactPanelOpen, 
-      setCurrentConversation]);
+      setCurrentConversation, startStreaming, addStreamingToken, completeStreaming]);
 
   const handleCancelMessage = useCallback(() => {
     if (currentMessageId) {
       console.log('[DivineDialog] ❌ Cancelling message:', currentMessageId);
-      webSocketChatService.cancelMessage(currentMessageId);
+      bulletproofWebSocketChatService.cancelMessage(currentMessageId);
       setCurrentMessageId(null);
     }
     
@@ -436,10 +447,10 @@ export function DivineDialog() {
     setIsGenerating(false);
     
     // Clear typed messages on cancel
-    if (currentConversation) {
-      clearTypedMessages();
+    if (currentConversationId) {
+      clearTypedMessages(currentConversationId);
     }
-  }, [currentMessageId, currentConversation, clearTypedMessages]);
+  }, [currentMessageId, currentConversationId, clearTypedMessages]);
 
   const handleLayoutChange = useCallback((sizes: number[]) => {
     // Persist layout to localStorage
