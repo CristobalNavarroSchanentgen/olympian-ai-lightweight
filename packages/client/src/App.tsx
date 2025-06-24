@@ -9,6 +9,9 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Cable, Settings, History } from 'lucide-react';
 
+// Import debug console for multi-host WebSocket monitoring
+import '@/utils/debugConsole';
+
 function App() {
   const [showConnections, setShowConnections] = useState(false);
   const [showMCPConfig, setShowMCPConfig] = useState(false);
