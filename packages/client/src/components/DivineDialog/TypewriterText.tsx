@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useMemo } from 'react';
+import { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { cn } from '@/lib/utils';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
@@ -10,7 +10,7 @@ interface TypewriterTextProps {
   onStart?: () => void;
   onComplete?: () => void;
   className?: string;
-  isStreaming?: boolean; // indicates if content is currently being streamed
+  isStreaming?: boolean;
 }
 
 // Fallback component for typewriter rendering errors
@@ -40,64 +40,88 @@ export function TypewriterText({
   const [hasError, setHasError] = useState(false);
   const lastStreamedIndexRef = useRef(0);
 
-  // Apply content sanitization as a safety net, even though content should already be sanitized
+  // Validate and sanitize content using useMemo - following React patterns from Context7
   const safeContent = useMemo(() => {
     try {
-      if (!content) return '';
-      
-      // Debug log for problematic content
-      if (content.includes('...') || content.includes('\u2019') || content.includes('\u2018')) {
+      // Guard against null/undefined content
+      if (!content || typeof content !== 'string') {
+        console.warn('[TypewriterText] Invalid content provided:', typeof content);
+        return '';
+      }
+
+      // Log special characters for debugging - using proper Unicode patterns
+      if (content.includes('...') || /[\u2018\u2019\u201C\u201D\u2026]/.test(content)) {
         console.log('[TypewriterText] Processing content with special characters:', {
           length: content.length,
           hasEllipsis: content.includes('...'),
-          hasSmartQuotes: /[\u2018\u2019]/.test(content),
+          hasSmartQuotes: /[\u2018\u2019\u201C\u201D]/.test(content),
+          hasUnicodeEllipsis: content.includes('\u2026'),
           preview: content.substring(0, 100)
         });
       }
       
-      // Apply sanitization as safety net
+      // Apply comprehensive sanitization
       const sanitized = prepareMarkdownContent(truncateForSafety(content));
-      console.log('[TypewriterText] Content sanitized successfully');
+      
+      if (!sanitized) {
+        console.warn('[TypewriterText] Content sanitization resulted in empty string');
+        return '';
+      }
+      
+      console.log('[TypewriterText] Content sanitized successfully:', {
+        originalLength: content.length,
+        sanitizedLength: sanitized.length
+      });
+      
       return sanitized;
     } catch (error) {
       console.error('[TypewriterText] Error sanitizing content:', error);
       setHasError(true);
-      // Return plain text as fallback
-      return content.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      // Return plain text fallback following React error handling patterns
+      return String(content || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     }
   }, [content]);
 
-  // Memoize the markdown components to prevent re-creating on every render
+  // Memoize markdown components following ReactMarkdown documentation patterns
   const markdownComponents = useMemo(() => ({
-    pre: ({ ...props }: any) => {
+    // Custom pre component following ReactMarkdown docs
+    pre: (props: any) => {
       try {
-        return <pre className="overflow-x-auto rounded-lg bg-background p-3" {...props} />;
+        const { children, ...rest } = props;
+        return (
+          <pre className="overflow-x-auto rounded-lg bg-background p-3" {...rest}>
+            {children}
+          </pre>
+        );
       } catch (error) {
         console.error('[TypewriterText] Error rendering pre:', error);
         return <pre {...props} />;
       }
     },
-    code: ({ children, className, ...props }: any) => {
+    // Custom code component following ReactMarkdown docs
+    code: (props: any) => {
       try {
+        const { children, className, node, ...rest } = props;
         const match = /language-(\w+)/.exec(className || '');
         const isInline = !match;
         
         return isInline ? (
-          <code className="rounded bg-background px-1 py-0.5" {...props}>
+          <code className="rounded bg-background px-1 py-0.5" {...rest}>
             {children}
           </code>
         ) : (
-          <code className={className} {...props}>
+          <code className={className} {...rest}>
             {children}
           </code>
         );
       } catch (error) {
         console.error('[TypewriterText] Error rendering code:', error);
-        return <code {...props}>{children}</code>;
+        return <code {...props}>{props.children}</code>;
       }
     },
-  }), []); // Empty dependency array since these components never change
+  }), []); // Empty dependency array since components never change
 
+  // Handle content updates with proper error handling
   useEffect(() => {
     try {
       console.log('[TypewriterText] Content update effect triggered:', {
@@ -106,13 +130,11 @@ export function TypewriterText({
         lastStreamedIndex: lastStreamedIndexRef.current
       });
 
-      // When content changes in streaming mode, continue from where we left off
       if (isStreaming) {
-        // During streaming, only show the new content that hasn't been displayed yet
+        // During streaming, show content progressively
         const newContent = safeContent.slice(0, lastStreamedIndexRef.current + 1);
         setDisplayedContent(newContent);
         
-        // Update our tracking of what's been shown
         if (safeContent.length > lastStreamedIndexRef.current) {
           lastStreamedIndexRef.current = safeContent.length;
         }
@@ -121,39 +143,38 @@ export function TypewriterText({
         return;
       }
       
-      // For non-streaming mode (final typewriter effect), reset everything
-      console.log('[TypewriterText] Resetting for non-streaming mode');
+      // For non-streaming mode, reset for typewriter effect
+      console.log('[TypewriterText] Resetting for typewriter mode');
       setDisplayedContent('');
       setCurrentIndex(0);
       setIsTyping(true);
       setHasStarted(false);
       lastStreamedIndexRef.current = 0;
+      
     } catch (error) {
       console.error('[TypewriterText] Error in content update effect:', error);
       setHasError(true);
     }
   }, [safeContent, isStreaming]);
 
+  // Typewriter animation effect
   useEffect(() => {
     try {
-      // Skip typewriter effect during streaming - content is already displayed progressively
-      if (isStreaming) {
-        return;
-      }
+      if (isStreaming) return;
 
-      // Call onStart when typewriter begins (only once)
+      // Start callback
       if (currentIndex === 0 && safeContent.length > 0 && !hasStarted) {
         console.log('[TypewriterText] Starting typewriter effect');
         setHasStarted(true);
         onStart?.();
       }
 
-      // Original typewriter behavior for non-streaming content
+      // Typing animation
       if (currentIndex < safeContent.length) {
         const timeout = setTimeout(() => {
           try {
             setDisplayedContent(safeContent.slice(0, currentIndex + 1));
-            setCurrentIndex(currentIndex + 1);
+            setCurrentIndex(prev => prev + 1);
           } catch (error) {
             console.error('[TypewriterText] Error during typing animation:', error);
             setHasError(true);
@@ -161,30 +182,33 @@ export function TypewriterText({
         }, speed);
 
         return () => clearTimeout(timeout);
-      } else if (currentIndex === safeContent.length && isTyping) {
+      } 
+      
+      // Completion
+      if (currentIndex === safeContent.length && isTyping) {
         console.log('[TypewriterText] Typewriter effect completed');
         setIsTyping(false);
         onComplete?.();
       }
+      
     } catch (error) {
       console.error('[TypewriterText] Error in typewriter effect:', error);
       setHasError(true);
     }
   }, [currentIndex, safeContent, speed, isTyping, onComplete, onStart, isStreaming, hasStarted]);
 
-  // During streaming, progressively show content as it arrives
+  // Streaming display effect
   useEffect(() => {
     try {
       if (isStreaming && safeContent.length > displayedContent.length) {
-        // Smoothly add new characters during streaming
         const timeout = setTimeout(() => {
           try {
             setDisplayedContent(safeContent.slice(0, displayedContent.length + 1));
           } catch (error) {
-            console.error('[TypewriterText] Error during streaming display update:', error);
+            console.error('[TypewriterText] Error during streaming display:', error);
             setHasError(true);
           }
-        }, 5); // Fast display during streaming
+        }, 5);
         
         return () => clearTimeout(timeout);
       }
@@ -194,31 +218,43 @@ export function TypewriterText({
     }
   }, [safeContent, displayedContent, isStreaming]);
 
-  // If there's an error, show the content directly
+  // Error state handling
   if (hasError) {
     console.warn('[TypewriterText] Rendering fallback due to error');
     return <TypewriterErrorFallback content={safeContent} />;
   }
 
-  // Validate content before rendering
-  if (!safeContent) {
-    console.warn('[TypewriterText] No content to display');
+  // Content validation
+  if (!safeContent || safeContent.length === 0) {
+    console.warn('[TypewriterText] No valid content to display');
     return null;
   }
 
-  return (
-    <div className={cn("relative", className)}>
-      <ErrorBoundary fallback={<TypewriterErrorFallback content={displayedContent || safeContent} />}>
-        <ReactMarkdown
-          className="prose prose-sm dark:prose-invert max-w-none"
-          components={markdownComponents}
-        >
-          {displayedContent}
-        </ReactMarkdown>
-        {(isTyping || isStreaming) && (
-          <span className="typewriter-cursor animate-pulse" aria-hidden="true">▌</span>
-        )}
-      </ErrorBoundary>
-    </div>
-  );
+  // Validate displayed content before rendering
+  const finalDisplayedContent = displayedContent || '';
+  if (!finalDisplayedContent && !isTyping && !isStreaming) {
+    console.warn('[TypewriterText] No displayed content and not typing/streaming');
+    return <TypewriterErrorFallback content={safeContent} />;
+  }
+
+  try {
+    return (
+      <div className={cn("relative", className)}>
+        <ErrorBoundary fallback={<TypewriterErrorFallback content={finalDisplayedContent || safeContent} />}>
+          <ReactMarkdown
+            className="prose prose-sm dark:prose-invert max-w-none"
+            components={markdownComponents}
+          >
+            {finalDisplayedContent}
+          </ReactMarkdown>
+          {(isTyping || isStreaming) && finalDisplayedContent && (
+            <span className="typewriter-cursor animate-pulse" aria-hidden="true">▌</span>
+          )}
+        </ErrorBoundary>
+      </div>
+    );
+  } catch (error) {
+    console.error('[TypewriterText] Error in render:', error);
+    return <TypewriterErrorFallback content={safeContent} />;
+  }
 }
