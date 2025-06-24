@@ -100,6 +100,38 @@ interface BulletproofTypedMessagesStore {
    */
   isMessageTyped: (conversationId: string, messageId: string) => boolean;
   
+  // === COMPATIBILITY METHODS (for backward compatibility with useTypedMessagesStore) ===
+  
+  /**
+   * Legacy alias for completeTypewriter - marks a message as typed
+   */
+  markAsTyped: (conversationId: string, messageId: string) => void;
+  
+  /**
+   * Legacy method for setting last typing message (for compatibility)
+   */
+  setLastTypingMessage: (messageId: string | null) => void;
+  
+  /**
+   * Legacy method for clearing typed messages - clears conversation data
+   */
+  clearTypedMessages: (conversationId?: string) => void;
+  
+  /**
+   * Legacy method for adding typed content - adds streaming token
+   */
+  addTypedContent: (conversationId: string, token: string) => void;
+  
+  /**
+   * Legacy method for getting typed content - gets streaming content
+   */
+  getTypedContent: (conversationId: string) => string;
+  
+  /**
+   * Legacy method for cleanup - performs maintenance
+   */
+  cleanupOldConversations: (activeConversationIds: string[]) => void;
+  
   // === CLEANUP AND MAINTENANCE ===
   
   /**
@@ -147,9 +179,6 @@ const messageAddedTimes = new Map<string, number>();
 
 // Maximum age for cached data (1 hour)
 const MAX_CACHE_AGE = 60 * 60 * 1000;
-
-// Maximum number of messages to keep in memory per conversation
-const MAX_MESSAGES_PER_CONVERSATION = 100;
 
 export const useBulletproofTypedMessagesStore = create<BulletproofTypedMessagesStore>()(
   persist(
@@ -361,6 +390,58 @@ export const useBulletproofTypedMessagesStore = create<BulletproofTypedMessagesS
         const state = get();
         const conversationSet = state.typedMessagesByConversation.get(conversationId);
         return conversationSet?.has(messageId) || false;
+      },
+
+      // === COMPATIBILITY METHODS ===
+
+      markAsTyped: (conversationId: string, messageId: string) => {
+        // Alias for completeTypewriter
+        get().completeTypewriter(conversationId, messageId);
+      },
+
+      setLastTypingMessage: (messageId: string | null) => {
+        // This was used to track the last typing message in the old store
+        // In the bulletproof store, this is handled by currentTypewriter
+        // For compatibility, we'll update the currentTypewriter state
+        if (messageId === null) {
+          set({ currentTypewriter: null });
+        }
+        // If we need to set a specific message as typing, that should be done via startTypewriter
+      },
+
+      clearTypedMessages: (conversationId?: string) => {
+        if (conversationId) {
+          // Clear specific conversation
+          get().clearConversation(conversationId);
+        } else {
+          // Clear all typed messages
+          set({
+            typedMessagesByConversation: new Map(),
+            currentTypewriter: null
+          });
+          messageAddedTimes.clear();
+        }
+      },
+
+      addTypedContent: (conversationId: string, token: string) => {
+        // Legacy method - find current streaming message for conversation and add token
+        const state = get();
+        const currentMessageId = state.currentStreamingByConversation.get(conversationId);
+        if (currentMessageId) {
+          state.addStreamingToken(currentMessageId, token);
+        } else {
+          console.warn(`[BulletproofTypedMessages] ⚠️ No current streaming message for conversation: ${conversationId}`);
+        }
+      },
+
+      getTypedContent: (conversationId: string): string => {
+        // Legacy method - return current streaming content for conversation
+        return get().getCurrentStreamingContent(conversationId);
+      },
+
+      cleanupOldConversations: (activeConversationIds: string[]) => {
+        // Alias for performMaintenance
+        get().performMaintenance(activeConversationIds);
       },
 
       // === CLEANUP AND MAINTENANCE ===
