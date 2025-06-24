@@ -4,6 +4,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { prepareMarkdownContent, truncateForSafety } from '@/utils/contentSanitizer';
 import ReactMarkdown from 'react-markdown';
+import { Suspense } from 'react';
 
 interface MessageListProps {
   messages: Message[];
@@ -23,6 +24,14 @@ const MarkdownErrorFallback = ({ content }: { content: string }) => (
       {content.substring(0, 500)}
       {content.length > 500 && '...'}
     </pre>
+  </div>
+);
+
+// Loading fallback for Suspense
+const MarkdownLoadingFallback = () => (
+  <div className="flex items-center gap-2 text-sm text-gray-400">
+    <Spinner size="sm" />
+    <span>Loading content...</span>
   </div>
 );
 
@@ -86,33 +95,35 @@ export function MessageList({
             <div className="w-full max-w-3xl">
               {safeStreamedContent ? (
                 <div className="prose prose-invert prose-sm max-w-none prose-p:leading-relaxed">
-                  <ErrorBoundary 
-                    fallback={<MarkdownErrorFallback content={safeStreamedContent} />}
-                  >
-                    <ReactMarkdown
-                      components={{
-                        pre: ({ ...props }) => (
-                          <pre className="overflow-x-auto rounded-lg bg-background p-3" {...props} />
-                        ),
-                        code: ({ children, className, ...props }) => {
-                          const match = /language-(\w+)/.exec(className || '');
-                          const isInline = !match;
-                          
-                          return isInline ? (
-                            <code className="rounded bg-background px-1 py-0.5" {...props}>
-                              {children}
-                            </code>
-                          ) : (
-                            <code className={className} {...props}>
-                              {children}
-                            </code>
-                          );
-                        },
-                      }}
+                  <Suspense fallback={<MarkdownLoadingFallback />}>
+                    <ErrorBoundary 
+                      fallback={<MarkdownErrorFallback content={safeStreamedContent} />}
                     >
-                      {safeStreamedContent}
-                    </ReactMarkdown>
-                  </ErrorBoundary>
+                      <ReactMarkdown
+                        components={{
+                          pre: ({ ...props }) => (
+                            <pre className="overflow-x-auto rounded-lg bg-background p-3" {...props} />
+                          ),
+                          code: ({ children, className, ...props }) => {
+                            const match = /language-(\w+)/.exec(className || '');
+                            const isInline = !match;
+                            
+                            return isInline ? (
+                              <code className="rounded bg-background px-1 py-0.5" {...props}>
+                                {children}
+                              </code>
+                            ) : (
+                              <code className={className} {...props}>
+                                {children}
+                              </code>
+                            );
+                          },
+                        }}
+                      >
+                        {safeStreamedContent}
+                      </ReactMarkdown>
+                    </ErrorBoundary>
+                  </Suspense>
                   {isGenerating && (
                     <span className="typewriter-cursor animate-pulse ml-1" aria-hidden="true">▌</span>
                   )}
