@@ -12,7 +12,7 @@ import {
   Message,
   ModelCapability,
 } from '@olympian/shared';
-import { webSocketChatService, ChatHandlers } from './websocketChat';
+import { bulletproofWebSocketChatService, ChatHandlers } from './bulletproofWebSocketChat';
 
 interface ProgressiveUpdate {
   type: 'model_processed' | 'vision_model_found' | 'loading_complete' | 'error' | 'initial_state';
@@ -58,7 +58,7 @@ class ApiService {
     // Add response interceptor for error handling
     this.client.interceptors.response.use(
       (response) => response,
-      (error) => {
+      (error: any) => {
         if (error.response?.data?.error) {
           throw new Error(error.response.data.error.message);
         }
@@ -67,7 +67,7 @@ class ApiService {
     );
 
     // Initialize WebSocket connection
-    webSocketChatService.connect().catch(error => {
+    bulletproofWebSocketChatService.connect().catch(error => {
       console.error('Failed to initialize WebSocket connection:', error);
       this.useWebSocket = false; // Fallback to HTTP if WebSocket fails
     });
@@ -171,7 +171,7 @@ class ApiService {
         },
       };
 
-      webSocketChatService.sendMessage(
+      bulletproofWebSocketChatService.sendMessage(
         {
           content: params.message,
           model: params.model,
@@ -187,7 +187,7 @@ class ApiService {
       // Add timeout
       setTimeout(() => {
         if (!hasCompleted) {
-          webSocketChatService.cancelMessage(messageId);
+          bulletproofWebSocketChatService.cancelMessage(messageId);
           reject(new Error('WebSocket message timeout'));
         }
       }, 300000); // 5 minutes timeout
@@ -292,7 +292,7 @@ class ApiService {
     metadata: any;
   }> {
     // Check if we should use WebSocket for this message
-    if (this.useWebSocket && webSocketChatService.isConnected()) {
+    if (this.useWebSocket && bulletproofWebSocketChatService.isConnected()) {
       // Use WebSocket for real-time streaming
       return new Promise((resolve, reject) => {
         let responseData: any = {};
@@ -706,7 +706,7 @@ class ApiService {
 
   // Method to check WebSocket status
   isWebSocketConnected(): boolean {
-    return webSocketChatService.isConnected();
+    return bulletproofWebSocketChatService.isConnected();
   }
 }
 
