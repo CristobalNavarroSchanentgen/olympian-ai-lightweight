@@ -14,11 +14,7 @@
 
 import { io, Socket } from 'socket.io-client';
 import { ClientEvents, ServerEvents, SocketIOError } from '@olympian/shared';
-import { 
-  messageLifecycleManager, 
-  MessageEventHandlers, 
-  MessageLifecycle 
-} from './messageIdManager';
+import { messageLifecycleManager } from './messageIdManager';
 
 // Event queue for handling out-of-order or delayed events
 interface QueuedEvent {
