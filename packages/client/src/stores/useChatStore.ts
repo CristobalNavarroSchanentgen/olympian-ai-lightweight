@@ -31,6 +31,12 @@ interface ChatStore {
   clearCurrentConversation: () => void;
 }
 
+// Utility function to safely convert conversation ID to string
+function getConversationId(conversation: Conversation): string {
+  if (!conversation._id) return '';
+  return String(conversation._id);
+}
+
 // Fallback vision model detection based on common naming patterns
 function detectVisionModelsByName(models: string[]): string[] {
   console.log('🔍 [useChatStore] Running fallback vision model detection on models:', models);
@@ -87,8 +93,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       console.log('✅ [useChatStore] fetchConversations success:', conversations.length, 'conversations');
       set({ conversations });
       
-      // Clean up old typed messages data
-      const activeConversationIds = conversations.map(c => c._id?.toString()).filter(Boolean) as string[];
+      // Clean up old typed messages data - ensure all IDs are strings
+      const activeConversationIds = conversations
+        .map(c => getConversationId(c))
+        .filter(Boolean);
       useTypedMessagesStore.getState().cleanupOldConversations(activeConversationIds);
     } catch (error) {
       console.error('❌ [useChatStore] fetchConversations error:', error);
@@ -114,7 +122,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       const artifactStore = useArtifactStore.getState();
       
       // Clear selected artifact and close panel if no artifacts for this conversation
-      const conversationId = conversation._id?.toString() || '';
+      const conversationId = getConversationId(conversation);
       const artifactsForConversation = artifactStore.getArtifactsForConversation(conversationId);
       
       console.log('🎨 [useChatStore] Artifacts for conversation', conversationId, ':', artifactsForConversation.length);
@@ -152,8 +160,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     set({ currentConversation: conversation });
     // Also add it to the conversations list if it's not there
     set(state => {
-      const exists = state.conversations.some(c => c._id?.toString() === conversation._id?.toString());
-      if (!exists) {
+      const newConversationId = getConversationId(conversation);
+      const exists = state.conversations.some(c => getConversationId(c) === newConversationId);
+      if (!exists && newConversationId) {
         console.log('➕ [useChatStore] Adding new conversation to list');
         return { conversations: [conversation, ...state.conversations] };
       }
@@ -188,9 +197,15 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       console.log('🎨 [useChatStore] Cleared artifacts for deleted conversation:', id);
       
       set(state => ({
-        conversations: state.conversations.filter(c => c._id?.toString() !== id),
-        currentConversation: state.currentConversation?._id?.toString() === id ? null : state.currentConversation,
-        messages: state.currentConversation?._id?.toString() === id ? [] : state.messages,
+        conversations: state.conversations.filter(c => getConversationId(c) !== id),
+        currentConversation: 
+          state.currentConversation && getConversationId(state.currentConversation) === id 
+            ? null 
+            : state.currentConversation,
+        messages: 
+          state.currentConversation && getConversationId(state.currentConversation) === id 
+            ? [] 
+            : state.messages,
       }));
       
       // Clean up typed messages for deleted conversation
