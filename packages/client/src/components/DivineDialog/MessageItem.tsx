@@ -6,6 +6,8 @@ import { TypewriterText } from './TypewriterText';
 import { CodeBlock } from '../ui/codeblock';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { prepareMarkdownContent, truncateForSafety } from '@/utils/contentSanitizer';
 import { useArtifactStore } from '@/stores/useArtifactStore';
 import { useChatStore } from '@/stores/useChatStore';
 import { useTypedMessagesStore } from '@/stores/useTypedMessagesStore';
@@ -30,6 +32,19 @@ function getConversationId(conversation: any): string {
   if (!conversation?._id) return '';
   return String(conversation._id);
 }
+
+// Fallback component for message rendering errors
+const MessageErrorFallback = ({ content }: { content: string }) => (
+  <div className="p-4 border border-yellow-500 rounded-md bg-yellow-50 dark:bg-yellow-900/20">
+    <p className="text-sm font-medium text-yellow-800 dark:text-yellow-200 mb-2">
+      Failed to render message
+    </p>
+    <pre className="text-xs text-yellow-700 dark:text-yellow-300 whitespace-pre-wrap font-mono overflow-x-auto">
+      {content.substring(0, 500)}
+      {content.length > 500 && '...'}
+    </pre>
+  </div>
+);
 
 export function MessageItem({ message, isLatest = false, isStreaming = false }: MessageItemProps) {
   const isUser = message.role === 'user';
@@ -104,6 +119,9 @@ export function MessageItem({ message, isLatest = false, isStreaming = false }: 
   };
 
   const displayContent = getDisplayContent();
+  
+  // Sanitize content for safe rendering
+  const safeDisplayContent = prepareMarkdownContent(truncateForSafety(displayContent));
 
   const getArtifactIcon = (type: string) => {
     switch (type) {
@@ -205,12 +223,12 @@ export function MessageItem({ message, isLatest = false, isStreaming = false }: 
           
           {/* Content */}
           {isUser ? (
-            <p className="text-sm text-white/90">{message.content}</p>
+            <p className="text-sm text-white/90">{safeDisplayContent}</p>
           ) : (
-            <>
+            <ErrorBoundary fallback={<MessageErrorFallback content={safeDisplayContent} />}>
               {shouldShowTypewriter ? (
                 <TypewriterText
-                  content={displayContent}
+                  content={safeDisplayContent}
                   speed={15}
                   onStart={handleTypewriterStart}
                   onComplete={handleTypewriterComplete}
@@ -219,7 +237,7 @@ export function MessageItem({ message, isLatest = false, isStreaming = false }: 
                 <ReactMarkdown
                   className="prose prose-invert prose-sm max-w-none prose-p:leading-relaxed"
                   components={{
-                    pre: ({ node: _node, children }) => {
+                    pre: ({ children }) => {
                       // Extract the code content and language from the children
                       if (children && typeof children === 'object' && 'props' in children) {
                         const { className, children: codeChildren } = (children as any).props;
@@ -235,7 +253,7 @@ export function MessageItem({ message, isLatest = false, isStreaming = false }: 
                         </CodeBlock>
                       );
                     },
-                    code: ({ node: _node, children, className, ...props }) => {
+                    code: ({ children, className, ...props }) => {
                       const match = /language-(\w+)/.exec(className || '');
                       const isInline = !match;
                       
@@ -250,10 +268,10 @@ export function MessageItem({ message, isLatest = false, isStreaming = false }: 
                     },
                   }}
                 >
-                  {displayContent}
+                  {safeDisplayContent}
                 </ReactMarkdown>
               )}
-            </>
+            </ErrorBoundary>
           )}
           
           {/* Artifact - Only show after typing is complete or if no typewriter */}
