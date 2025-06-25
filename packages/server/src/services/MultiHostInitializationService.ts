@@ -258,11 +258,13 @@ export class MultiHostInitializationService {
       };
       
     } catch (error) {
+      // Fix: Properly handle unknown error type
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       return {
         overall: {
           healthy: false,
           score: 0,
-          error: error.message
+          error: errorMessage
         },
         timestamp: new Date()
       };
@@ -299,8 +301,10 @@ export class MultiHostInitializationService {
       console.log(`✅ [MultiHostInit] ${serviceName} service restarted successfully`);
       
     } catch (error) {
-      console.error(`❌ [MultiHostInit] Failed to restart ${serviceName} service:`, error);
-      throw error;
+      // Fix: Properly handle unknown error type
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error during service restart';
+      console.error(`❌ [MultiHostInit] Failed to restart ${serviceName} service:`, errorMessage);
+      throw new Error(errorMessage);
     }
   }
 
@@ -313,17 +317,23 @@ export class MultiHostInitializationService {
     try {
       // Cleanup in reverse order
       await Promise.all([
-        this.services.monitoring.cleanup().catch(err => 
-          console.error('❌ [MultiHostInit] Monitoring cleanup error:', err)),
-        this.services.coordination.cleanup().catch(err => 
-          console.error('❌ [MultiHostInit] Coordination cleanup error:', err))
+        this.services.monitoring.cleanup().catch((err: unknown) => {
+          const errorMessage = err instanceof Error ? err.message : 'Unknown monitoring cleanup error';
+          console.error('❌ [MultiHostInit] Monitoring cleanup error:', errorMessage);
+        }),
+        this.services.coordination.cleanup().catch((err: unknown) => {
+          const errorMessage = err instanceof Error ? err.message : 'Unknown coordination cleanup error';
+          console.error('❌ [MultiHostInit] Coordination cleanup error:', errorMessage);
+        })
       ]);
       
       this.initialized = false;
       console.log('✅ [MultiHostInit] Cleanup completed');
       
     } catch (error) {
-      console.error('❌ [MultiHostInit] Cleanup failed:', error);
+      // Fix: Properly handle unknown error type
+      const errorMessage = error instanceof Error ? error.message : 'Unknown cleanup error';
+      console.error('❌ [MultiHostInit] Cleanup failed:', errorMessage);
     }
   }
 
