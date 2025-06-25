@@ -11,6 +11,13 @@ import {
   Conversation,
   Message,
   ModelCapability,
+  // NEW: Artifact types
+  ArtifactDocument,
+  CreateArtifactRequest,
+  UpdateArtifactRequest,
+  ArtifactOperationResponse,
+  ArtifactHealthCheck,
+  ArtifactMigrationData,
 } from '@olympian/shared';
 
 interface ProgressiveUpdate {
@@ -27,9 +34,9 @@ interface ProgressiveUpdate {
   error?: string;
 }
 
-// Streaming event types for basic models
+// Streaming event types for basic models - ENHANCED with artifact events
 interface StreamingEvent {
-  type: 'connected' | 'conversation' | 'thinking' | 'streaming_start' | 'token' | 'streaming_end' | 'complete' | 'error';
+  type: 'connected' | 'conversation' | 'thinking' | 'streaming_start' | 'token' | 'streaming_end' | 'complete' | 'error' | 'artifact_created';
   conversation?: Conversation;
   conversationId?: string;
   isThinking?: boolean;
@@ -38,6 +45,40 @@ interface StreamingEvent {
   message?: string;
   metadata?: any;
   error?: string;
+  // NEW: Artifact-related fields
+  artifactId?: string;
+  artifactType?: string;
+}
+
+// NEW: Bulk artifact operation types
+interface BulkArtifactOperation {
+  type: 'create' | 'update' | 'delete';
+  artifact?: CreateArtifactRequest | UpdateArtifactRequest;
+  artifactId?: string;
+}
+
+interface BulkArtifactRequest {
+  conversationId: string;
+  operations: BulkArtifactOperation[];
+}
+
+interface BulkArtifactResponse {
+  success: boolean;
+  data: {
+    conversationId: string;
+    results: Array<{
+      operation: string;
+      artifactId?: string;
+      success: boolean;
+      error?: string;
+      artifact?: ArtifactDocument;
+    }>;
+    summary: {
+      total: number;
+      successful: number;
+      failed: number;
+    };
+  };
 }
 
 class ApiService {
@@ -71,70 +112,211 @@ class ApiService {
     return !capabilities.vision && !capabilities.tools && !capabilities.reasoning;
   }
 
-  // Connections API
-  async getConnections(): Promise<Connection[]> {
-    const { data } = await this.client.get<ApiResponse<Connection[]>>('/connections');
-    return data.data || [];
+  // =====================================
+  // NEW: ARTIFACT API METHODS
+  // =====================================
+
+  /**
+   * Get all artifacts for a conversation with server-first loading
+   */
+  async getArtifactsForConversation(conversationId: string): Promise<ArtifactDocument[]> {
+    console.log(`🎨 [API] Getting artifacts for conversation: ${conversationId}`);
+    try {
+      const { data } = await this.client.get<ApiResponse<ArtifactDocument[]> & { total: number }>(
+        `/artifacts/conversations/${conversationId}`
+      );
+      console.log(`✅ [API] Retrieved ${data.data?.length || 0} artifacts from server`);
+      return data.data || [];
+    } catch (error) {
+      console.error(`❌ [API] Failed to get artifacts for conversation:`, error);
+      throw error;
+    }
   }
 
-  async createConnection(connection: Omit<Connection, '_id' | 'createdAt' | 'updatedAt' | 'isManual'>): Promise<Connection> {
-    const { data } = await this.client.post<ApiResponse<Connection>>('/connections', connection);
-    return data.data!;
+  /**
+   * Get single artifact by ID
+   */
+  async getArtifactById(artifactId: string): Promise<ArtifactDocument | null> {
+    console.log(`🎨 [API] Getting artifact: ${artifactId}`);
+    try {
+      const { data } = await this.client.get<ApiResponse<ArtifactDocument>>(
+        `/artifacts/${artifactId}`
+      );
+      console.log(`✅ [API] Retrieved artifact: ${artifactId}`);
+      return data.data || null;
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response?.status === 404) {
+        console.log(`📭 [API] Artifact not found: ${artifactId}`);
+        return null;
+      }
+      console.error(`❌ [API] Failed to get artifact:`, error);
+      throw error;
+    }
   }
 
-  async updateConnection(id: string, updates: Partial<Connection>): Promise<Connection> {
-    const { data } = await this.client.put<ApiResponse<Connection>>(`/connections/${id}`, updates);
-    return data.data!;
+  /**
+   * Create new artifact
+   */
+  async createArtifact(request: CreateArtifactRequest): Promise<ArtifactOperationResponse> {
+    console.log(`🎨 [API] Creating artifact:`, { 
+      conversationId: request.conversationId,
+      type: request.type,
+      title: request.title 
+    });
+    try {
+      const { data } = await this.client.post<ArtifactOperationResponse>('/artifacts', request);
+      console.log(`✅ [API] Created artifact: ${data.artifact?.id}`);
+      return data;
+    } catch (error) {
+      console.error(`❌ [API] Failed to create artifact:`, error);
+      throw error;
+    }
   }
 
-  async deleteConnection(id: string): Promise<void> {
-    await this.client.delete(`/connections/${id}`);
+  /**
+   * Update existing artifact
+   */
+  async updateArtifact(request: UpdateArtifactRequest): Promise<ArtifactOperationResponse> {
+    console.log(`🎨 [API] Updating artifact: ${request.artifactId}`);
+    try {
+      const { data } = await this.client.put<ArtifactOperationResponse>(
+        `/artifacts/${request.artifactId}`,
+        request
+      );
+      console.log(`✅ [API] Updated artifact: ${request.artifactId} (v${data.version})`);
+      return data;
+    } catch (error) {
+      console.error(`❌ [API] Failed to update artifact:`, error);
+      throw error;
+    }
   }
 
-  async testConnection(id: string): Promise<ConnectionTestResult> {
-    const { data } = await this.client.post<ApiResponse<ConnectionTestResult>>(`/connections/${id}/test`);
-    return data.data!;
+  /**
+   * Delete artifact
+   */
+  async deleteArtifact(artifactId: string): Promise<void> {
+    console.log(`🎨 [API] Deleting artifact: ${artifactId}`);
+    try {
+      await this.client.delete(`/artifacts/${artifactId}`);
+      console.log(`✅ [API] Deleted artifact: ${artifactId}`);
+    } catch (error) {
+      console.error(`❌ [API] Failed to delete artifact:`, error);
+      throw error;
+    }
   }
 
-  async scanConnections(types?: string[]): Promise<ScanResult[]> {
-    const { data } = await this.client.post<ApiResponse<ScanResult[]>>('/connections/scan', { types });
-    return data.data || [];
+  /**
+   * Perform bulk artifact operations
+   */
+  async bulkArtifactOperations(request: BulkArtifactRequest): Promise<BulkArtifactResponse> {
+    console.log(`📦 [API] Performing bulk artifact operations:`, {
+      conversationId: request.conversationId,
+      operationCount: request.operations.length
+    });
+    try {
+      const { data } = await this.client.post<BulkArtifactResponse>('/artifacts/bulk', request);
+      console.log(`✅ [API] Bulk operations completed: ${data.data.summary.successful}/${data.data.summary.total} successful`);
+      return data;
+    } catch (error) {
+      console.error(`❌ [API] Failed bulk artifact operations:`, error);
+      throw error;
+    }
   }
 
-  // MCP API
-  async getMCPServers(): Promise<MCPServer[]> {
-    const { data } = await this.client.get<ApiResponse<MCPServer[]>>('/mcp/servers');
-    return data.data || [];
+  /**
+   * Migrate artifacts from message metadata
+   */
+  async migrateArtifactsForConversation(conversationId: string): Promise<ArtifactMigrationData> {
+    console.log(`🔄 [API] Migrating artifacts for conversation: ${conversationId}`);
+    try {
+      const { data } = await this.client.post<ApiResponse<ArtifactMigrationData>>(
+        `/artifacts/conversations/${conversationId}/migrate`
+      );
+      console.log(`✅ [API] Migration completed: ${data.data!.migratedCount} migrated, ${data.data!.failedCount} failed`);
+      return data.data!;
+    } catch (error) {
+      console.error(`❌ [API] Failed to migrate artifacts:`, error);
+      throw error;
+    }
   }
 
-  async addMCPServer(server: Omit<MCPServer, 'id' | 'status'>): Promise<MCPServer> {
-    const { data } = await this.client.post<ApiResponse<MCPServer>>('/mcp/servers', server);
-    return data.data!;
+  /**
+   * Get artifacts health check
+   */
+  async getArtifactsHealth(conversationId?: string): Promise<ArtifactHealthCheck> {
+    const endpoint = conversationId 
+      ? `/artifacts/conversations/${conversationId}/health`
+      : '/artifacts/health';
+    
+    console.log(`🏥 [API] Getting artifacts health check: ${endpoint}`);
+    try {
+      const { data } = await this.client.get<ApiResponse<ArtifactHealthCheck>>(endpoint);
+      console.log(`✅ [API] Health check completed:`, {
+        totalArtifacts: data.data!.totalArtifacts,
+        syncedArtifacts: data.data!.syncedArtifacts,
+        issueCount: data.data!.issues.length
+      });
+      return data.data!;
+    } catch (error) {
+      console.error(`❌ [API] Failed to get artifacts health:`, error);
+      throw error;
+    }
   }
 
-  async removeMCPServer(id: string): Promise<void> {
-    await this.client.delete(`/mcp/servers/${id}`);
+  /**
+   * Force sync for specific artifact
+   */
+  async syncArtifact(artifactId: string): Promise<ArtifactDocument> {
+    console.log(`🔄 [API] Syncing artifact: ${artifactId}`);
+    try {
+      const { data } = await this.client.post<ApiResponse<ArtifactDocument>>(
+        `/artifacts/${artifactId}/sync`
+      );
+      console.log(`✅ [API] Artifact synced: ${artifactId}`);
+      return data.data!;
+    } catch (error) {
+      console.error(`❌ [API] Failed to sync artifact:`, error);
+      throw error;
+    }
   }
 
-  async startMCPServer(id: string): Promise<void> {
-    await this.client.post(`/mcp/servers/${id}/start`);
+  /**
+   * Get artifacts with sync conflicts
+   */
+  async getArtifactConflicts(page = 1, limit = 20): Promise<{ artifacts: ArtifactDocument[]; total: number }> {
+    console.log(`⚠️ [API] Getting artifact conflicts: page ${page}, limit ${limit}`);
+    try {
+      const { data } = await this.client.get<ApiResponse<ArtifactDocument[]> & { total: number }>(
+        `/artifacts/conflicts?page=${page}&limit=${limit}`
+      );
+      console.log(`✅ [API] Retrieved ${data.data?.length || 0} artifacts with conflicts`);
+      return { artifacts: data.data || [], total: data.total || 0 };
+    } catch (error) {
+      console.error(`❌ [API] Failed to get artifact conflicts:`, error);
+      throw error;
+    }
   }
 
-  async stopMCPServer(id: string): Promise<void> {
-    await this.client.post(`/mcp/servers/${id}/stop`);
+  /**
+   * Get debug statistics (development only)
+   */
+  async getArtifactDebugStats(): Promise<any> {
+    console.log(`🔧 [API] Getting artifact debug statistics`);
+    try {
+      const { data } = await this.client.get<ApiResponse<any>>('/artifacts/debug/stats');
+      console.log(`✅ [API] Retrieved debug statistics`);
+      return data.data;
+    } catch (error) {
+      console.error(`❌ [API] Failed to get debug statistics:`, error);
+      throw error;
+    }
   }
 
-  async getMCPTools(serverId: string): Promise<MCPTool[]> {
-    const { data } = await this.client.get<ApiResponse<MCPTool[]>>(`/mcp/servers/${serverId}/tools`);
-    return data.data || [];
-  }
+  // =====================================
+  // ENHANCED STREAMING WITH ARTIFACTS
+  // =====================================
 
-  async invokeMCPTool(request: MCPInvokeRequest): Promise<MCPInvokeResponse> {
-    const { data } = await this.client.post<ApiResponse<MCPInvokeResponse>>('/mcp/invoke', request);
-    return data.data!;
-  }
-
-  // NEW: Streaming API for basic models
+  // NEW: Streaming API for basic models with artifact support
   async sendMessageStreaming(
     params: {
       message: string;
@@ -200,13 +382,18 @@ class ApiService {
         }
 
         const chunk = decoder.decode(value);
-        const lines = chunk.split('\n');
+        const lines = chunk.split('\\n');
 
         for (const line of lines) {
           if (line.startsWith('data: ')) {
             try {
               const eventData = JSON.parse(line.slice(6));
               onEvent(eventData);
+              
+              // NEW: Handle artifact creation events
+              if (eventData.type === 'artifact_created') {
+                console.log(`🎨 [API] Artifact created during streaming: ${eventData.artifactId} (${eventData.artifactType})`);
+              }
             } catch (error) {
               console.warn('Failed to parse streaming event:', error);
             }
@@ -218,7 +405,11 @@ class ApiService {
     }
   }
 
-  // Chat API
+  // =====================================
+  // ENHANCED CHAT API WITH ARTIFACTS
+  // =====================================
+
+  // Chat API - ENHANCED with artifact support
   async sendMessage(params: {
     message: string;
     model: string;
@@ -230,6 +421,7 @@ class ApiService {
     conversationId: string;
     message: string;
     metadata: any;
+    artifact?: { id: string; type: string }; // NEW: Artifact info
   }> {
     // Match nginx timeout configuration: 300s for vision processing
     const hasImages = params.images && params.images.length > 0;
@@ -242,6 +434,7 @@ class ApiService {
       conversationId: string;
       message: string;
       metadata: any;
+      artifact?: { id: string; type: string };
     }>>('/chat/send', params, {
       timeout,
       // Add progress monitoring for long requests
@@ -250,6 +443,79 @@ class ApiService {
         console.log(`📤 Upload progress: ${percentCompleted}%`);
       } : undefined,
     });
+
+    // NEW: Log artifact creation if present
+    if (data.data!.artifact) {
+      console.log(`🎨 [API] Artifact created: ${data.data!.artifact.id} (${data.data!.artifact.type})`);
+    }
+
+    return data.data!;
+  }
+
+  // =====================================
+  // EXISTING API METHODS (unchanged but extended)
+  // =====================================
+
+  // Connections API
+  async getConnections(): Promise<Connection[]> {
+    const { data } = await this.client.get<ApiResponse<Connection[]>>('/connections');
+    return data.data || [];
+  }
+
+  async createConnection(connection: Omit<Connection, '_id' | 'createdAt' | 'updatedAt' | 'isManual'>): Promise<Connection> {
+    const { data } = await this.client.post<ApiResponse<Connection>>('/connections', connection);
+    return data.data!;
+  }
+
+  async updateConnection(id: string, updates: Partial<Connection>): Promise<Connection> {
+    const { data } = await this.client.put<ApiResponse<Connection>>(`/connections/${id}`, updates);
+    return data.data!;
+  }
+
+  async deleteConnection(id: string): Promise<void> {
+    await this.client.delete(`/connections/${id}`);
+  }
+
+  async testConnection(id: string): Promise<ConnectionTestResult> {
+    const { data } = await this.client.post<ApiResponse<ConnectionTestResult>>(`/connections/${id}/test`);
+    return data.data!;
+  }
+
+  async scanConnections(types?: string[]): Promise<ScanResult[]> {
+    const { data } = await this.client.post<ApiResponse<ScanResult[]>>('/connections/scan', { types });
+    return data.data || [];
+  }
+
+  // MCP API
+  async getMCPServers(): Promise<MCPServer[]> {
+    const { data } = await this.client.get<ApiResponse<MCPServer[]>>('/mcp/servers');
+    return data.data || [];
+  }
+
+  async addMCPServer(server: Omit<MCPServer, 'id' | 'status'>): Promise<MCPServer> {
+    const { data } = await this.client.post<ApiResponse<MCPServer>>('/mcp/servers', server);
+    return data.data!;
+  }
+
+  async removeMCPServer(id: string): Promise<void> {
+    await this.client.delete(`/mcp/servers/${id}`);
+  }
+
+  async startMCPServer(id: string): Promise<void> {
+    await this.client.post(`/mcp/servers/${id}/start`);
+  }
+
+  async stopMCPServer(id: string): Promise<void> {
+    await this.client.post(`/mcp/servers/${id}/stop`);
+  }
+
+  async getMCPTools(serverId: string): Promise<MCPTool[]> {
+    const { data } = await this.client.get<ApiResponse<MCPTool[]>>(`/mcp/servers/${serverId}/tools`);
+    return data.data || [];
+  }
+
+  async invokeMCPTool(request: MCPInvokeRequest): Promise<MCPInvokeResponse> {
+    const { data } = await this.client.post<ApiResponse<MCPInvokeResponse>>('/mcp/invoke', request);
     return data.data!;
   }
 
@@ -583,4 +849,4 @@ class ApiService {
 }
 
 export const api = new ApiService();
-export type { StreamingEvent };
+export type { StreamingEvent, BulkArtifactOperation, BulkArtifactRequest, BulkArtifactResponse };
