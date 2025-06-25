@@ -36,7 +36,8 @@ router.get('/services', async (_req, res) => {
 
   // Check MongoDB with enhanced error handling
   try {
-    const isHealthy = await db.isHealthy();
+    // Fix: Call isHealthy without parentheses if it's a getter, or with parentheses if it's a method
+    const isHealthy = await db.isHealthy;
     if (isHealthy) {
       services.mongodb = {
         status: 'healthy',
