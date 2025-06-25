@@ -7,22 +7,32 @@ import { OllamaStreamliner } from './OllamaStreamliner';
 import { ChatMemoryService } from './ChatMemoryService';
 
 export class WebSocketService {
-  private io: Server;
+  private static instance: WebSocketService;
+  private io: Server | null = null;
   private db: DatabaseService;
   private scanner: ConnectionScanner;
   private streamliner: OllamaStreamliner;
   private memoryService: ChatMemoryService;
   private activeChats: Map<string, AbortController> = new Map();
 
-  constructor(io: Server) {
-    this.io = io;
+  private constructor() {
     this.db = DatabaseService.getInstance();
     this.scanner = new ConnectionScanner();
     this.streamliner = new OllamaStreamliner();
     this.memoryService = ChatMemoryService.getInstance();
   }
 
-  initialize(): void {
+  // NEW: Add singleton pattern for multi-host deployment (Subproject 3)
+  public static getInstance(): WebSocketService {
+    if (!WebSocketService.instance) {
+      WebSocketService.instance = new WebSocketService();
+    }
+    return WebSocketService.instance;
+  }
+
+  public initialize(io: Server): void {
+    this.io = io;
+    
     this.io.on('connection', (socket: Socket) => {
       logger.info(`Client connected: ${socket.id}`);
 
@@ -64,7 +74,9 @@ export class WebSocketService {
 
     // Setup scanner event listeners
     this.scanner.on('progress', (progress: ScanProgress) => {
-      this.io.emit('scan:progress', progress);
+      if (this.io) {
+        this.io.emit('scan:progress', progress);
+      }
     });
   }
 
