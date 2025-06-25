@@ -75,7 +75,8 @@ export class ArtifactCoordinationService extends EventEmitter {
       this.emit('connected');
 
     } catch (error) {
-      console.error('❌ [ArtifactCoordination] Failed to initialize Redis:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown initialization error';
+      console.error('❌ [ArtifactCoordination] Failed to initialize Redis:', errorMessage);
       this.isConnected = false;
       throw error;
     }
@@ -137,7 +138,8 @@ export class ArtifactCoordinationService extends EventEmitter {
 
       console.log(`✅ [ArtifactCoordination] Cached artifact ${artifact.id} with checksum ${artifactData._checksum}`);
     } catch (error) {
-      console.error('❌ [ArtifactCoordination] Failed to cache artifact:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown caching error';
+      console.error('❌ [ArtifactCoordination] Failed to cache artifact:', errorMessage);
     }
   }
 
@@ -179,7 +181,8 @@ export class ArtifactCoordinationService extends EventEmitter {
       console.log(`✅ [ArtifactCoordination] Retrieved cached artifact ${artifactId}`);
       return artifact;
     } catch (error) {
-      console.error(`❌ [ArtifactCoordination] Failed to get cached artifact ${artifactId}:`, error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown retrieval error';
+      console.error(`❌ [ArtifactCoordination] Failed to get cached artifact ${artifactId}:`, errorMessage);
       return null;
     }
   }
@@ -204,7 +207,8 @@ export class ArtifactCoordinationService extends EventEmitter {
 
       console.log(`✅ [ArtifactCoordination] Invalidated cache for artifact ${artifactId}`);
     } catch (error) {
-      console.error(`❌ [ArtifactCoordination] Failed to invalidate cache for artifact ${artifactId}:`, error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown invalidation error';
+      console.error(`❌ [ArtifactCoordination] Failed to invalidate cache for artifact ${artifactId}:`, errorMessage);
     }
   }
 
@@ -230,7 +234,8 @@ export class ArtifactCoordinationService extends EventEmitter {
       console.log(`⏳ [ArtifactCoordination] Failed to acquire lock for artifact ${artifactId} (already locked)`);
       return false;
     } catch (error) {
-      console.error(`❌ [ArtifactCoordination] Failed to acquire lock for artifact ${artifactId}:`, error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown lock acquisition error';
+      console.error(`❌ [ArtifactCoordination] Failed to acquire lock for artifact ${artifactId}:`, errorMessage);
       return false;
     }
   }
@@ -252,7 +257,8 @@ export class ArtifactCoordinationService extends EventEmitter {
         console.log(`🔓 [ArtifactCoordination] Released lock for artifact ${artifactId}`);
       }
     } catch (error) {
-      console.error(`❌ [ArtifactCoordination] Failed to release lock for artifact ${artifactId}:`, error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown lock release error';
+      console.error(`❌ [ArtifactCoordination] Failed to release lock for artifact ${artifactId}:`, errorMessage);
     }
   }
 
@@ -288,7 +294,8 @@ export class ArtifactCoordinationService extends EventEmitter {
       console.log(`✅ [ArtifactCoordination] Retrieved ${artifacts.length} cached artifacts for conversation ${conversationId}`);
       return artifacts;
     } catch (error) {
-      console.error(`❌ [ArtifactCoordination] Failed to get cached artifacts for conversation ${conversationId}:`, error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown conversation artifacts retrieval error';
+      console.error(`❌ [ArtifactCoordination] Failed to get cached artifacts for conversation ${conversationId}:`, errorMessage);
       return [];
     }
   }
@@ -309,7 +316,8 @@ export class ArtifactCoordinationService extends EventEmitter {
 
       await this.publishClient.publish(this.EVENT_CHANNEL, JSON.stringify(event));
     } catch (error) {
-      console.error('❌ [ArtifactCoordination] Failed to publish event:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown publish error';
+      console.error('❌ [ArtifactCoordination] Failed to publish event:', errorMessage);
     }
   }
 
@@ -344,7 +352,8 @@ export class ArtifactCoordinationService extends EventEmitter {
           break;
       }
     } catch (error) {
-      console.error('❌ [ArtifactCoordination] Failed to handle artifact event:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown event handling error';
+      console.error('❌ [ArtifactCoordination] Failed to handle artifact event:', errorMessage);
     }
   }
 
@@ -380,7 +389,8 @@ export class ArtifactCoordinationService extends EventEmitter {
 
       return instances;
     } catch (error) {
-      console.error('❌ [ArtifactCoordination] Failed to get active instances:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown instances retrieval error';
+      console.error('❌ [ArtifactCoordination] Failed to get active instances:', errorMessage);
       return [];
     }
   }
@@ -409,7 +419,9 @@ export class ArtifactCoordinationService extends EventEmitter {
       this.isConnected = false;
       console.log('✅ [ArtifactCoordination] Cleanup completed');
     } catch (error) {
-      console.error('❌ [ArtifactCoordination] Cleanup error:', error);
+      // Fix: Handle unknown error type properly
+      const errorMessage = error instanceof Error ? error.message : 'Unknown cleanup error';
+      console.error('❌ [ArtifactCoordination] Cleanup error:', errorMessage);
     }
   }
 
@@ -422,7 +434,7 @@ export class ArtifactCoordinationService extends EventEmitter {
       instanceId: this.serverInstanceId,
       activeInstances: 0,
       cacheKeys: 0,
-      errors: []
+      errors: [] as string[]
     };
 
     try {
@@ -439,7 +451,8 @@ export class ArtifactCoordinationService extends EventEmitter {
         details.cacheKeys = cacheKeys.length;
       }
     } catch (error) {
-      details.errors.push(`Redis error: ${error.message}`);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown health check error';
+      details.errors.push(`Redis error: ${errorMessage}`);
     }
 
     return {
