@@ -1,4 +1,5 @@
 import { 
+  Artifact,
   ArtifactDocument, 
   CreateArtifactRequest, 
   UpdateArtifactRequest, 
@@ -132,13 +133,13 @@ export class ArtifactService {
             codeBlocksRemoved: request.metadata?.codeBlocksRemoved || false,
           };
 
-          // Fix: Properly handle ObjectId conversion
-          const messageObjectId = ObjectId.isValid(request.messageId) 
-            ? new ObjectId(request.messageId) 
-            : request.messageId;
+          // Fix: Convert messageId to ObjectId string for query
+          const messageQuery = ObjectId.isValid(request.messageId) 
+            ? { _id: new ObjectId(request.messageId) } 
+            : { id: request.messageId };
 
           await this.db.messages.updateOne(
-            { _id: messageObjectId },
+            messageQuery,
             { 
               $set: { 
                 'metadata.artifactId': artifactId,
@@ -306,7 +307,7 @@ export class ArtifactService {
   /**
    * Get all artifacts for a conversation with decompression
    */
-  public async getArtifactsForConversation(conversationId: string): Promise<ArtifactDocument[]> {
+  public async getArtifactsForConversation(conversationId: string): Promise<Artifact[]> {
     try {
       console.log(`📋 [ArtifactService] Fetching artifacts for conversation: ${conversationId}`);
       
@@ -324,7 +325,7 @@ export class ArtifactService {
           console.warn(`⚠️ [ArtifactService] Failed to update access time for ${artifact.id}:`, error);
         });
         
-        return decompressed;
+        return this.convertDocumentToArtifact(decompressed);
       });
 
       console.log(`✅ [ArtifactService] Retrieved ${decompressedArtifacts.length} artifacts`);
@@ -339,7 +340,7 @@ export class ArtifactService {
   /**
    * Get single artifact by ID with decompression
    */
-  public async getArtifactById(artifactId: string): Promise<ArtifactDocument | null> {
+  public async getArtifactById(artifactId: string): Promise<Artifact | null> {
     try {
       console.log(`🔍 [ArtifactService] Fetching artifact: ${artifactId}`);
       
@@ -357,7 +358,7 @@ export class ArtifactService {
         console.warn(`⚠️ [ArtifactService] Failed to update access time for ${artifactId}:`, error);
       });
 
-      return decompressed;
+      return this.convertDocumentToArtifact(decompressed);
 
     } catch (error) {
       console.error(`❌ [ArtifactService] Failed to fetch artifact:`, error);
@@ -395,13 +396,13 @@ export class ArtifactService {
 
         // Clean up message metadata if messageId exists
         if (artifact.messageId) {
-          // Fix: Properly handle ObjectId conversion
-          const messageObjectId = ObjectId.isValid(artifact.messageId) 
-            ? new ObjectId(artifact.messageId) 
-            : artifact.messageId;
+          // Fix: Convert messageId to ObjectId string for query
+          const messageQuery = ObjectId.isValid(artifact.messageId) 
+            ? { _id: new ObjectId(artifact.messageId) } 
+            : { id: artifact.messageId };
 
           await this.db.messages.updateOne(
-            { _id: messageObjectId },
+            messageQuery,
             { 
               $unset: { 
                 'metadata.artifactId': '',
@@ -722,12 +723,20 @@ export class ArtifactService {
   /**
    * Convert ArtifactDocument to Artifact interface
    */
-  private convertDocumentToArtifact(doc: ArtifactDocument): ArtifactDocument {
+  private convertDocumentToArtifact(doc: ArtifactDocument): Artifact {
     return {
-      ...doc,
+      id: doc.id,
+      title: doc.title,
+      type: doc.type,
+      content: doc.content,
+      language: doc.language,
+      version: doc.version,
+      conversationId: doc.conversationId,
+      messageId: doc.messageId,
       // Fix: Ensure proper Date conversion from string or Date objects
       createdAt: typeof doc.createdAt === 'string' ? new Date(doc.createdAt) : doc.createdAt,
-      updatedAt: typeof doc.updatedAt === 'string' ? new Date(doc.updatedAt) : doc.updatedAt
+      updatedAt: typeof doc.updatedAt === 'string' ? new Date(doc.updatedAt) : doc.updatedAt,
+      metadata: doc.metadata
     };
   }
 
