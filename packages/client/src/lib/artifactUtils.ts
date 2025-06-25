@@ -37,7 +37,7 @@ export async function processMessagesForArtifacts(
     timestamp: new Date().toISOString()
   });
   
-  const { recreateArtifact, clearArtifactsForConversation, getArtifactById } = useArtifactStore.getState();
+  const { clearArtifactsForConversation, getArtifactById } = useArtifactStore.getState();
   
   // Clear existing artifacts for this conversation to avoid duplication
   clearArtifactsForConversation(conversationId);
@@ -370,7 +370,7 @@ function verifyArtifactIntegrity(artifact: Artifact, message: Message): { valid:
         break;
         
       case 'csv':
-        const lines = artifact.content.split('\n').filter(l => l.trim());
+        const lines = artifact.content.split('\\n').filter(l => l.trim());
         if (lines.length < 2 || !lines[0].includes(',')) {
           return { valid: false, reason: 'Invalid CSV structure', score: 0.4 };
         }
@@ -573,7 +573,8 @@ export function createArtifactFromDetection(
     
     const { createArtifact } = useArtifactStore.getState();
     
-    const artifact = createArtifact({
+    // Use createArtifact which returns a Promise, but handle it properly
+    const artifactDataToCreate = {
       title: artifactDetection.title || 'Generated Artifact',
       type: artifactDetection.type!,
       content: artifactDetection.content,
@@ -581,22 +582,28 @@ export function createArtifactFromDetection(
       conversationId: conversationId,
       messageId: messageId,
       version: 1,
+    };
+    
+    // Call createArtifact and handle the async result
+    createArtifact(artifactDataToCreate).then((artifact) => {
+      // Verify created artifact
+      const dummyMessage = { metadata: { artifactId: artifact.id, artifactType: artifact.type } } as Message;
+      const verification = verifyArtifactIntegrity(artifact, dummyMessage);
+      
+      console.log('✅ [artifactUtils] Enhanced artifact created:', {
+        id: artifact.id,
+        confidence: verification.score,
+        verified: verification.valid
+      });
+    }).catch((error) => {
+      console.error('❌ [artifactUtils] Enhanced artifact creation failed:', error);
     });
     
-    // Verify created artifact
-    const dummyMessage = { metadata: { artifactId: artifact.id, artifactType: artifact.type } } as Message;
-    const verification = verifyArtifactIntegrity(artifact, dummyMessage);
-    
-    console.log('✅ [artifactUtils] Enhanced artifact created:', {
-      id: artifact.id,
-      confidence: verification.score,
-      verified: verification.valid
-    });
-    
+    // For now, return a basic response since we can't await the async createArtifact here
     return {
-      artifact,
+      artifact: null, // We can't return the actual artifact immediately due to async nature
       processedContent: artifactDetection.processedContent || content,
-      confidence: verification.score
+      confidence: 0.8 // Default confidence
     };
     
   } catch (error) {
