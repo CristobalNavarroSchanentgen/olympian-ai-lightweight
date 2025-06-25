@@ -309,10 +309,10 @@ router.post('/stream', async (req, res, next) => {
       let conversation: Conversation;
       
       if (conversationId) {
-        // Validate existing conversation
+        // Validate existing conversation using string ID
         const existingConv = await db.conversations.findOne({ 
-          _id: new ObjectId(conversationId) 
-        } as any);
+          _id: conversationId 
+        });
         if (!existingConv) {
           throw new AppError(404, 'Conversation not found');
         }
@@ -417,7 +417,7 @@ router.post('/stream', async (req, res, next) => {
       // Update assistant message with artifact metadata and processed content
       if (artifactResult.hasArtifact) {
         await db.messages.updateOne(
-          { _id: new ObjectId(assistantMessageId) },
+          { _id: assistantMessageId },
           {
             $set: {
               content: artifactResult.processedContent,
@@ -443,7 +443,7 @@ router.post('/stream', async (req, res, next) => {
 
       // Update conversation
       await db.conversations.updateOne(
-        { _id: new ObjectId(convId) } as any,
+        { _id: convId },
         {
           $set: { updatedAt: new Date() },
           $inc: { messageCount: 2 },
@@ -499,10 +499,10 @@ router.post('/send', async (req, res, next) => {
     let conversation: Conversation;
     
     if (conversationId) {
-      // Validate existing conversation
+      // Validate existing conversation using string ID
       const existingConv = await db.conversations.findOne({ 
-        _id: new ObjectId(conversationId) 
-      } as any);
+        _id: conversationId 
+      });
       if (!existingConv) {
         throw new AppError(404, 'Conversation not found');
       }
@@ -595,7 +595,7 @@ router.post('/send', async (req, res, next) => {
       };
 
       await db.messages.updateOne(
-        { _id: new ObjectId(assistantMessageId) },
+        { _id: assistantMessageId },
         {
           $set: {
             content: finalContent,
@@ -610,7 +610,7 @@ router.post('/send', async (req, res, next) => {
 
     // Update conversation
     await db.conversations.updateOne(
-      { _id: new ObjectId(convId) } as any,
+      { _id: convId },
       {
         $set: { updatedAt: new Date() },
         $inc: { messageCount: 2 },
@@ -676,8 +676,8 @@ router.get('/conversations', async (req, res, next) => {
 router.get('/conversations/:id', async (req, res, next) => {
   try {
     const conversation = await db.conversations.findOne({
-      _id: new ObjectId(req.params.id),
-    } as any);
+      _id: req.params.id,
+    });
 
     if (!conversation) {
       throw new AppError(404, 'Conversation not found');
@@ -702,12 +702,12 @@ router.get('/conversations/:id/messages', async (req, res, next) => {
 
     const [messages, total] = await Promise.all([
       db.messages
-        .find({ conversationId } as any)
+        .find({ conversationId })
         .sort({ createdAt: 1 })
         .skip(skip)
         .limit(Number(limit))
         .toArray(),
-      db.messages.countDocuments({ conversationId } as any),
+      db.messages.countDocuments({ conversationId }),
     ]);
 
     res.json({
@@ -731,8 +731,8 @@ router.get('/conversations/:id/memory-stats', async (req, res, next) => {
     
     // Verify conversation exists
     const conversation = await db.conversations.findOne({
-      _id: new ObjectId(conversationId),
-    } as any);
+      _id: conversationId,
+    });
     
     if (!conversation) {
       throw new AppError(404, 'Conversation not found');
@@ -809,12 +809,12 @@ router.delete('/conversations/:id', async (req, res, next) => {
     console.log(`✅ [ChatAPI] Deleted ${artifactsToDelete.length} artifacts`);
 
     // Delete all messages
-    await db.messages.deleteMany({ conversationId } as any);
+    await db.messages.deleteMany({ conversationId });
 
     // Delete the conversation
     const result = await db.conversations.deleteOne({ 
-      _id: new ObjectId(conversationId) 
-    } as any);
+      _id: conversationId 
+    });
 
     if (result.deletedCount === 0) {
       throw new AppError(404, 'Conversation not found');
