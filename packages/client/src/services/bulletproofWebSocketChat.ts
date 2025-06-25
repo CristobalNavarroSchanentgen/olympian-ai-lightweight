@@ -129,7 +129,7 @@ class BulletproofWebSocketChatService {
           resolve();
         });
 
-        this.socket.on('disconnect', (reason, details) => {
+        this.socket.on('disconnect', (reason) => {
           console.log('[BulletproofWebSocket] ❌ Disconnected:', reason);
           this.isConnecting = false;
           this.isHealthy = false;
@@ -211,7 +211,7 @@ class BulletproofWebSocketChatService {
     }
 
     // Create message with bulletproof ID and lifecycle management
-    const { messageId, lifecycle } = messageLifecycleManager.createMessage({
+    const { messageId } = messageLifecycleManager.createMessage({
       conversationId: params.conversationId || null,
       userContent: params.content,
       model: params.model,
