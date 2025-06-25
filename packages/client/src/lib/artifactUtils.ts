@@ -17,7 +17,7 @@ export async function processMessagesForArtifacts(
   console.log('🔧 [artifactUtils] Processing messages for artifact recreation:', messages.length, 'messages');
   
   // Get the artifact store instance
-  const { createArtifact, clearArtifactsForConversation, getArtifactById, recreateArtifact } = useArtifactStore.getState();
+  const { createArtifact, clearArtifactsForConversation, getArtifactById } = useArtifactStore.getState();
   
   // Clear existing artifacts for this conversation to avoid duplication
   clearArtifactsForConversation(conversationId);
@@ -49,6 +49,7 @@ export async function processMessagesForArtifacts(
                 language: artifactDetection.language,
                 conversationId: conversationId,
                 messageId: message._id,
+                version: 1,
               });
               
               console.log('✅ [artifactUtils] Artifact recreated:', recreatedArtifact.id);
@@ -121,6 +122,7 @@ export function createArtifactFromDetection(
       language: artifactDetection.language,
       conversationId: conversationId,
       messageId: messageId,
+      version: 1,
     });
     
     console.log('✅ [artifactUtils] Artifact created:', artifact.id);
