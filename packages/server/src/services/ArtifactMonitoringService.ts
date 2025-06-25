@@ -91,7 +91,8 @@ export class ArtifactMonitoringService extends EventEmitter {
       this.emit('initialized');
       
     } catch (error) {
-      console.error('❌ [ArtifactMonitoring] Failed to initialize monitoring service:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown initialization error';
+      console.error('❌ [ArtifactMonitoring] Failed to initialize monitoring service:', errorMessage);
       throw error;
     }
   }
@@ -161,7 +162,8 @@ export class ArtifactMonitoringService extends EventEmitter {
       return result;
 
     } catch (error) {
-      console.error('❌ [ArtifactMonitoring] Health check failed:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown health check error';
+      console.error('❌ [ArtifactMonitoring] Health check failed:', errorMessage);
       
       const errorResult: HealthCheckResult = {
         healthy: false,
@@ -170,7 +172,7 @@ export class ArtifactMonitoringService extends EventEmitter {
           type: 'corrupted_content',
           artifactId: 'health-check',
           severity: 'critical',
-          details: { error: error.message },
+          details: { error: errorMessage },
           detectedAt: new Date()
         }],
         metrics: {
@@ -222,12 +224,13 @@ export class ArtifactMonitoringService extends EventEmitter {
       return issues;
 
     } catch (error) {
-      console.error('❌ [ArtifactMonitoring] Consistency check failed:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown consistency check error';
+      console.error('❌ [ArtifactMonitoring] Consistency check failed:', errorMessage);
       return [{
         type: 'corrupted_content',
         artifactId: 'consistency-check',
         severity: 'critical',
-        details: { error: error.message },
+        details: { error: errorMessage },
         detectedAt: new Date()
       }];
     }
@@ -267,12 +270,13 @@ export class ArtifactMonitoringService extends EventEmitter {
             });
           }
         } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : 'Unknown compression validation error';
           issues.push({
             type: 'corrupted_content',
             artifactId: artifact.id,
             conversationId: artifact.conversationId,
             severity: 'high',
-            details: { reason: 'Corrupted compression data', error: error.message },
+            details: { reason: 'Corrupted compression data', error: errorMessage },
             detectedAt: new Date()
           });
         }
@@ -291,12 +295,13 @@ export class ArtifactMonitoringService extends EventEmitter {
       }
 
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown validation error';
       issues.push({
         type: 'corrupted_content',
         artifactId: artifact.id,
         conversationId: artifact.conversationId,
         severity: 'critical',
-        details: { reason: 'Validation error', error: error.message },
+        details: { reason: 'Validation error', error: errorMessage },
         detectedAt: new Date()
       });
     }
@@ -351,12 +356,13 @@ export class ArtifactMonitoringService extends EventEmitter {
       }
 
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown cache validation error';
       issues.push({
         type: 'cache_inconsistency',
         artifactId: artifact.id,
         conversationId: artifact.conversationId,
         severity: 'low',
-        details: { reason: 'Cache validation error', error: error.message },
+        details: { reason: 'Cache validation error', error: errorMessage },
         detectedAt: new Date()
       });
     }
@@ -431,7 +437,8 @@ export class ArtifactMonitoringService extends EventEmitter {
         issue.resolvedAt = new Date();
         console.log(`✅ [ArtifactMonitoring] Recovered from issue: ${issue.type} for artifact ${issue.artifactId}`);
       } catch (error) {
-        console.error(`❌ [ArtifactMonitoring] Failed to recover from issue ${issue.type} for artifact ${issue.artifactId}:`, error);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown recovery error';
+        console.error(`❌ [ArtifactMonitoring] Failed to recover from issue ${issue.type} for artifact ${issue.artifactId}:`, errorMessage);
       }
     }
 
@@ -532,10 +539,11 @@ export class ArtifactMonitoringService extends EventEmitter {
         totalArtifacts
       };
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown database error';
       return {
         connected: false,
         totalArtifacts: 0,
-        error: error.message
+        error: errorMessage
       };
     }
   }
@@ -600,7 +608,8 @@ export class ArtifactMonitoringService extends EventEmitter {
       try {
         await this.performHealthCheck();
       } catch (error) {
-        console.error('❌ [ArtifactMonitoring] Scheduled health check failed:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown scheduled health check error';
+        console.error('❌ [ArtifactMonitoring] Scheduled health check failed:', errorMessage);
       }
     }, this.HEALTH_CHECK_INTERVAL);
   }
@@ -613,7 +622,8 @@ export class ArtifactMonitoringService extends EventEmitter {
           await this.performAutomaticRecovery(issues);
         }
       } catch (error) {
-        console.error('❌ [ArtifactMonitoring] Scheduled validation failed:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown scheduled validation error';
+        console.error('❌ [ArtifactMonitoring] Scheduled validation failed:', errorMessage);
       }
     }, this.VALIDATION_INTERVAL);
   }
