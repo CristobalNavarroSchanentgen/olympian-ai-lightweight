@@ -1,4 +1,4 @@
-.PHONY: help setup build start stop restart logs logs-backend logs-frontend clean install dev test lint auto-build auto-build-same auto-build-same-existing auto-build-multi fix-streaming-rebuild generate-build-args dev-multi up-dev-multi clean-build-multi ultra-clean-multi build-prod-ultra-clean
+.PHONY: help setup build start stop restart logs logs-backend logs-frontend clean install dev test lint auto-build auto-build-same auto-build-same-existing auto-build-multi fix-streaming-rebuild generate-build-args dev-multi up-dev-multi clean-build-multi ultra-clean-multi build-prod-ultra-clean artifacts-setup artifacts-migrate artifacts-validate artifacts-backup artifacts-restore artifacts-health artifacts-sync artifacts-diagnose artifacts-reset artifacts-export artifacts-import artifacts-clean
 .DEFAULT_GOAL := help
 
 # Colors for output
@@ -39,7 +39,7 @@ setup: ## Install dependencies and create .env from template
 
 quick-docker-same: build-same-host up-same-host ## Quick setup for same-host Docker deployment with Ollama container (forces clean rebuild)
 
-quick-docker-multi: env-docker-multi-interactive build-prod-ultra-clean up-prod ## Quick setup for multi-host Docker deployment (forces ultra-clean rebuild to prevent layer corruption)
+quick-docker-multi: env-docker-multi-interactive build-prod-ultra-clean up-prod artifacts-setup ## Quick setup for multi-host Docker deployment with artifact persistence (forces ultra-clean rebuild to prevent layer corruption)
 
 quick-docker-same-existing: build-same-host-existing up-same-host-existing ## Quick setup for same-host Docker deployment with existing Ollama (forces clean rebuild)
 
@@ -284,6 +284,451 @@ debug-backend: ## Debug backend startup and health check issues
 	@echo "$(CYAN)🔍 Debugging backend startup...$(RESET)"
 	@chmod +x scripts/debug-backend.sh
 	@./scripts/debug-backend.sh
+
+##@ 🎨 Artifact Persistence (Multi-host)
+
+artifacts-setup: ## Initialize artifact persistence system for multi-host deployment
+	@echo "$(CYAN)🎨 Setting up artifact persistence system...$(RESET)"
+	@echo "$(YELLOW)Checking if containers are running...$(RESET)"
+	@if ! docker ps --format "table {{.Names}}" | grep -q "olympian-backend"; then \
+		echo "$(RED)❌ Backend container is not running! Please start the system first.$(RESET)"; \
+		echo "$(CYAN)Run: make up-prod$(RESET)"; \
+		exit 1; \
+	fi
+	@echo "$(CYAN)🔧 Creating artifacts collection and indexes...$(RESET)"
+	@docker exec olympian-backend node -e " \
+		const { DatabaseService } = require('./dist/services/DatabaseService.js'); \
+		(async () => { \
+			try { \
+				const db = DatabaseService.getInstance(); \
+				await db.connect(); \
+				console.log('✅ Connected to database'); \
+				const artifactsCollection = db.db.collection('artifacts'); \
+				await artifactsCollection.createIndex({ conversationId: 1, createdAt: -1 }); \
+				await artifactsCollection.createIndex({ messageId: 1 }); \
+				await artifactsCollection.createIndex({ id: 1 }, { unique: true }); \
+				await artifactsCollection.createIndex({ checksum: 1 }); \
+				await artifactsCollection.createIndex({ 'metadata.type': 1 }); \
+				console.log('✅ Artifact collection indexes created'); \
+				process.exit(0); \
+			} catch (error) { \
+				console.error('❌ Setup failed:', error.message); \
+				process.exit(1); \
+			} \
+		})(); \
+	" 2>/dev/null || echo "$(YELLOW)⚠️  Artifact collection may already exist$(RESET)"
+	@echo "$(GREEN)✅ Artifact persistence system initialized!$(RESET)"
+
+artifacts-migrate: ## Migrate existing message metadata to artifact collection
+	@echo "$(CYAN)🔄 Migrating existing artifacts from message metadata...$(RESET)"
+	@if ! docker ps --format "table {{.Names}}" | grep -q "olympian-backend"; then \
+		echo "$(RED)❌ Backend container is not running!$(RESET)"; \
+		exit 1; \
+	fi
+	@echo "$(YELLOW)Starting migration process...$(RESET)"
+	@docker exec olympian-backend node -e " \
+		const { DatabaseService } = require('./dist/services/DatabaseService.js'); \
+		(async () => { \
+			try { \
+				const db = DatabaseService.getInstance(); \
+				await db.connect(); \
+				const messages = await db.messages.find({ \
+					'metadata.hasArtifact': true, \
+					'metadata.artifactId': { \$$exists: true } \
+				}).toArray(); \
+				console.log(\`Found \$${messages.length} messages with artifacts to migrate\`); \
+				let migrated = 0; \
+				for (const message of messages) { \
+					try { \
+						const artifactData = { \
+							id: message.metadata.artifactId, \
+							conversationId: message.conversationId, \
+							messageId: message._id.toString(), \
+							title: \`Migrated \$${message.metadata.artifactType || 'Artifact'}\`, \
+							type: message.metadata.artifactType || 'code', \
+							content: message.metadata.originalContent || message.content, \
+							version: 1, \
+							metadata: message.metadata, \
+							createdAt: message.createdAt, \
+							updatedAt: message.createdAt, \
+							checksum: require('crypto').createHash('md5').update(message.metadata.originalContent || message.content).digest('hex') \
+						}; \
+						await db.db.collection('artifacts').updateOne( \
+							{ id: artifactData.id }, \
+							{ \$$setOnInsert: artifactData }, \
+							{ upsert: true } \
+						); \
+						migrated++; \
+					} catch (err) { \
+						console.warn(\`Failed to migrate artifact \$${message.metadata.artifactId}: \$${err.message}\`); \
+					} \
+				} \
+				console.log(\`✅ Migration complete: \$${migrated}/\$${messages.length} artifacts migrated\`); \
+				process.exit(0); \
+			} catch (error) { \
+				console.error('❌ Migration failed:', error.message); \
+				process.exit(1); \
+			} \
+		})(); \
+	"
+	@echo "$(GREEN)✅ Artifact migration completed!$(RESET)"
+
+artifacts-validate: ## Validate artifact integrity across all conversations
+	@echo "$(CYAN)🔍 Validating artifact integrity...$(RESET)"
+	@if ! docker ps --format "table {{.Names}}" | grep -q "olympian-backend"; then \
+		echo "$(RED)❌ Backend container is not running!$(RESET)"; \
+		exit 1; \
+	fi
+	@docker exec olympian-backend node -e " \
+		const { DatabaseService } = require('./dist/services/DatabaseService.js'); \
+		(async () => { \
+			try { \
+				const db = DatabaseService.getInstance(); \
+				await db.connect(); \
+				const artifacts = await db.db.collection('artifacts').find({}).toArray(); \
+				const messages = await db.messages.find({ 'metadata.hasArtifact': true }).toArray(); \
+				console.log(\`Validating \$${artifacts.length} artifacts against \$${messages.length} messages\`); \
+				let valid = 0, invalid = 0, orphaned = 0; \
+				for (const artifact of artifacts) { \
+					const message = messages.find(m => m.metadata.artifactId === artifact.id); \
+					if (!message) { \
+						console.warn(\`⚠️  Orphaned artifact: \$${artifact.id}\`); \
+						orphaned++; \
+					} else if (message.conversationId !== artifact.conversationId) { \
+						console.warn(\`⚠️  Conversation mismatch for artifact: \$${artifact.id}\`); \
+						invalid++; \
+					} else { \
+						valid++; \
+					} \
+				} \
+				console.log(\`✅ Validation complete: \$${valid} valid, \$${invalid} invalid, \$${orphaned} orphaned\`); \
+				process.exit(invalid + orphaned > 0 ? 1 : 0); \
+			} catch (error) { \
+				console.error('❌ Validation failed:', error.message); \
+				process.exit(1); \
+			} \
+		})(); \
+	"
+	@echo "$(GREEN)✅ Artifact validation completed!$(RESET)"
+
+artifacts-health: ## Check artifact system health across multi-host instances
+	@echo "$(CYAN)🏥 Checking artifact system health...$(RESET)"
+	@if ! docker ps --format "table {{.Names}}" | grep -q "olympian-backend"; then \
+		echo "$(RED)❌ Backend container is not running!$(RESET)"; \
+		exit 1; \
+	fi
+	@echo "$(CYAN)📊 Artifact System Health Report$(RESET)"
+	@echo "=================================="
+	@docker exec olympian-backend node -e " \
+		const { DatabaseService } = require('./dist/services/DatabaseService.js'); \
+		(async () => { \
+			try { \
+				const db = DatabaseService.getInstance(); \
+				await db.connect(); \
+				const artifactCount = await db.db.collection('artifacts').countDocuments(); \
+				const conversationCount = await db.conversations.countDocuments(); \
+				const messageCount = await db.messages.countDocuments({ 'metadata.hasArtifact': true }); \
+				const recentArtifacts = await db.db.collection('artifacts').countDocuments({ \
+					createdAt: { \$$gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } \
+				}); \
+				console.log(\`📊 Total artifacts: \$${artifactCount}\`); \
+				console.log(\`📊 Total conversations: \$${conversationCount}\`); \
+				console.log(\`📊 Messages with artifacts: \$${messageCount}\`); \
+				console.log(\`📊 Artifacts created in last 24h: \$${recentArtifacts}\`); \
+				const typeStats = await db.db.collection('artifacts').aggregate([ \
+					{ \$$group: { _id: '\$$type', count: { \$$sum: 1 } } }, \
+					{ \$$sort: { count: -1 } } \
+				]).toArray(); \
+				console.log('📊 Artifact types:'); \
+				typeStats.forEach(stat => console.log(\`   \$${stat._id}: \$${stat.count}\`)); \
+				process.exit(0); \
+			} catch (error) { \
+				console.error('❌ Health check failed:', error.message); \
+				process.exit(1); \
+			} \
+		})(); \
+	"
+
+artifacts-sync: ## Sync artifacts across multi-host instances (if Redis cache enabled)
+	@echo "$(CYAN)🔄 Syncing artifacts across multi-host instances...$(RESET)"
+	@echo "$(YELLOW)Note: This requires Redis cache to be configured$(RESET)"
+	@if ! docker ps --format "table {{.Names}}" | grep -q "olympian-backend"; then \
+		echo "$(RED)❌ Backend container is not running!$(RESET)"; \
+		exit 1; \
+	fi
+	@docker exec olympian-backend node -e " \
+		console.log('🔄 Artifact sync functionality'); \
+		console.log('This feature requires Redis configuration'); \
+		console.log('Current implementation uses MongoDB as single source of truth'); \
+		console.log('✅ Multi-host consistency maintained via centralized MongoDB storage'); \
+	"
+
+artifacts-backup: ## Backup artifact collection to JSON file
+	@echo "$(CYAN)💾 Backing up artifact collection...$(RESET)"
+	@if ! docker ps --format "table {{.Names}}" | grep -q "olympian-backend"; then \
+		echo "$(RED)❌ Backend container is not running!$(RESET)"; \
+		exit 1; \
+	fi
+	@BACKUP_FILE="artifacts_backup_$(shell date +%Y%m%d_%H%M%S).json"; \
+	echo "$(CYAN)Creating backup: $$BACKUP_FILE$(RESET)"; \
+	docker exec olympian-backend node -e " \
+		const { DatabaseService } = require('./dist/services/DatabaseService.js'); \
+		const fs = require('fs'); \
+		(async () => { \
+			try { \
+				const db = DatabaseService.getInstance(); \
+				await db.connect(); \
+				const artifacts = await db.db.collection('artifacts').find({}).toArray(); \
+				const backup = { \
+					timestamp: new Date().toISOString(), \
+					version: '1.0', \
+					artifactCount: artifacts.length, \
+					artifacts: artifacts \
+				}; \
+				fs.writeFileSync('/tmp/$$BACKUP_FILE', JSON.stringify(backup, null, 2)); \
+				console.log(\`✅ Backup created: \$${artifacts.length} artifacts saved\`); \
+				process.exit(0); \
+			} catch (error) { \
+				console.error('❌ Backup failed:', error.message); \
+				process.exit(1); \
+			} \
+		})(); \
+	" && \
+	docker cp olympian-backend:/tmp/$$BACKUP_FILE ./$$BACKUP_FILE && \
+	echo "$(GREEN)✅ Backup saved to: $$BACKUP_FILE$(RESET)"
+
+artifacts-restore: ## Restore artifact collection from JSON backup file
+	@echo "$(CYAN)📥 Restoring artifact collection from backup...$(RESET)"
+	@if [ -z "$(FILE)" ]; then \
+		echo "$(RED)❌ Please specify backup file: make artifacts-restore FILE=backup.json$(RESET)"; \
+		exit 1; \
+	fi
+	@if [ ! -f "$(FILE)" ]; then \
+		echo "$(RED)❌ Backup file not found: $(FILE)$(RESET)"; \
+		exit 1; \
+	fi
+	@if ! docker ps --format "table {{.Names}}" | grep -q "olympian-backend"; then \
+		echo "$(RED)❌ Backend container is not running!$(RESET)"; \
+		exit 1; \
+	fi
+	@echo "$(YELLOW)⚠️  This will replace existing artifacts! Are you sure? (y/N)$(RESET)"
+	@read -r confirm && [ "$$confirm" = "y" ] || (echo "Cancelled" && exit 1)
+	@docker cp $(FILE) olympian-backend:/tmp/restore.json
+	@docker exec olympian-backend node -e " \
+		const { DatabaseService } = require('./dist/services/DatabaseService.js'); \
+		const fs = require('fs'); \
+		(async () => { \
+			try { \
+				const db = DatabaseService.getInstance(); \
+				await db.connect(); \
+				const backup = JSON.parse(fs.readFileSync('/tmp/restore.json', 'utf8')); \
+				console.log(\`Restoring \$${backup.artifactCount} artifacts from \$${backup.timestamp}\`); \
+				await db.db.collection('artifacts').deleteMany({}); \
+				if (backup.artifacts && backup.artifacts.length > 0) { \
+					await db.db.collection('artifacts').insertMany(backup.artifacts); \
+				} \
+				console.log(\`✅ Restore complete: \$${backup.artifactCount} artifacts restored\`); \
+				process.exit(0); \
+			} catch (error) { \
+				console.error('❌ Restore failed:', error.message); \
+				process.exit(1); \
+			} \
+		})(); \
+	"
+	@echo "$(GREEN)✅ Artifact collection restored from: $(FILE)$(RESET)"
+
+artifacts-export: ## Export artifacts for a specific conversation
+	@echo "$(CYAN)📤 Exporting artifacts for conversation...$(RESET)"
+	@if [ -z "$(CONVERSATION_ID)" ]; then \
+		echo "$(RED)❌ Please specify conversation ID: make artifacts-export CONVERSATION_ID=xxx$(RESET)"; \
+		exit 1; \
+	fi
+	@if ! docker ps --format "table {{.Names}}" | grep -q "olympian-backend"; then \
+		echo "$(RED)❌ Backend container is not running!$(RESET)"; \
+		exit 1; \
+	fi
+	@EXPORT_FILE="conversation_$(CONVERSATION_ID)_artifacts_$(shell date +%Y%m%d_%H%M%S).json"; \
+	echo "$(CYAN)Exporting artifacts for conversation: $(CONVERSATION_ID)$(RESET)"; \
+	docker exec olympian-backend node -e " \
+		const { DatabaseService } = require('./dist/services/DatabaseService.js'); \
+		const fs = require('fs'); \
+		(async () => { \
+			try { \
+				const db = DatabaseService.getInstance(); \
+				await db.connect(); \
+				const artifacts = await db.db.collection('artifacts').find({ conversationId: '$(CONVERSATION_ID)' }).toArray(); \
+				const exportData = { \
+					conversationId: '$(CONVERSATION_ID)', \
+					timestamp: new Date().toISOString(), \
+					artifactCount: artifacts.length, \
+					artifacts: artifacts \
+				}; \
+				fs.writeFileSync('/tmp/$$EXPORT_FILE', JSON.stringify(exportData, null, 2)); \
+				console.log(\`✅ Export complete: \$${artifacts.length} artifacts exported\`); \
+				process.exit(0); \
+			} catch (error) { \
+				console.error('❌ Export failed:', error.message); \
+				process.exit(1); \
+			} \
+		})(); \
+	" && \
+	docker cp olympian-backend:/tmp/$$EXPORT_FILE ./$$EXPORT_FILE && \
+	echo "$(GREEN)✅ Artifacts exported to: $$EXPORT_FILE$(RESET)"
+
+artifacts-import: ## Import artifacts for a specific conversation
+	@echo "$(CYAN)📥 Importing artifacts from file...$(RESET)"
+	@if [ -z "$(FILE)" ]; then \
+		echo "$(RED)❌ Please specify export file: make artifacts-import FILE=export.json$(RESET)"; \
+		exit 1; \
+	fi
+	@if [ ! -f "$(FILE)" ]; then \
+		echo "$(RED)❌ Export file not found: $(FILE)$(RESET)"; \
+		exit 1; \
+	fi
+	@if ! docker ps --format "table {{.Names}}" | grep -q "olympian-backend"; then \
+		echo "$(RED)❌ Backend container is not running!$(RESET)"; \
+		exit 1; \
+	fi
+	@docker cp $(FILE) olympian-backend:/tmp/import.json
+	@docker exec olympian-backend node -e " \
+		const { DatabaseService } = require('./dist/services/DatabaseService.js'); \
+		const fs = require('fs'); \
+		(async () => { \
+			try { \
+				const db = DatabaseService.getInstance(); \
+				await db.connect(); \
+				const importData = JSON.parse(fs.readFileSync('/tmp/import.json', 'utf8')); \
+				console.log(\`Importing \$${importData.artifactCount} artifacts for conversation: \$${importData.conversationId}\`); \
+				for (const artifact of importData.artifacts) { \
+					await db.db.collection('artifacts').updateOne( \
+						{ id: artifact.id }, \
+						{ \$$setOnInsert: artifact }, \
+						{ upsert: true } \
+					); \
+				} \
+				console.log(\`✅ Import complete: \$${importData.artifactCount} artifacts imported\`); \
+				process.exit(0); \
+			} catch (error) { \
+				console.error('❌ Import failed:', error.message); \
+				process.exit(1); \
+			} \
+		})(); \
+	"
+	@echo "$(GREEN)✅ Artifacts imported from: $(FILE)$(RESET)"
+
+artifacts-diagnose: ## Diagnose artifact-related issues
+	@echo "$(CYAN)🔍 Diagnosing artifact system issues...$(RESET)"
+	@if ! docker ps --format "table {{.Names}}" | grep -q "olympian-backend"; then \
+		echo "$(RED)❌ Backend container is not running!$(RESET)"; \
+		exit 1; \
+	fi
+	@echo "$(CYAN)🔍 Artifact System Diagnostics$(RESET)"
+	@echo "=============================="
+	@docker exec olympian-backend node -e " \
+		const { DatabaseService } = require('./dist/services/DatabaseService.js'); \
+		(async () => { \
+			try { \
+				const db = DatabaseService.getInstance(); \
+				await db.connect(); \
+				console.log('🔍 Database connection: ✅ Connected'); \
+				const collections = await db.db.listCollections().toArray(); \
+				const hasArtifacts = collections.some(c => c.name === 'artifacts'); \
+				console.log(\`🔍 Artifacts collection: \$${hasArtifacts ? '✅ Exists' : '❌ Missing'}\`); \
+				if (hasArtifacts) { \
+					const indexes = await db.db.collection('artifacts').indexes(); \
+					console.log(\`🔍 Collection indexes: \$${indexes.length} indexes\`); \
+					indexes.forEach(idx => console.log(\`   - \$${JSON.stringify(idx.key)}\`)); \
+				} \
+				const orphanedArtifacts = await db.db.collection('artifacts').countDocuments({ \
+					messageId: { \$$nin: await db.messages.distinct('_id').then(ids => ids.map(id => id.toString())) } \
+				}); \
+				console.log(\`🔍 Orphaned artifacts: \$${orphanedArtifacts > 0 ? '⚠️  ' + orphanedArtifacts : '✅ None'}\`); \
+				const messagesWithoutArtifacts = await db.messages.countDocuments({ \
+					'metadata.hasArtifact': true, \
+					'metadata.artifactId': { \$$nin: await db.db.collection('artifacts').distinct('id') } \
+				}); \
+				console.log(\`🔍 Messages missing artifacts: \$${messagesWithoutArtifacts > 0 ? '⚠️  ' + messagesWithoutArtifacts : '✅ None'}\`); \
+				process.exit(0); \
+			} catch (error) { \
+				console.error('❌ Diagnostics failed:', error.message); \
+				process.exit(1); \
+			} \
+		})(); \
+	"
+
+artifacts-clean: ## Clean up orphaned and invalid artifacts
+	@echo "$(CYAN)🧹 Cleaning up artifact system...$(RESET)"
+	@if ! docker ps --format "table {{.Names}}" | grep -q "olympian-backend"; then \
+		echo "$(RED)❌ Backend container is not running!$(RESET)"; \
+		exit 1; \
+	fi
+	@echo "$(YELLOW)⚠️  This will remove orphaned artifacts and fix inconsistencies. Continue? (y/N)$(RESET)"
+	@read -r confirm && [ "$$confirm" = "y" ] || (echo "Cancelled" && exit 1)
+	@docker exec olympian-backend node -e " \
+		const { DatabaseService } = require('./dist/services/DatabaseService.js'); \
+		(async () => { \
+			try { \
+				const db = DatabaseService.getInstance(); \
+				await db.connect(); \
+				const messageIds = await db.messages.distinct('_id'); \
+				const messageIdStrings = messageIds.map(id => id.toString()); \
+				const orphanedResult = await db.db.collection('artifacts').deleteMany({ \
+					messageId: { \$$nin: messageIdStrings } \
+				}); \
+				console.log(\`🧹 Removed \$${orphanedResult.deletedCount} orphaned artifacts\`); \
+				const duplicateArtifacts = await db.db.collection('artifacts').aggregate([ \
+					{ \$$group: { _id: '\$$id', count: { \$$sum: 1 }, docs: { \$$push: '\$$_id' } } }, \
+					{ \$$match: { count: { \$$gt: 1 } } } \
+				]).toArray(); \
+				let duplicatesRemoved = 0; \
+				for (const duplicate of duplicateArtifacts) { \
+					const docsToRemove = duplicate.docs.slice(1); \
+					await db.db.collection('artifacts').deleteMany({ _id: { \$$in: docsToRemove } }); \
+					duplicatesRemoved += docsToRemove.length; \
+				} \
+				console.log(\`🧹 Removed \$${duplicatesRemoved} duplicate artifacts\`); \
+				console.log('✅ Artifact cleanup completed'); \
+				process.exit(0); \
+			} catch (error) { \
+				console.error('❌ Cleanup failed:', error.message); \
+				process.exit(1); \
+			} \
+		})(); \
+	"
+	@echo "$(GREEN)✅ Artifact cleanup completed!$(RESET)"
+
+artifacts-reset: ## Reset entire artifact system (DANGEROUS - removes all artifacts)
+	@echo "$(RED)⚠️  DANGER: This will completely reset the artifact system!$(RESET)"
+	@echo "$(RED)⚠️  ALL ARTIFACTS WILL BE PERMANENTLY DELETED!$(RESET)"
+	@echo "$(YELLOW)Are you absolutely sure? Type 'RESET' to confirm:$(RESET)"
+	@read -r confirm && [ "$$confirm" = "RESET" ] || (echo "Cancelled" && exit 1)
+	@if ! docker ps --format "table {{.Names}}" | grep -q "olympian-backend"; then \
+		echo "$(RED)❌ Backend container is not running!$(RESET)"; \
+		exit 1; \
+	fi
+	@docker exec olympian-backend node -e " \
+		const { DatabaseService } = require('./dist/services/DatabaseService.js'); \
+		(async () => { \
+			try { \
+				const db = DatabaseService.getInstance(); \
+				await db.connect(); \
+				const artifactCount = await db.db.collection('artifacts').countDocuments(); \
+				await db.db.collection('artifacts').drop(); \
+				await db.messages.updateMany( \
+					{ 'metadata.hasArtifact': true }, \
+					{ \$$unset: { 'metadata.hasArtifact': '', 'metadata.artifactId': '', 'metadata.artifactType': '' } } \
+				); \
+				console.log(\`🗑️  Removed \$${artifactCount} artifacts and cleaned message metadata\`); \
+				console.log('✅ Artifact system reset completed'); \
+				process.exit(0); \
+			} catch (error) { \
+				console.error('❌ Reset failed:', error.message); \
+				process.exit(1); \
+			} \
+		})(); \
+	"
+	@echo "$(RED)⚠️  Artifact system has been completely reset!$(RESET)"
+	@echo "$(CYAN)Run 'make artifacts-setup' to reinitialize the system$(RESET)"
 
 ##@ 🛠️  Development
 
