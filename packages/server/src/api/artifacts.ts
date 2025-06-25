@@ -319,9 +319,11 @@ router.post('/bulk', async (req, res, next) => {
               continue;
             }
             
-            const updateRequest = {
-              artifactId: operation.artifactId,
-              ...(operation.artifact as UpdateArtifactRequest)
+            // Fix: Properly merge the update request without duplicate artifactId
+            const updateRequestData = operation.artifact as UpdateArtifactRequest;
+            const updateRequest: UpdateArtifactRequest = {
+              ...updateRequestData,
+              artifactId: operation.artifactId // Ensure artifactId is set correctly
             };
             
             const updateResult = await artifactService.updateArtifact(updateRequest);
@@ -528,7 +530,6 @@ router.post('/:artifactId/sync', async (req, res, next) => {
 router.get('/conflicts', async (req, res, next) => {
   try {
     const { page = 1, limit = 20 } = req.query;
-    const skip = (Number(page) - 1) * Number(limit);
     
     console.log(`⚠️ [ArtifactsAPI] Fetching artifacts with conflicts`);
     
