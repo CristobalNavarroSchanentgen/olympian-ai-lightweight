@@ -54,7 +54,6 @@ export function DivineDialog() {
   
   const { 
     clearTypedMessages, 
-    addTypedContent, 
     getTypedContent,
     startStreaming,
     addStreamingToken,
@@ -241,13 +240,12 @@ export function DivineDialog() {
           onComplete: (data) => {
             console.log('[DivineDialog] ✅ Message completed:', data);
             
-            // Wrap all processing in try-catch-finally to ensure UI states are always reset
             try {
-              // Complete streaming
+              // CRITICAL: Clear streaming content immediately before processing
               if (data.messageId) {
                 completeStreaming(data.messageId);
               }
-
+              
               // If this was a new conversation, update the current conversation
               if (!currentConversation && data.conversationId) {
                 // Safely convert conversationId to string
@@ -271,10 +269,8 @@ export function DivineDialog() {
                 }
               }
 
-              // Get the final content (either from typed messages or from assistant content)
-              const finalContent = currentConversationId 
-                ? getTypedContent(currentConversationId) || assistantContent
-                : assistantContent;
+              // Get the final content
+              const finalContent = assistantContent;
 
               // Detect if the response should create an artifact
               const artifactDetection = detectArtifact(finalContent);
@@ -340,7 +336,10 @@ export function DivineDialog() {
 
               // Clear typed messages after adding the final message
               if (currentConversationId) {
-                clearTypedMessages(currentConversationId);
+                // Clear with a small delay to ensure message is added first
+                setTimeout(() => {
+                  clearTypedMessages(currentConversationId);
+                }, 50);
               }
 
               // Reset states
@@ -433,7 +432,7 @@ export function DivineDialog() {
       }
     }
   }, [selectedModel, selectedVisionModel, currentConversationId, addMessage, currentConversation, 
-      clearTypedMessages, getTypedContent, addTypedContent, createArtifact, setArtifactPanelOpen, 
+      clearTypedMessages, getTypedContent, createArtifact, setArtifactPanelOpen, 
       setCurrentConversation, startStreaming, addStreamingToken, completeStreaming]);
 
   const handleCancelMessage = useCallback(() => {
