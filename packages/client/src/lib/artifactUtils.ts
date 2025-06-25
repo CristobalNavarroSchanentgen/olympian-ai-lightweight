@@ -28,16 +28,17 @@ interface RecreationReport {
  * Enhanced for multi-host deployments with comprehensive fallback strategies
  */
 export async function processMessagesForArtifacts(
-  messages: Message[], 
-  conversationId: string
+  messages: Message[]
 ): Promise<Message[]> {
   console.log('🔧 [artifactUtils] Enhanced artifact processing starting:', {
     messageCount: messages.length,
-    conversationId,
     timestamp: new Date().toISOString()
   });
   
   const { clearArtifactsForConversation, getArtifactById } = useArtifactStore.getState();
+  
+  // Get conversation ID from the first message
+  const conversationId = messages[0]?.conversationId || 'unknown';
   
   // Clear existing artifacts for this conversation to avoid duplication
   clearArtifactsForConversation(conversationId);
