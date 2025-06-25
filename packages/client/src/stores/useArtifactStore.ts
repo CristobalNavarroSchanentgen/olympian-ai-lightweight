@@ -33,6 +33,9 @@ interface ArtifactState {
   // Get artifact by ID
   getArtifactById: (artifactId: string) => Artifact | null;
   
+  // Get artifact by message ID
+  getArtifactByMessageId: (messageId: string) => Artifact | null;
+  
   // Get versions for an artifact
   getVersionsForArtifact: (artifactId: string) => ArtifactVersion[];
   
@@ -41,6 +44,9 @@ interface ArtifactState {
   
   // Clear artifacts for a conversation
   clearArtifactsForConversation: (conversationId: string) => void;
+  
+  // Recreate artifact from existing data (for conversation loading)
+  recreateArtifact: (artifact: Artifact) => void;
 }
 
 function generateArtifactId(): string {
@@ -93,6 +99,41 @@ export const useArtifactStore = create<ArtifactState>()(
         });
         
         return artifact;
+      },
+      
+      recreateArtifact: (artifact) => {
+        console.log('🔧 [useArtifactStore] Recreating artifact:', artifact.id);
+        
+        set((state) => {
+          const conversationId = artifact.conversationId;
+          const currentArtifacts = state.artifacts[conversationId] || [];
+          
+          // Check if artifact already exists
+          const existingArtifact = currentArtifacts.find(a => a.id === artifact.id);
+          if (existingArtifact) {
+            console.log('⚠️ [useArtifactStore] Artifact already exists, skipping recreation:', artifact.id);
+            return state;
+          }
+          
+          // Create initial version for recreated artifact
+          const initialVersion: ArtifactVersion = {
+            version: artifact.version || 1,
+            content: artifact.content,
+            createdAt: artifact.createdAt,
+            description: 'Recreated from conversation history',
+          };
+          
+          return {
+            artifacts: {
+              ...state.artifacts,
+              [conversationId]: [...currentArtifacts, artifact],
+            },
+            versions: {
+              ...state.versions,
+              [artifact.id]: [initialVersion],
+            },
+          };
+        });
       },
       
       updateArtifact: (artifactId, content, description) => {
@@ -197,6 +238,12 @@ export const useArtifactStore = create<ArtifactState>()(
         return allArtifacts.find(a => a.id === artifactId) || null;
       },
       
+      getArtifactByMessageId: (messageId) => {
+        const state = get();
+        const allArtifacts = Object.values(state.artifacts).flat();
+        return allArtifacts.find(a => a.messageId === messageId) || null;
+      },
+      
       getVersionsForArtifact: (artifactId) => {
         const state = get();
         return state.versions[artifactId] || [];
@@ -213,6 +260,7 @@ export const useArtifactStore = create<ArtifactState>()(
       },
       
       clearArtifactsForConversation: (conversationId) => {
+        console.log('🧹 [useArtifactStore] Clearing artifacts for conversation:', conversationId);
         set((state) => {
           const conversationArtifacts = state.artifacts[conversationId] || [];
           
@@ -237,7 +285,15 @@ export const useArtifactStore = create<ArtifactState>()(
     }),
     {
       name: 'olympian-artifact-store',
-      version: 1,
+      version: 2, // Increment version to handle new messageId field
+      migrate: (persistedState: any, version: number) => {
+        if (version < 2) {
+          // For artifacts that don't have messageId, it's okay to leave it undefined
+          // The field is optional and we can't retroactively determine the messageId
+          console.log('🔄 [useArtifactStore] Migrating artifact store to version 2');
+        }
+        return persistedState;
+      },
     }
   )
 );
