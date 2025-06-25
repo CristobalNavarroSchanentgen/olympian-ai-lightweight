@@ -309,12 +309,14 @@ class BulletproofWebSocketChatService {
 
     this.socket.on('conversation:created', (data: ServerEvents['conversation:created']) => {
       console.log('[BulletproofWebSocket] 🆕 Received conversation:created', data);
-      // Broadcast to all active messages
+      // Broadcast to all active messages that might need this conversation ID
       const activeMessages = messageLifecycleManager.getAllActiveMessages();
       activeMessages.forEach(lifecycle => {
-        const handlers = messageLifecycleManager.getMessageLifecycle(lifecycle.id);
-        // This would need to be handled differently in the actual implementation
-        // since we need access to the handlers, but this is the general approach
+        // Update any pending messages with the new conversation ID
+        if (!lifecycle.conversationId) {
+          lifecycle.conversationId = data.conversationId;
+          console.log(`[BulletproofWebSocket] 🆕 Updated message ${lifecycle.id} with conversation ID: ${data.conversationId}`);
+        }
       });
     });
 
