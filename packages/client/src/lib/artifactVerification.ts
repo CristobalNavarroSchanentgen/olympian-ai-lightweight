@@ -2,7 +2,6 @@ import {
   Artifact, 
   ArtifactIntegrityResult, 
   ContentFingerprint, 
-  ArtifactRepairEntry, 
   ArtifactStatistics,
   ArtifactType 
 } from '@olympian/shared';
@@ -155,19 +154,17 @@ export function verifyArtifactIntegrity(
     // Determine overall validity
     result.valid = result.score >= (fullConfig.strictMode ? 0.8 : 0.5) && result.issues.length === 0;
 
-    const duration = Date.now() - startTime;
     console.log('✅ [artifactVerification] Integrity check complete:', {
       artifactId: artifact.id,
       valid: result.valid,
       score: result.score.toFixed(2),
       issues: result.issues.length,
-      duration: `${duration}ms`
+      duration: `${Date.now() - startTime}ms`
     });
 
     return result;
 
   } catch (error) {
-    const duration = Date.now() - startTime;
     console.error('❌ [artifactVerification] Verification failed:', error);
     
     return {
