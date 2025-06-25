@@ -41,8 +41,8 @@ function detectVisionModelsByName(models: string[]): string[] {
     /bakllava/i,
     /llava-llama3/i,
     /llava-phi3/i,
-    /llava-v1\.6/i,
-    /llama3\.2-vision/i,
+    /llava-v1\\.6/i,
+    /llama3\\.2-vision/i,
     /moondream/i,
     /cogvlm/i,
     /instructblip/i,
@@ -167,14 +167,46 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   fetchMessages: async (conversationId) => {
     console.log('📞 [useChatStore] fetchMessages called with conversationId:', conversationId);
     set({ isLoadingMessages: true });
+    
     try {
       const { messages } = await api.getMessages(conversationId);
       console.log('✅ [useChatStore] fetchMessages success:', messages.length, 'messages');
       
-      // Process messages to recreate artifacts and restore proper display content
-      const processedMessages = await processMessagesForArtifacts(messages, conversationId);
+      // Clear existing messages first to avoid conflicts
+      set({ messages: [] });
       
-      set({ messages: processedMessages });
+      // Process messages to recreate artifacts with a slight delay to ensure store is ready
+      console.log('🔧 [useChatStore] Starting artifact processing for conversation:', conversationId);
+      
+      // Use setTimeout to ensure the artifact store is in a clean state
+      setTimeout(async () => {
+        try {
+          const processedMessages = await processMessagesForArtifacts(messages, conversationId);
+          console.log('✅ [useChatStore] Artifact processing complete, setting processed messages');
+          
+          // Verify artifact recreation
+          const { artifacts } = useArtifactStore.getState();
+          const conversationArtifacts = artifacts[conversationId] || [];
+          console.log('📊 [useChatStore] Artifacts after processing:', {
+            conversationId,
+            artifactCount: conversationArtifacts.length,
+            messageCount: processedMessages.length,
+            messagesWithArtifacts: processedMessages.filter(m => m.metadata?.hasArtifact).length
+          });
+          
+          set({ messages: processedMessages });
+        } catch (processingError) {
+          console.error('❌ [useChatStore] Artifact processing failed:', processingError);
+          // Fallback to original messages if processing fails
+          set({ messages });
+          toast({
+            title: 'Warning',
+            description: 'Some artifacts may not display correctly',
+            variant: 'destructive',
+          });
+        }
+      }, 100); // Small delay to ensure proper state management
+      
     } catch (error) {
       console.error('❌ [useChatStore] fetchMessages error:', error);
       toast({
@@ -182,6 +214,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         description: 'Failed to fetch messages',
         variant: 'destructive',
       });
+      set({ messages: [] });
     } finally {
       set({ isLoadingMessages: false });
     }
