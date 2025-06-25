@@ -11,7 +11,7 @@ interface OllamaVersionResponse {
 
 const router = Router();
 const db = DatabaseService.getInstance();
-const ollamaHealthCheck = new OllamaHealthCheck();
+const ollamaHealthCheck = OllamaHealthCheck.getInstance(); // Fix: Use singleton pattern
 
 // Basic health check - always returns 200 if server is running
 // This is used by Docker health checks and should remain simple
