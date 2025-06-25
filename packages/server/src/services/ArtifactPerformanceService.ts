@@ -1,4 +1,4 @@
-import { Artifact } from '@olympian/shared';
+import { Artifact, ArtifactDocument } from '@olympian/shared';
 import { DatabaseService } from './DatabaseService';
 import { ArtifactCoordinationService } from './ArtifactCoordinationService';
 import zlib from 'zlib';
@@ -220,6 +220,18 @@ export class ArtifactPerformanceService {
   private async optimizeArtifactForStorage(artifact: Artifact): Promise<Artifact> {
     const optimized = { ...artifact };
 
+    // Initialize metadata if not present
+    if (!optimized.metadata) {
+      optimized.metadata = {
+        syncStatus: 'synced',
+        codeBlocksRemoved: false,
+        detectionStrategy: 'automatic',
+        originalContent: artifact.content,
+        reconstructionHash: '',
+        contentSize: artifact.content.length
+      };
+    }
+
     // Compress large content
     if (artifact.content.length > this.COMPRESSION_THRESHOLD) {
       console.log(`🗜️ [ArtifactPerformance] Compressing content for artifact ${artifact.id} (${artifact.content.length} bytes)`);
@@ -235,7 +247,8 @@ export class ArtifactPerformanceService {
           compressed: true,
           originalSize: artifact.content.length,
           compressedSize: compressed.length,
-          compressionRatio
+          compressionRatio,
+          syncStatus: optimized.metadata.syncStatus || 'synced'
         };
         console.log(`✅ [ArtifactPerformance] Compressed content by ${Math.round((1 - compressionRatio) * 100)}%`);
       }
@@ -246,7 +259,8 @@ export class ArtifactPerformanceService {
       optimized.metadata = {
         ...optimized.metadata,
         lazyLoad: true,
-        contentSize: artifact.content.length
+        contentSize: artifact.content.length,
+        syncStatus: optimized.metadata.syncStatus || 'synced'
       };
     }
 
@@ -299,7 +313,12 @@ export class ArtifactPerformanceService {
       metadata: {
         ...artifact.metadata,
         lightweight: true,
-        contentSize: artifact.content.length
+        contentSize: artifact.content.length,
+        syncStatus: artifact.metadata?.syncStatus || 'synced',
+        codeBlocksRemoved: artifact.metadata?.codeBlocksRemoved || false,
+        detectionStrategy: artifact.metadata?.detectionStrategy || 'automatic',
+        originalContent: artifact.metadata?.originalContent || artifact.content,
+        reconstructionHash: artifact.metadata?.reconstructionHash || ''
       }
     };
   }
@@ -309,7 +328,7 @@ export class ArtifactPerformanceService {
    */
   private async storeInDatabase(artifact: Artifact): Promise<Artifact> {
     const result = await this.db.artifacts.insertOne(artifact as any);
-    return { ...artifact, _id: result.insertedId.toString() };
+    return { ...artifact, id: result.insertedId.toString() };
   }
 
   private async loadFromDatabase(artifactId: string): Promise<Artifact | null> {
@@ -341,7 +360,7 @@ export class ArtifactPerformanceService {
   private formatArtifact(doc: any): Artifact {
     return {
       ...doc,
-      _id: doc._id?.toString ? doc._id.toString() : doc._id,
+      id: doc.id || doc._id?.toString(),
       createdAt: doc.createdAt instanceof Date ? doc.createdAt : new Date(doc.createdAt),
       updatedAt: doc.updatedAt instanceof Date ? doc.updatedAt : new Date(doc.updatedAt),
     };
