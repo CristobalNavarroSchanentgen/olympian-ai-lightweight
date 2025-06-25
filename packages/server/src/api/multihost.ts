@@ -320,9 +320,11 @@ router.get('/health/simple', async (req, res) => {
       });
     }
   } catch (error) {
+    // Fix: Handle unknown error type properly
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
     res.status(503).json({ 
       status: 'unhealthy',
-      error: error.message,
+      error: errorMessage,
       timestamp: new Date()
     });
   }
