@@ -132,8 +132,13 @@ export class ArtifactService {
             codeBlocksRemoved: request.metadata?.codeBlocksRemoved || false,
           };
 
+          // Fix: Properly handle ObjectId conversion
+          const messageObjectId = ObjectId.isValid(request.messageId) 
+            ? new ObjectId(request.messageId) 
+            : request.messageId;
+
           await this.db.messages.updateOne(
-            { _id: new ObjectId(request.messageId) },
+            { _id: messageObjectId },
             { 
               $set: { 
                 'metadata.artifactId': artifactId,
@@ -390,8 +395,13 @@ export class ArtifactService {
 
         // Clean up message metadata if messageId exists
         if (artifact.messageId) {
+          // Fix: Properly handle ObjectId conversion
+          const messageObjectId = ObjectId.isValid(artifact.messageId) 
+            ? new ObjectId(artifact.messageId) 
+            : artifact.messageId;
+
           await this.db.messages.updateOne(
-            { _id: new ObjectId(artifact.messageId) },
+            { _id: messageObjectId },
             { 
               $unset: { 
                 'metadata.artifactId': '',
@@ -715,6 +725,7 @@ export class ArtifactService {
   private convertDocumentToArtifact(doc: ArtifactDocument): ArtifactDocument {
     return {
       ...doc,
+      // Fix: Ensure proper Date conversion from string or Date objects
       createdAt: typeof doc.createdAt === 'string' ? new Date(doc.createdAt) : doc.createdAt,
       updatedAt: typeof doc.updatedAt === 'string' ? new Date(doc.updatedAt) : doc.updatedAt
     };
