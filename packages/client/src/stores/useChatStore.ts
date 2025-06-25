@@ -3,7 +3,7 @@ import { Conversation, Message, ModelCapability } from '@olympian/shared';
 import { api } from '@/services/api';
 import { toast } from '@/hooks/useToast';
 import { useArtifactStore } from './useArtifactStore';
-import { detectArtifact } from '@/lib/artifactDetection';
+import { processMessagesForArtifacts } from '@/lib/artifactUtils';
 
 interface ChatStore {
   conversations: Conversation[];
@@ -65,90 +65,6 @@ function detectVisionModelsByName(models: string[]): string[] {
   
   console.log('🔍 [useChatStore] Fallback detection found vision models:', detectedVisionModels);
   return detectedVisionModels;
-}
-
-/**
- * Process messages to recreate artifacts from metadata and restore proper display content
- */
-async function processMessagesForArtifacts(messages: Message[], conversationId: string): Promise<Message[]> {
-  console.log('🔧 [useChatStore] Processing messages for artifact recreation:', messages.length, 'messages');
-  
-  // Get the artifact store instance
-  const { createArtifact, clearArtifactsForConversation, getArtifactById } = useArtifactStore.getState();
-  
-  // Clear existing artifacts for this conversation to avoid duplication
-  clearArtifactsForConversation(conversationId);
-  
-  const processedMessages: Message[] = [];
-  
-  for (const message of messages) {
-    // Only process assistant messages that have artifact metadata
-    if (message.role === 'assistant' && message.metadata?.hasArtifact && message.metadata?.originalContent) {
-      console.log('🔧 [useChatStore] Processing message with artifact metadata:', message._id);
-      
-      try {
-        // Recreate the artifact if it doesn't exist and we have the original content
-        if (message.metadata.artifactId && message.metadata.originalContent) {
-          const existingArtifact = getArtifactById(message.metadata.artifactId);
-          
-          if (!existingArtifact) {
-            console.log('🔧 [useChatStore] Recreating artifact for message:', message._id);
-            
-            // Use the detectArtifact function to recreate the artifact
-            const artifactDetection = detectArtifact(message.metadata.originalContent);
-            
-            if (artifactDetection.shouldCreateArtifact && artifactDetection.content) {
-              // Create the artifact with a new ID (since we're recreating)
-              const recreatedArtifact = createArtifact({
-                title: artifactDetection.title || message.metadata.artifactType || 'Recreated Artifact',
-                type: message.metadata.artifactType || artifactDetection.type!,
-                content: artifactDetection.content,
-                language: artifactDetection.language,
-                conversationId: conversationId,
-                messageId: message._id,
-              });
-              
-              console.log('✅ [useChatStore] Artifact recreated:', recreatedArtifact.id);
-              
-              // Update the message metadata with the new artifact ID
-              const updatedMessage = {
-                ...message,
-                metadata: {
-                  ...message.metadata,
-                  artifactId: recreatedArtifact.id,
-                },
-                // Ensure we show the processed content (without code blocks) in chat
-                content: artifactDetection.processedContent || message.content,
-              };
-              
-              processedMessages.push(updatedMessage);
-              continue;
-            }
-          }
-        }
-        
-        // If artifact already exists or creation failed, just restore the proper display content
-        const processedMessage = {
-          ...message,
-          // Use the current content (which should be the processed content without code blocks)
-          // If code blocks were removed during original processing, the content should already be correct
-        };
-        
-        processedMessages.push(processedMessage);
-        
-      } catch (error) {
-        console.error('❌ [useChatStore] Failed to recreate artifact for message:', message._id, error);
-        // Fallback: use the message as-is
-        processedMessages.push(message);
-      }
-    } else {
-      // Regular message without artifacts
-      processedMessages.push(message);
-    }
-  }
-  
-  console.log('✅ [useChatStore] Message processing complete');
-  return processedMessages;
 }
 
 export const useChatStore = create<ChatStore>((set, get) => ({
