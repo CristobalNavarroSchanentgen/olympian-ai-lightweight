@@ -102,18 +102,49 @@ export const useArtifactStore = create<ArtifactState>()(
       },
       
       recreateArtifact: (artifact) => {
-        console.log('🔧 [useArtifactStore] Recreating artifact:', artifact.id);
+        console.log('🔧 [useArtifactStore] Recreating artifact:', {
+          id: artifact.id,
+          conversationId: artifact.conversationId,
+          title: artifact.title,
+          type: artifact.type
+        });
         
         set((state) => {
           const conversationId = artifact.conversationId;
           const currentArtifacts = state.artifacts[conversationId] || [];
           
-          // Check if artifact already exists
+          // Check if artifact already exists by ID
           const existingArtifact = currentArtifacts.find(a => a.id === artifact.id);
           if (existingArtifact) {
-            console.log('⚠️ [useArtifactStore] Artifact already exists, skipping recreation:', artifact.id);
-            return state;
+            console.log('⚠️ [useArtifactStore] Artifact already exists, updating instead of recreating:', artifact.id);
+            
+            // Update the existing artifact with new data
+            const updatedArtifacts = currentArtifacts.map(a => 
+              a.id === artifact.id ? { ...artifact } : a
+            );
+            
+            // Ensure version history exists
+            const currentVersions = state.versions[artifact.id] || [];
+            
+            return {
+              artifacts: {
+                ...state.artifacts,
+                [conversationId]: updatedArtifacts,
+              },
+              versions: {
+                ...state.versions,
+                [artifact.id]: currentVersions.length === 0 ? [{
+                  version: artifact.version || 1,
+                  content: artifact.content,
+                  createdAt: artifact.createdAt,
+                  description: 'Recreated from conversation history',
+                }] : currentVersions,
+              },
+            };
           }
+          
+          // Create new artifact with the provided ID (from conversation history)
+          console.log('✨ [useArtifactStore] Creating new artifact from conversation history:', artifact.id);
           
           // Create initial version for recreated artifact
           const initialVersion: ArtifactVersion = {
@@ -134,6 +165,8 @@ export const useArtifactStore = create<ArtifactState>()(
             },
           };
         });
+        
+        console.log('✅ [useArtifactStore] Artifact recreation complete:', artifact.id);
       },
       
       updateArtifact: (artifactId, content, description) => {
@@ -235,13 +268,31 @@ export const useArtifactStore = create<ArtifactState>()(
       getArtifactById: (artifactId) => {
         const state = get();
         const allArtifacts = Object.values(state.artifacts).flat();
-        return allArtifacts.find(a => a.id === artifactId) || null;
+        const artifact = allArtifacts.find(a => a.id === artifactId) || null;
+        
+        if (!artifact) {
+          console.warn('🔍 [useArtifactStore] Artifact not found by ID:', {
+            artifactId,
+            availableArtifacts: allArtifacts.map(a => ({ id: a.id, conversationId: a.conversationId }))
+          });
+        }
+        
+        return artifact;
       },
       
       getArtifactByMessageId: (messageId) => {
         const state = get();
         const allArtifacts = Object.values(state.artifacts).flat();
-        return allArtifacts.find(a => a.messageId === messageId) || null;
+        const artifact = allArtifacts.find(a => a.messageId === messageId) || null;
+        
+        if (!artifact) {
+          console.warn('🔍 [useArtifactStore] Artifact not found by message ID:', {
+            messageId,
+            availableArtifacts: allArtifacts.map(a => ({ id: a.id, messageId: a.messageId }))
+          });
+        }
+        
+        return artifact;
       },
       
       getVersionsForArtifact: (artifactId) => {
@@ -263,6 +314,7 @@ export const useArtifactStore = create<ArtifactState>()(
         console.log('🧹 [useArtifactStore] Clearing artifacts for conversation:', conversationId);
         set((state) => {
           const conversationArtifacts = state.artifacts[conversationId] || [];
+          console.log('🧹 [useArtifactStore] Found artifacts to clear:', conversationArtifacts.map(a => a.id));
           
           // Remove versions for all artifacts in this conversation
           const newVersions = { ...state.versions };
@@ -281,17 +333,48 @@ export const useArtifactStore = create<ArtifactState>()(
               : state.selectedArtifact,
           };
         });
+        
+        // Log final state for debugging
+        const finalState = get();
+        console.log('🧹 [useArtifactStore] Artifacts cleared. Final state:', {
+          conversationId,
+          remainingArtifacts: Object.keys(finalState.artifacts),
+          totalArtifactCount: Object.values(finalState.artifacts).flat().length
+        });
       },
     }),
     {
       name: 'olympian-artifact-store',
-      version: 2, // Increment version to handle new messageId field
+      version: 3, // Increment version for improved artifact persistence
       migrate: (persistedState: any, version: number) => {
+        console.log('🔄 [useArtifactStore] Migrating artifact store from version', version, 'to 3');
+        
         if (version < 2) {
           // For artifacts that don't have messageId, it's okay to leave it undefined
-          // The field is optional and we can't retroactively determine the messageId
-          console.log('🔄 [useArtifactStore] Migrating artifact store to version 2');
+          console.log('🔄 [useArtifactStore] Migrating artifact store to version 2 (messageId field)');
         }
+        
+        if (version < 3) {
+          // Enhanced artifact persistence improvements
+          console.log('🔄 [useArtifactStore] Migrating artifact store to version 3 (enhanced persistence)');
+          
+          // Ensure all artifacts have proper structure
+          if (persistedState?.artifacts) {
+            Object.keys(persistedState.artifacts).forEach(conversationId => {
+              const artifacts = persistedState.artifacts[conversationId];
+              if (Array.isArray(artifacts)) {
+                persistedState.artifacts[conversationId] = artifacts.map((artifact: any) => ({
+                  ...artifact,
+                  // Ensure required fields exist
+                  version: artifact.version || 1,
+                  createdAt: artifact.createdAt ? new Date(artifact.createdAt) : new Date(),
+                  updatedAt: artifact.updatedAt ? new Date(artifact.updatedAt) : new Date(),
+                }));
+              }
+            });
+          }
+        }
+        
         return persistedState;
       },
     }
