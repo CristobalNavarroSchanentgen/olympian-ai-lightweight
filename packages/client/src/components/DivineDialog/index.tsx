@@ -9,7 +9,7 @@ import { ArtifactPanel } from '@/components/Artifacts';
 import { Button } from '@/components/ui/button';
 import { Message } from '@olympian/shared';
 import { toast } from '@/hooks/useToast';
-import { detectArtifact } from '@/lib/artifactDetection';
+import { createArtifactFromDetection } from '@/lib/artifactUtils';
 import { Plus } from 'lucide-react';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 
@@ -25,7 +25,7 @@ export function DivineDialog() {
     createConversation,
   } = useChatStore();
 
-  const { createArtifact, isArtifactPanelOpen } = useArtifactStore();
+  const { isArtifactPanelOpen } = useArtifactStore();
   
   const [isThinking, setIsThinking] = useState(false);
   const [hasImages, setHasImages] = useState(false);
@@ -85,51 +85,38 @@ export function DivineDialog() {
         setCurrentConversation(response.conversation);
       }
 
-      // Detect if the response should create an artifact
-      const artifactDetection = detectArtifact(response.message);
-      let artifactId: string | undefined;
-
-      // Store original response content
-      const originalContent = response.message;
-      
-      // Determine what content to display in chat
-      let chatDisplayContent = originalContent;
-      
-      // Use processed content that removes code blocks when artifacts are created
-      if (artifactDetection.processedContent && artifactDetection.codeBlocksRemoved) {
-        chatDisplayContent = artifactDetection.processedContent;
-      }
-
-      if (artifactDetection.shouldCreateArtifact && artifactDetection.content) {
-        // Create the artifact
-        const artifact = createArtifact({
-          title: artifactDetection.title || 'Untitled Artifact',
-          type: artifactDetection.type!,
-          content: artifactDetection.content,
-          language: artifactDetection.language,
-          conversationId: response.conversationId,
-          version: 1,
-        });
-        artifactId = artifact.id;
-      }
+      // Use the new utility function to create artifacts and process content
+      const { artifact, processedContent } = createArtifactFromDetection(
+        response.message,
+        response.conversationId,
+        // We'll get the message ID from the API response if available
+        undefined
+      );
 
       // Add the assistant message to the store with enhanced metadata
       const assistantMessage: Message = {
         conversationId: response.conversationId,
         role: 'assistant',
-        content: chatDisplayContent, // Use processed content when code blocks are in artifacts
+        content: processedContent, // Use processed content when code blocks are in artifacts
         metadata: {
           ...response.metadata,
-          artifactId,
-          artifactType: artifactDetection.type,
-          hasArtifact: artifactDetection.shouldCreateArtifact,
+          artifactId: artifact?.id,
+          artifactType: artifact?.type,
+          hasArtifact: !!artifact,
           // Store original content and code removal status
-          originalContent: originalContent,
-          codeBlocksRemoved: artifactDetection.codeBlocksRemoved || false,
+          originalContent: response.message,
+          codeBlocksRemoved: processedContent !== response.message,
         },
         createdAt: new Date(),
       };
       addMessage(assistantMessage);
+
+      // If an artifact was created, update it with the message ID
+      if (artifact && assistantMessage._id) {
+        // Note: In a real implementation, you might want to update the artifact
+        // with the message ID after the message is saved to the database
+        console.log('🔗 [DivineDialog] Artifact created for message:', assistantMessage._id);
+      }
 
       // Reset states
       setIsThinking(false);
