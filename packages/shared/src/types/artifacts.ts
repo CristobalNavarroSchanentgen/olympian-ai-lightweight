@@ -10,6 +10,9 @@ export interface Artifact {
   messageId?: string; // Reference to the message that created this artifact
   conversationId: string;
   metadata?: ArtifactMetadata;
+  // Enhanced properties for subproject 3
+  checksum?: string; // Content integrity hash
+  confidence?: number; // Confidence score (0-1) for artifact detection/creation
 }
 
 // NEW: Enhanced document type for database storage
@@ -113,7 +116,84 @@ export interface ArtifactMetadata {
   [key: string]: any; // Allow additional properties for backward compatibility
 }
 
-// MISSING TYPES - Adding these for multi-host deployment (Subproject 3)
+// MISSING TYPES FOR SUBPROJECT 3 - Adding these to fix compilation errors
+
+// Artifact integrity and verification types
+export interface ArtifactIntegrityResult {
+  valid: boolean;
+  score: number; // 0-1 score
+  reason?: string;
+  issues: string[];
+  timestamp: Date;
+  checks: {
+    structure: boolean;
+    content: boolean;
+    metadata: boolean;
+    type: boolean;
+    size: boolean;
+  };
+}
+
+// Content fingerprinting for integrity checks
+export interface ContentFingerprint {
+  checksum: string;
+  length: number;
+  patterns: string[];
+  language?: string;
+  encoding: string;
+  timestamp: Date;
+  version: string;
+}
+
+// Artifact repair entry for tracking repairs
+export interface ArtifactRepairEntry {
+  artifactId: string;
+  repairType: 'content' | 'metadata' | 'structure' | 'type';
+  repairStrategy: string;
+  beforeRepair: {
+    content?: string;
+    metadata?: Partial<ArtifactMetadata>;
+    checksum?: string;
+  };
+  afterRepair: {
+    content?: string;
+    metadata?: Partial<ArtifactMetadata>;
+    checksum?: string;
+  };
+  success: boolean;
+  error?: string;
+  timestamp: Date;
+  confidence: number; // 0-1
+}
+
+// Statistics for artifact operations
+export interface ArtifactStatistics {
+  conversationId: string;
+  totalArtifacts: number;
+  artifactsByType: Record<ArtifactType, number>;
+  recreationStats: {
+    totalAttempts: number;
+    successRate: number; // 0-1
+    averageConfidence: number; // 0-1
+    averageAttempts: number;
+    strategiesUsed: string[];
+    fallbackRate: number; // 0-1
+  };
+  integrityStats: {
+    validArtifacts: number;
+    averageIntegrityScore: number; // 0-1
+    commonIssues: string[];
+    repairRate: number; // 0-1
+  };
+  performanceStats: {
+    averageDetectionTime: number; // ms
+    averageRecreationTime: number; // ms
+    totalProcessingTime: number; // ms
+  };
+  lastUpdated: Date;
+}
+
+// EXISTING TYPES BELOW - keeping for compatibility
 
 export interface CreateArtifactRequest {
   title: string;
