@@ -133,9 +133,9 @@ export class ArtifactService {
             codeBlocksRemoved: request.metadata?.codeBlocksRemoved || false,
           };
 
-          // Fix: Convert messageId to ObjectId string for query
+          // Fix: Convert ObjectId to string for Message interface compatibility
           const messageQuery = ObjectId.isValid(request.messageId) 
-            ? { _id: new ObjectId(request.messageId) } 
+            ? { _id: request.messageId } 
             : { id: request.messageId };
 
           await this.db.messages.updateOne(
@@ -396,9 +396,9 @@ export class ArtifactService {
 
         // Clean up message metadata if messageId exists
         if (artifact.messageId) {
-          // Fix: Convert messageId to ObjectId string for query
+          // Fix: Convert ObjectId to string for Message interface compatibility
           const messageQuery = ObjectId.isValid(artifact.messageId) 
-            ? { _id: new ObjectId(artifact.messageId) } 
+            ? { _id: artifact.messageId } 
             : { id: artifact.messageId };
 
           await this.db.messages.updateOne(
