@@ -23,7 +23,25 @@ interface MCPConfig {
 }
 
 export class ConnectionScanner extends EventEmitter {
+  private static instance: ConnectionScanner;
   private scanning = false;
+
+  private constructor() {
+    super();
+  }
+
+  // NEW: Add singleton pattern for multi-host deployment (Subproject 3)
+  public static getInstance(): ConnectionScanner {
+    if (!ConnectionScanner.instance) {
+      ConnectionScanner.instance = new ConnectionScanner();
+    }
+    return ConnectionScanner.instance;
+  }
+
+  public async initialize(): Promise<void> {
+    // Initialization logic for multi-host deployment
+    logger.info('🔍 [ConnectionScanner] Initialized for multi-host deployment');
+  }
 
   async scan(types?: ConnectionType[]): Promise<ScanResult[]> {
     if (this.scanning) {
