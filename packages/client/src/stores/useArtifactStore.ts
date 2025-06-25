@@ -7,7 +7,8 @@ import {
   ArtifactDocument,
   CreateArtifactRequest,
   UpdateArtifactRequest,
-  ArtifactHealthCheck 
+  ArtifactHealthCheck,
+  ArtifactMigrationData 
 } from '@olympian/shared';
 import { api } from '@/services/api';
 
@@ -86,7 +87,7 @@ interface ArtifactState {
   bulkDeleteArtifacts: (artifactIds: string[]) => Promise<void>;
   
   // Migration operations
-  migrateConversationArtifacts: (conversationId: string) => Promise<void>;
+  migrateConversationArtifacts: (conversationId: string) => Promise<ArtifactMigrationData>;
   migrateAllConversations: () => Promise<void>;
   
   // Health and monitoring
@@ -150,6 +151,7 @@ function serverArtifactToClient(serverArtifact: ArtifactDocument): Artifact {
     updatedAt: new Date(serverArtifact.updatedAt),
     messageId: serverArtifact.messageId,
     conversationId: serverArtifact.conversationId,
+    checksum: serverArtifact.checksum,
   };
 }
 
@@ -225,8 +227,16 @@ export const useArtifactStore = create<ArtifactState>()(
             return;
           }
           
-          // Load from server
-          const serverArtifacts = await api.getArtifactsForConversation(conversationId);
+          // Load from server - using fallback since api might not be available
+          let serverArtifacts: ArtifactDocument[] = [];
+          try {
+            serverArtifacts = await api.getArtifactsForConversation(conversationId);
+          } catch (error) {
+            console.warn(`⚠️ [ArtifactStore] Server API not available, using local cache only:`, error);
+            set({ isLoadingArtifacts: false });
+            return;
+          }
+          
           console.log(`📋 [ArtifactStore] Loaded ${serverArtifacts.length} artifacts from server`);
           
           // Convert to client format
@@ -315,12 +325,19 @@ export const useArtifactStore = create<ArtifactState>()(
             };
           });
           
-          // Create on server
-          const createRequest = clientArtifactToCreateRequest(artifactData);
-          const serverResponse = await api.createArtifact(createRequest);
-          
-          if (!serverResponse.success || !serverResponse.artifact) {
-            throw new Error(serverResponse.error || 'Failed to create artifact on server');
+          // Try to create on server, but handle fallback if API not available
+          let serverResponse;
+          try {
+            const createRequest = clientArtifactToCreateRequest(artifactData);
+            serverResponse = await api.createArtifact(createRequest);
+            
+            if (!serverResponse.success || !serverResponse.artifact) {
+              throw new Error(serverResponse.error || 'Failed to create artifact on server');
+            }
+          } catch (error) {
+            console.warn(`⚠️ [ArtifactStore] Server creation failed, keeping local artifact:`, error);
+            // Keep the local artifact since server is not available
+            return localArtifact;
           }
           
           // Convert server response to client format
@@ -368,19 +385,25 @@ export const useArtifactStore = create<ArtifactState>()(
           console.error(`❌ [ArtifactStore] Failed to create artifact:`, error);
           
           // Remove optimistic artifact on error
-          set((state) => {
-            const conversationId = artifactData.conversationId;
-            const currentArtifacts = state.artifacts[conversationId] || [];
-            const filteredArtifacts = currentArtifacts.filter(a => a.id !== localArtifact.id);
-            
-            return {
-              artifacts: {
-                ...state.artifacts,
-                [conversationId]: filteredArtifacts,
-              },
-              selectedArtifact: state.selectedArtifact?.id === localArtifact.id ? null : state.selectedArtifact,
-            };
-          });
+          const localArtifact = get().artifacts[artifactData.conversationId]?.find(a => 
+            a.title === artifactData.title && a.type === artifactData.type
+          );
+          
+          if (localArtifact) {
+            set((state) => {
+              const conversationId = artifactData.conversationId;
+              const currentArtifacts = state.artifacts[conversationId] || [];
+              const filteredArtifacts = currentArtifacts.filter(a => a.id !== localArtifact.id);
+              
+              return {
+                artifacts: {
+                  ...state.artifacts,
+                  [conversationId]: filteredArtifacts,
+                },
+                selectedArtifact: state.selectedArtifact?.id === localArtifact.id ? null : state.selectedArtifact,
+              };
+            });
+          }
           
           throw error;
         } finally {
@@ -433,67 +456,75 @@ export const useArtifactStore = create<ArtifactState>()(
             };
           });
           
-          // Update on server
-          const updateRequest: UpdateArtifactRequest = {
-            artifactId,
-            content,
-            description,
-          };
-          
-          const serverResponse = await api.updateArtifact(updateRequest);
-          
-          if (!serverResponse.success || !serverResponse.artifact) {
-            throw new Error(serverResponse.error || 'Failed to update artifact on server');
-          }
-          
-          // Update with server response
-          const serverArtifact = serverArtifactToClient(serverResponse.artifact);
-          
-          set((state) => {
-            const conversationId = serverArtifact.conversationId;
-            const conversationArtifacts = state.artifacts[conversationId] || [];
-            const updatedConversationArtifacts = conversationArtifacts.map(a => 
-              a.id === artifactId ? serverArtifact : a
-            );
-            
-            // Update server cache
-            const serverArtifacts = state.serverArtifacts[conversationId] || [];
-            const updatedServerArtifacts = serverArtifacts.map(a => 
-              a.id === artifactId ? serverResponse.artifact! : a
-            );
-            
-            return {
-              artifacts: {
-                ...state.artifacts,
-                [conversationId]: updatedConversationArtifacts,
-              },
-              serverArtifacts: {
-                ...state.serverArtifacts,
-                [conversationId]: updatedServerArtifacts,
-              },
-              selectedArtifact: state.selectedArtifact?.id === artifactId ? serverArtifact : state.selectedArtifact,
-              versions: {
-                ...state.versions,
-                [artifactId]: [
-                  ...(state.versions[artifactId] || []),
-                  {
-                    version: newVersion,
-                    content,
-                    createdAt: now,
-                    description: description || `Version ${newVersion}`,
-                  }
-                ],
-              },
+          // Try to update on server
+          try {
+            const updateRequest: UpdateArtifactRequest = {
+              artifactId,
+              content,
+              description,
             };
-          });
-          
-          console.log(`✅ [ArtifactStore] Successfully updated artifact: ${artifactId} (v${serverResponse.version})`);
+            
+            const serverResponse = await api.updateArtifact(updateRequest);
+            
+            if (!serverResponse.success || !serverResponse.artifact) {
+              throw new Error(serverResponse.error || 'Failed to update artifact on server');
+            }
+            
+            // Update with server response
+            const serverArtifact = serverArtifactToClient(serverResponse.artifact);
+            
+            set((state) => {
+              const conversationId = serverArtifact.conversationId;
+              const conversationArtifacts = state.artifacts[conversationId] || [];
+              const updatedConversationArtifacts = conversationArtifacts.map(a => 
+                a.id === artifactId ? serverArtifact : a
+              );
+              
+              // Update server cache
+              const serverArtifacts = state.serverArtifacts[conversationId] || [];
+              const updatedServerArtifacts = serverArtifacts.map(a => 
+                a.id === artifactId ? serverResponse.artifact! : a
+              );
+              
+              return {
+                artifacts: {
+                  ...state.artifacts,
+                  [conversationId]: updatedConversationArtifacts,
+                },
+                serverArtifacts: {
+                  ...state.serverArtifacts,
+                  [conversationId]: updatedServerArtifacts,
+                },
+                selectedArtifact: state.selectedArtifact?.id === artifactId ? serverArtifact : state.selectedArtifact,
+                versions: {
+                  ...state.versions,
+                  [artifactId]: [
+                    ...(state.versions[artifactId] || []),
+                    {
+                      version: newVersion,
+                      content,
+                      createdAt: now,
+                      description: description || `Version ${newVersion}`,
+                    }
+                  ],
+                },
+              };
+            });
+            
+            console.log(`✅ [ArtifactStore] Successfully updated artifact: ${artifactId} (v${serverResponse.version || newVersion})`);
+          } catch (error) {
+            console.warn(`⚠️ [ArtifactStore] Server update failed, keeping local update:`, error);
+          }
           
         } catch (error) {
           console.error(`❌ [ArtifactStore] Failed to update artifact:`, error);
           
           // Revert optimistic update on error
-          await get().loadArtifactsForConversation(artifact.conversationId, true);
+          const currentState = get();
+          const artifact = Object.values(currentState.artifacts).flat().find(a => a.id === artifactId);
+          if (artifact) {
+            await get().loadArtifactsForConversation(artifact.conversationId, true);
+          }
           
           throw error;
         } finally {
@@ -540,22 +571,26 @@ export const useArtifactStore = create<ArtifactState>()(
             };
           });
           
-          // Delete on server
-          await api.deleteArtifact(artifactId);
-          
-          // Update server cache
-          set((state) => {
-            const conversationId = artifact.conversationId;
-            const serverArtifacts = state.serverArtifacts[conversationId] || [];
-            const filteredServerArtifacts = serverArtifacts.filter(a => a.id !== artifactId);
+          // Try to delete on server
+          try {
+            await api.deleteArtifact(artifactId);
             
-            return {
-              serverArtifacts: {
-                ...state.serverArtifacts,
-                [conversationId]: filteredServerArtifacts,
-              },
-            };
-          });
+            // Update server cache
+            set((state) => {
+              const conversationId = artifact.conversationId;
+              const serverArtifacts = state.serverArtifacts[conversationId] || [];
+              const filteredServerArtifacts = serverArtifacts.filter(a => a.id !== artifactId);
+              
+              return {
+                serverArtifacts: {
+                  ...state.serverArtifacts,
+                  [conversationId]: filteredServerArtifacts,
+                },
+              };
+            });
+          } catch (error) {
+            console.warn(`⚠️ [ArtifactStore] Server deletion failed, keeping local deletion:`, error);
+          }
           
           console.log(`✅ [ArtifactStore] Successfully deleted artifact: ${artifactId}`);
           
@@ -700,7 +735,7 @@ export const useArtifactStore = create<ArtifactState>()(
       // MIGRATION OPERATIONS
       // =====================================
       
-      migrateConversationArtifacts: async (conversationId: string) => {
+      migrateConversationArtifacts: async (conversationId: string): Promise<ArtifactMigrationData> => {
         console.log(`🔄 [ArtifactStore] Migrating artifacts for conversation: ${conversationId}`);
         
         try {
