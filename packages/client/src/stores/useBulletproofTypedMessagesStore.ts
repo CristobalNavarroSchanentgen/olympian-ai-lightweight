@@ -254,18 +254,14 @@ export const useBulletproofTypedMessagesStore = create<BulletproofTypedMessagesS
           const newStreamingContent = new Map(state.streamingContentByMessage);
           const newCurrentStreaming = new Map(state.currentStreamingByConversation);
           
-          // Mark streaming as complete
-          newStreamingContent.set(messageId, {
-            ...streamingContent,
-            isComplete: true,
-            lastUpdate: Date.now()
-          });
+          // CRITICAL: Remove streaming content immediately
+          newStreamingContent.delete(messageId);
           
           // Find and clear current streaming for the conversation
           for (const [conversationId, currentMessageId] of state.currentStreamingByConversation) {
             if (currentMessageId === messageId) {
               newCurrentStreaming.set(conversationId, null);
-              console.log(`[BulletproofTypedMessages] ✅ Completed streaming for message: ${messageId} in conversation: ${conversationId}`);
+              console.log(`[BulletproofTypedMessages] ✅ Completed and cleared streaming for message: ${messageId} in conversation: ${conversationId}`);
               break;
             }
           }
@@ -453,13 +449,14 @@ export const useBulletproofTypedMessagesStore = create<BulletproofTypedMessagesS
           const newTypedMessages = new Map(state.typedMessagesByConversation);
           
           // Remove current streaming for conversation
+          const currentMessageId = state.currentStreamingByConversation.get(conversationId);
+          if (currentMessageId) {
+            newStreamingContent.delete(currentMessageId);
+          }
           newCurrentStreaming.delete(conversationId);
           
           // Remove typed messages for conversation
           newTypedMessages.delete(conversationId);
-          
-          // Remove streaming content for messages in this conversation
-          // (This requires tracking conversation per message, which we'd need to add)
           
           // Clear typewriter if it's for this conversation
           const newTypewriter = state.currentTypewriter?.conversationId === conversationId 
