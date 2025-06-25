@@ -30,6 +30,11 @@ export class DatabaseService {
     return DatabaseService.instance;
   }
 
+  // NEW: Add isHealthy property for multi-host deployment (Subproject 3)
+  public get isHealthy(): boolean {
+    return this.isConnected();
+  }
+
   public async connect(uri: string): Promise<void> {
     try {
       console.log('🔌 [DatabaseService] Connecting to MongoDB...');
