@@ -42,6 +42,7 @@ export class ModelProgressiveLoader extends EventEmitter {
   private streamliner: OllamaStreamliner;
   private loadingState: ProgressiveLoadingState | null = null;
   private isLoading = false;
+  private isStopped = false; // NEW: Add stopped flag for multi-host deployment
   private lastFullLoadTime = 0;
   private readonly CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
   private deploymentConfig = getDeploymentConfig();
@@ -74,6 +75,7 @@ export class ModelProgressiveLoader extends EventEmitter {
     }
 
     this.isLoading = true;
+    this.isStopped = false; // Reset stopped flag
     const startTime = Date.now();
     const capabilityMode = this.deploymentConfig.modelCapability.mode;
     
@@ -100,6 +102,18 @@ export class ModelProgressiveLoader extends EventEmitter {
     } finally {
       this.isLoading = false;
     }
+  }
+
+  /**
+   * NEW: Stop progressive loading for multi-host deployment (Subproject 3)
+   */
+  stopProgressiveLoading(): void {
+    logger.info('🛑 [ModelProgressiveLoader] Stopping progressive loading for multi-host deployment');
+    this.isStopped = true;
+    this.isLoading = false;
+    
+    // Clear any ongoing operations
+    this.removeAllListeners();
   }
 
   /**
@@ -135,6 +149,12 @@ export class ModelProgressiveLoader extends EventEmitter {
       message: 'Using ONLY predefined capabilities - no network calls to Ollama'
     });
 
+    // Check if stopped before emitting events
+    if (this.isStopped) {
+      logger.info('🛑 Progressive loading stopped during custom capabilities loading');
+      return this.loadingState;
+    }
+
     // Emit initial state
     this.emit('progress', {
       type: 'loading_started',
@@ -148,6 +168,11 @@ export class ModelProgressiveLoader extends EventEmitter {
 
     // Emit progress for each model (simulate processing for UI consistency)
     for (let i = 0; i < allCapabilities.length; i++) {
+      if (this.isStopped) {
+        logger.info('🛑 Progressive loading stopped during custom capabilities emission');
+        break;
+      }
+
       const capability = allCapabilities[i];
       
       // Emit vision model found event if applicable
@@ -200,16 +225,18 @@ export class ModelProgressiveLoader extends EventEmitter {
       ollamaConnectionRequired: false
     });
 
-    // Emit completion event
-    this.emit('progress', {
-      type: 'loading_complete',
-      progress: {
-        current: allCapabilities.length,
-        total: allCapabilities.length,
-        percentage: 100
-      },
-      state: { ...this.loadingState }
-    } as ProgressiveUpdate);
+    // Emit completion event if not stopped
+    if (!this.isStopped) {
+      this.emit('progress', {
+        type: 'loading_complete',
+        progress: {
+          current: allCapabilities.length,
+          total: allCapabilities.length,
+          percentage: 100
+        },
+        state: { ...this.loadingState }
+      } as ProgressiveUpdate);
+    }
 
     return this.loadingState;
   }
@@ -237,6 +264,12 @@ export class ModelProgressiveLoader extends EventEmitter {
 
     logger.info(`📊 Will process ${models.length} models progressively using automatic detection`);
     
+    // Check if stopped before proceeding
+    if (this.isStopped) {
+      logger.info('🛑 Progressive loading stopped before automatic capabilities loading');
+      return this.loadingState;
+    }
+
     // Emit initial state
     this.emit('progress', {
       type: 'loading_started',
@@ -257,7 +290,14 @@ export class ModelProgressiveLoader extends EventEmitter {
 
     // Process each chunk and emit progress
     for (const chunk of chunks) {
+      if (this.isStopped) {
+        logger.info('🛑 Progressive loading stopped during automatic capabilities processing');
+        break;
+      }
+
       const chunkPromises = chunk.map(async (model) => {
+        if (this.isStopped) return; // Skip if stopped
+
         try {
           logger.debug(`🔍 Processing model: ${model}`);
           const capability = await this.streamliner.detectCapabilities(model);
@@ -272,11 +312,29 @@ export class ModelProgressiveLoader extends EventEmitter {
             logger.info(`👁️ Vision model found: ${model}`);
             
             // Emit vision model found event
+            if (!this.isStopped) {
+              this.emit('progress', {
+                type: 'vision_model_found',
+                model,
+                capability,
+                isVisionModel: true,
+                progress: {
+                  current: this.loadingState!.processedModels,
+                  total: this.loadingState!.totalModels,
+                  percentage: Math.round((this.loadingState!.processedModels / this.loadingState!.totalModels) * 100)
+                },
+                state: { ...this.loadingState! }
+              } as ProgressiveUpdate);
+            }
+          }
+          
+          // Emit model processed event
+          if (!this.isStopped) {
             this.emit('progress', {
-              type: 'vision_model_found',
+              type: 'model_processed',
               model,
               capability,
-              isVisionModel: true,
+              isVisionModel: capability.vision,
               progress: {
                 current: this.loadingState!.processedModels,
                 total: this.loadingState!.totalModels,
@@ -285,20 +343,6 @@ export class ModelProgressiveLoader extends EventEmitter {
               state: { ...this.loadingState! }
             } as ProgressiveUpdate);
           }
-          
-          // Emit model processed event
-          this.emit('progress', {
-            type: 'model_processed',
-            model,
-            capability,
-            isVisionModel: capability.vision,
-            progress: {
-              current: this.loadingState!.processedModels,
-              total: this.loadingState!.totalModels,
-              percentage: Math.round((this.loadingState!.processedModels / this.loadingState!.totalModels) * 100)
-            },
-            state: { ...this.loadingState! }
-          } as ProgressiveUpdate);
           
           logger.debug(`✅ Processed model ${model} (${this.loadingState!.processedModels}/${this.loadingState!.totalModels})`);
           
@@ -316,17 +360,19 @@ export class ModelProgressiveLoader extends EventEmitter {
           this.loadingState!.processedModels++;
           
           // Emit error event
-          this.emit('progress', {
-            type: 'error',
-            model,
-            error: errorMessage,
-            progress: {
-              current: this.loadingState!.processedModels,
-              total: this.loadingState!.totalModels,
-              percentage: Math.round((this.loadingState!.processedModels / this.loadingState!.totalModels) * 100)
-            },
-            state: { ...this.loadingState! }
-          } as ProgressiveUpdate);
+          if (!this.isStopped) {
+            this.emit('progress', {
+              type: 'error',
+              model,
+              error: errorMessage,
+              progress: {
+                current: this.loadingState!.processedModels,
+                total: this.loadingState!.totalModels,
+                percentage: Math.round((this.loadingState!.processedModels / this.loadingState!.totalModels) * 100)
+              },
+              state: { ...this.loadingState! }
+            } as ProgressiveUpdate);
+          }
         }
       });
       
@@ -350,16 +396,18 @@ export class ModelProgressiveLoader extends EventEmitter {
       deployment: 'multi-host'
     });
 
-    // Emit completion event
-    this.emit('progress', {
-      type: 'loading_complete',
-      progress: {
-        current: this.loadingState.processedModels,
-        total: this.loadingState.totalModels,
-        percentage: 100
-      },
-      state: { ...this.loadingState }
-    } as ProgressiveUpdate);
+    // Emit completion event if not stopped
+    if (!this.isStopped) {
+      this.emit('progress', {
+        type: 'loading_complete',
+        progress: {
+          current: this.loadingState.processedModels,
+          total: this.loadingState.totalModels,
+          percentage: 100
+        },
+        state: { ...this.loadingState }
+      } as ProgressiveUpdate);
+    }
 
     return this.loadingState;
   }
