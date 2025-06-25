@@ -70,12 +70,15 @@ export interface ArtifactMessageMetadata {
   codeBlocksRemoved?: boolean; // Whether code blocks were removed for prose-only display
 }
 
+// Sync status type for better type safety
+export type ArtifactSyncStatus = 'synced' | 'pending' | 'conflict' | 'error';
+
 // NEW: Enhanced metadata for Phase 3 multi-host optimizations
 export interface ArtifactMetadata {
-  // Synchronization - Fix: Make syncStatus required instead of optional
-  syncStatus: 'synced' | 'pending' | 'conflict' | 'error';
+  // Synchronization - Required field for consistency
+  syncStatus: ArtifactSyncStatus;
   
-  // Content processing
+  // Content processing - Required fields
   codeBlocksRemoved: boolean;
   detectionStrategy: string; // How artifact was detected
   originalContent: string; // Original content before processing
@@ -101,6 +104,10 @@ export interface ArtifactMetadata {
   
   // Client state
   lightweight?: boolean; // Whether this is a lightweight version
+  
+  // Additional metadata for compression and caching
+  compressionType?: 'none' | 'gzip';
+  cacheKey?: string;
   
   // Legacy support
   [key: string]: any; // Allow additional properties for backward compatibility
@@ -136,7 +143,7 @@ export interface ArtifactOperationResponse {
   // Multi-host specific fields
   version?: number; // Add version field that was being used
   instanceId?: string;
-  syncStatus?: 'synced' | 'pending' | 'conflict' | 'error';
+  syncStatus?: ArtifactSyncStatus;
   conflictData?: ArtifactConflictResolution;
 }
 
@@ -167,7 +174,7 @@ export interface ArtifactHealthCheck {
 
 export interface ArtifactSyncData {
   artifactId: string;
-  syncStatus: 'synced' | 'pending' | 'conflict' | 'error';
+  syncStatus: ArtifactSyncStatus;
   lastSyncedAt: Date;
   sourceInstance: string;
   targetInstances: string[];
