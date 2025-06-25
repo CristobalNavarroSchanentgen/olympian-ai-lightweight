@@ -17,7 +17,7 @@ export class WebSocketService {
 
   private constructor() {
     this.db = DatabaseService.getInstance();
-    this.scanner = new ConnectionScanner();
+    this.scanner = ConnectionScanner.getInstance(); // Fix: Use singleton pattern
     this.streamliner = new OllamaStreamliner();
     this.memoryService = ChatMemoryService.getInstance();
   }
