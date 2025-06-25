@@ -327,7 +327,7 @@ function detectWithASTAnalysis(content: string): ArtifactDetectionResult | null 
  * Semantic analysis based detection
  */
 function detectWithSemanticAnalysis(content: string, fingerprint: ContentFingerprint): ArtifactDetectionResult | null {
-  const { patterns, language } = fingerprint;
+  const { patterns } = fingerprint;
   
   // Analyze content semantics based on patterns
   if (patterns.includes('mermaid_diagram')) {
@@ -371,8 +371,6 @@ function detectWithSemanticAnalysis(content: string, fingerprint: ContentFingerp
  * Pattern matching based detection
  */
 function detectWithPatternMatching(content: string, fingerprint: ContentFingerprint): ArtifactDetectionResult | null {
-  const { patterns } = fingerprint;
-  
   // React component detection
   if (content.includes('React') || /import.*from\s+['"]react['"]/.test(content)) {
     const language = fingerprint.language || 'jsx';
@@ -512,7 +510,7 @@ function selectBestDetectionResult(results: EnhancedDetectionResult[]): Enhanced
 /**
  * Verify detection result integrity
  */
-function verifyDetectionResult(result: ArtifactDetectionResult, originalContent: string, fingerprint: ContentFingerprint): boolean {
+function verifyDetectionResult(result: ArtifactDetectionResult, originalContent: string, _fingerprint: ContentFingerprint): boolean {
   try {
     // Basic integrity checks
     if (!result.content || result.content.length === 0) return false;
