@@ -48,11 +48,17 @@ class BulletproofWebSocketChatService {
   
   // Event queue for multi-host deployment timing issues
   private eventQueue: Map<string, QueuedEvent[]> = new Map();
-  private readonly EVENT_QUEUE_MAX_SIZE = 100;
-  private readonly EVENT_QUEUE_MAX_AGE = 30000; // 30 seconds
+  private readonly EVENT_QUEUE_MAX_SIZE = 1000; // Increased for late-arriving tokens
+  private readonly EVENT_QUEUE_MAX_AGE = 60000; // 60 seconds for multi-host delays
+  
+  // Handler cleanup delay for multi-host deployments
+  private readonly HANDLER_CLEANUP_DELAY = 30000; // 30 seconds to ensure all tokens arrive
 
   // CRITICAL FIX: Direct UI handlers registry to bypass lifecycle manager timing issues
   private uiHandlersRegistry: Map<string, ChatHandlers> = new Map();
+  
+  // Track completed messages to handle late-arriving tokens
+  private completedMessages: Set<string> = new Set();
 
   // Monitoring and health check
   private keepAliveInterval: NodeJS.Timeout | null = null;
@@ -381,13 +387,17 @@ class BulletproofWebSocketChatService {
               conversationId: data.conversationId, 
               metadata: data.metadata 
             });
-            // Clean up UI handlers after completion
-            this.cleanupUIHandlers(messageId);
+            // Mark message as completed
+            this.completedMessages.add(messageId);
+            // Schedule cleanup with extended delay for multi-host deployments
+            this.scheduleHandlerCleanup(messageId);
             break;
           case 'error':
             uiHandlers.onError?.({ messageId, error: data.error });
-            // Clean up UI handlers after error
-            this.cleanupUIHandlers(messageId);
+            // Mark message as completed
+            this.completedMessages.add(messageId);
+            // Schedule cleanup with extended delay
+            this.scheduleHandlerCleanup(messageId);
             break;
         }
         
@@ -399,6 +409,12 @@ class BulletproofWebSocketChatService {
         }
         
         console.log(`[BulletproofWebSocket] ✅ Successfully processed ${eventName} for ${messageId} via UI bridge`);
+        return;
+      }
+
+      // Check if this is a late-arriving token for a completed message
+      if (eventName === 'token' && this.completedMessages.has(messageId)) {
+        console.log(`[BulletproofWebSocket] ⚠️ Ignoring late-arriving token for completed message: ${messageId}`);
         return;
       }
 
@@ -428,16 +444,26 @@ class BulletproofWebSocketChatService {
   }
 
   /**
-   * 🧹 CRITICAL FIX: Clean up UI handlers after message completion
+   * 🧹 Schedule handler cleanup with proper delay
    */
-  private cleanupUIHandlers(messageId: string, delay: number = 2000): void {
+  private scheduleHandlerCleanup(messageId: string): void {
+    // Use extended delay for multi-host deployments
     setTimeout(() => {
       if (this.uiHandlersRegistry.has(messageId)) {
         this.uiHandlersRegistry.delete(messageId);
         console.log(`[BulletproofWebSocket] 🧹 Cleaned up UI handlers for message: ${messageId}`);
         console.log(`[BulletproofWebSocket] 📊 Remaining UI handlers:`, this.uiHandlersRegistry.size);
       }
-    }, delay);
+      
+      // Also remove from completed messages set
+      this.completedMessages.delete(messageId);
+      
+      // Clean up any remaining queued events for this message
+      if (this.eventQueue.has(messageId)) {
+        console.log(`[BulletproofWebSocket] 🧹 Cleaning up queued events for completed message: ${messageId}`);
+        this.eventQueue.delete(messageId);
+      }
+    }, this.HANDLER_CLEANUP_DELAY);
   }
 
   /**
@@ -565,8 +591,20 @@ class BulletproofWebSocketChatService {
     
     messageLifecycleManager.cancelMessage(messageId);
     
-    // CRITICAL FIX: Clean up UI handlers immediately for cancelled messages
-    this.cleanupUIHandlers(messageId, 0);
+    // Mark as completed to ignore late-arriving events
+    this.completedMessages.add(messageId);
+    
+    // Clean up UI handlers immediately for cancelled messages
+    if (this.uiHandlersRegistry.has(messageId)) {
+      this.uiHandlersRegistry.delete(messageId);
+      console.log(`[BulletproofWebSocket] 🧹 Immediately cleaned up UI handlers for cancelled message: ${messageId}`);
+    }
+    
+    // Clean up queued events
+    if (this.eventQueue.has(messageId)) {
+      this.eventQueue.delete(messageId);
+      console.log(`[BulletproofWebSocket] 🧹 Cleaned up queued events for cancelled message: ${messageId}`);
+    }
   }
 
   /**
@@ -602,6 +640,7 @@ class BulletproofWebSocketChatService {
           readyState: this.socket.io.engine.readyState,
           activeMessages: stats.totalMessages,
           uiHandlers: this.uiHandlersRegistry.size,
+          completedMessages: this.completedMessages.size,
           queuedEvents: this.getTotalQueuedEvents(),
           lastHeartbeat: Math.round((Date.now() - this.lastHeartbeat) / 1000) + 's ago',
           isHealthy: this.isHealthy
@@ -609,6 +648,9 @@ class BulletproofWebSocketChatService {
 
         // Clean up old queued events
         this.cleanOldQueuedEvents();
+        
+        // Clean up old completed messages
+        this.cleanOldCompletedMessages();
       }
     }, 60000);
   }
@@ -641,6 +683,35 @@ class BulletproofWebSocketChatService {
     }
   }
 
+  /**
+   * 🧹 Clean up old completed messages
+   */
+  private cleanOldCompletedMessages(): void {
+    // Clean up completed messages older than cleanup delay + buffer
+    const cleanupAge = this.HANDLER_CLEANUP_DELAY + 60000; // cleanup delay + 1 minute buffer
+    const cutoffTime = Date.now() - cleanupAge;
+    
+    const oldSize = this.completedMessages.size;
+    const toDelete: string[] = [];
+    
+    this.completedMessages.forEach(messageId => {
+      // Extract timestamp from message ID
+      const match = messageId.match(/msg_(\d+)_/);
+      if (match) {
+        const timestamp = parseInt(match[1]);
+        if (timestamp < cutoffTime) {
+          toDelete.push(messageId);
+        }
+      }
+    });
+    
+    toDelete.forEach(messageId => this.completedMessages.delete(messageId));
+    
+    if (toDelete.length > 0) {
+      console.log(`[BulletproofWebSocket] 🧹 Cleaned ${toDelete.length} old completed messages`);
+    }
+  }
+
   private getTotalQueuedEvents(): number {
     let total = 0;
     this.eventQueue.forEach(queue => total += queue.length);
@@ -664,8 +735,11 @@ class BulletproofWebSocketChatService {
     // Clear event queue
     this.eventQueue.clear();
     
-    // CRITICAL FIX: Clear UI handlers registry
+    // Clear UI handlers registry
     this.uiHandlersRegistry.clear();
+    
+    // Clear completed messages
+    this.completedMessages.clear();
     
     // Shutdown message lifecycle manager
     messageLifecycleManager.shutdown();
@@ -698,6 +772,7 @@ class BulletproofWebSocketChatService {
       isHealthy: this.isHealthy,
       messageStats,
       uiHandlers: this.uiHandlersRegistry.size,
+      completedMessages: this.completedMessages.size,
       queuedEvents: this.getTotalQueuedEvents()
     };
   }
@@ -709,7 +784,8 @@ class BulletproofWebSocketChatService {
       duration: Math.round((Date.now() - lifecycle.createdAt) / 1000),
       lastActivity: Math.round((Date.now() - lifecycle.lastActivity) / 1000),
       tokenCount: lifecycle.tokenCount,
-      hasUIHandlers: this.uiHandlersRegistry.has(lifecycle.id)
+      hasUIHandlers: this.uiHandlersRegistry.has(lifecycle.id),
+      isCompleted: this.completedMessages.has(lifecycle.id)
     }));
   }
 }
