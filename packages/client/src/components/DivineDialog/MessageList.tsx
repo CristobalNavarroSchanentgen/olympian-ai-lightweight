@@ -48,6 +48,9 @@ export function MessageList({
     return prepareMarkdownContent(truncateForSafety(streamedContent));
   }, [streamedContent]);
 
+  // Check if we're currently streaming a new message (not just transitioning)
+  const isActivelyStreaming = isGenerating && safeStreamedContent && !isTransitioning;
+
   if (messages.length === 0 && !isThinking && !isGenerating) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-center">
@@ -85,58 +88,47 @@ export function MessageList({
         </div>
       )}
       
-      {/* Streaming Content - Display directly without typewriter effect */}
-      {(isGenerating || safeStreamedContent) && !isTransitioning && (
+      {/* Streaming Content - Only show when actively streaming */}
+      {isActivelyStreaming && (
         <div className="flex flex-col items-center">
           <div className="w-full max-w-4xl flex flex-col items-center">
             <div className="flex items-center gap-2 mb-2">
               <span className="text-xs font-medium text-gray-300">Assistant</span>
-              <span className="text-xs text-gray-500">
-                {isGenerating ? 'streaming...' : 'complete'}
-              </span>
+              <span className="text-xs text-gray-500">streaming...</span>
             </div>
             <div className="w-full max-w-3xl">
-              {safeStreamedContent ? (
-                <div className="prose prose-invert prose-sm max-w-none prose-p:leading-relaxed">
-                  <Suspense fallback={<MarkdownLoadingFallback />}>
-                    <ErrorBoundary 
-                      fallback={<MarkdownErrorFallback content={safeStreamedContent} />}
+              <div className="prose prose-invert prose-sm max-w-none prose-p:leading-relaxed">
+                <Suspense fallback={<MarkdownLoadingFallback />}>
+                  <ErrorBoundary 
+                    fallback={<MarkdownErrorFallback content={safeStreamedContent} />}
+                  >
+                    <ReactMarkdown
+                      components={{
+                        pre: ({ ...props }) => (
+                          <pre className="overflow-x-auto rounded-lg bg-background p-3" {...props} />
+                        ),
+                        code: ({ children, className, ...props }) => {
+                          const match = /language-(\w+)/.exec(className || '');
+                          const isInline = !match;
+                          
+                          return isInline ? (
+                            <code className="rounded bg-background px-1 py-0.5" {...props}>
+                              {children}
+                            </code>
+                          ) : (
+                            <code className={className} {...props}>
+                              {children}
+                            </code>
+                          );
+                        },
+                      }}
                     >
-                      <ReactMarkdown
-                        components={{
-                          pre: ({ ...props }) => (
-                            <pre className="overflow-x-auto rounded-lg bg-background p-3" {...props} />
-                          ),
-                          code: ({ children, className, ...props }) => {
-                            const match = /language-(\w+)/.exec(className || '');
-                            const isInline = !match;
-                            
-                            return isInline ? (
-                              <code className="rounded bg-background px-1 py-0.5" {...props}>
-                                {children}
-                              </code>
-                            ) : (
-                              <code className={className} {...props}>
-                                {children}
-                              </code>
-                            );
-                          },
-                        }}
-                      >
-                        {safeStreamedContent}
-                      </ReactMarkdown>
-                    </ErrorBoundary>
-                  </Suspense>
-                  {isGenerating && (
-                    <span className="typewriter-cursor animate-pulse ml-1" aria-hidden="true">▌</span>
-                  )}
-                </div>
-              ) : isGenerating ? (
-                <div className="flex items-center gap-2 text-sm text-gray-400">
-                  <Spinner size="sm" />
-                  <span>Waiting for response...</span>
-                </div>
-              ) : null}
+                      {safeStreamedContent}
+                    </ReactMarkdown>
+                  </ErrorBoundary>
+                </Suspense>
+                <span className="typewriter-cursor animate-pulse ml-1" aria-hidden="true">▌</span>
+              </div>
             </div>
           </div>
         </div>
