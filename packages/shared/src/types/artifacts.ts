@@ -72,7 +72,7 @@ export interface ArtifactMessageMetadata {
 
 // NEW: Enhanced metadata for Phase 3 multi-host optimizations
 export interface ArtifactMetadata {
-  // Synchronization
+  // Synchronization - Fix: Make syncStatus required instead of optional
   syncStatus: 'synced' | 'pending' | 'conflict' | 'error';
   
   // Content processing
