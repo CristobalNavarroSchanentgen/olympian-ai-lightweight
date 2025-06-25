@@ -20,6 +20,7 @@ import {
   FileJson, 
   Table, 
   ExternalLink,
+  AlertTriangle,
 } from 'lucide-react';
 
 interface MessageItemProps {
@@ -33,7 +34,8 @@ export function MessageItem({ message, isLatest = false }: MessageItemProps) {
   
   const { 
     selectArtifact, 
-    setArtifactPanelOpen 
+    setArtifactPanelOpen,
+    getArtifactById 
   } = useArtifactStore();
 
   // Get artifact if this message has one using the utility function
@@ -42,12 +44,30 @@ export function MessageItem({ message, isLatest = false }: MessageItemProps) {
   // Get the proper display content for this message
   const displayContent = getDisplayContentForMessage(message);
 
+  // Additional debugging for artifact issues
+  const shouldShowArtifact = shouldDisplayArtifact(message);
+  const hasArtifactMetadata = !!message.metadata?.hasArtifact;
+  const artifactId = message.metadata?.artifactId;
+
   // Reset typing state when message changes
   useEffect(() => {
     if (isLatest && !isUser) {
       setHasTyped(false);
     }
   }, [message._id, isLatest, isUser]);
+
+  // Debug artifact issues
+  useEffect(() => {
+    if (hasArtifactMetadata && artifactId && !artifact) {
+      console.warn('🔍 [MessageItem] Artifact metadata exists but artifact not found:', {
+        messageId: message._id,
+        artifactId,
+        hasMetadata: hasArtifactMetadata,
+        shouldShow: shouldShowArtifact,
+        availableArtifacts: useArtifactStore.getState().artifacts
+      });
+    }
+  }, [artifact, hasArtifactMetadata, artifactId, shouldShowArtifact, message._id]);
 
   const getArtifactIcon = (type: string) => {
     switch (type) {
@@ -72,8 +92,24 @@ export function MessageItem({ message, isLatest = false }: MessageItemProps) {
 
   const handleOpenArtifact = () => {
     if (artifact) {
+      console.log('🎯 [MessageItem] Opening artifact:', {
+        artifactId: artifact.id,
+        title: artifact.title,
+        type: artifact.type
+      });
       selectArtifact(artifact);
       setArtifactPanelOpen(true);
+    } else if (artifactId) {
+      // Fallback: try to find artifact by ID directly
+      console.warn('🔍 [MessageItem] Attempting fallback artifact lookup for ID:', artifactId);
+      const fallbackArtifact = getArtifactById(artifactId);
+      if (fallbackArtifact) {
+        console.log('✅ [MessageItem] Found artifact via fallback lookup:', fallbackArtifact.id);
+        selectArtifact(fallbackArtifact);
+        setArtifactPanelOpen(true);
+      } else {
+        console.error('❌ [MessageItem] Could not find artifact even with fallback lookup:', artifactId);
+      }
     }
   };
 
@@ -101,10 +137,22 @@ export function MessageItem({ message, isLatest = false }: MessageItemProps) {
             </span>
           )}
           {/* Artifact indicator */}
-          {artifact && (
-            <Badge variant="secondary" className="text-xs">
-              <FileText className="h-3 w-3 mr-1" />
-              Artifact
+          {hasArtifactMetadata && (
+            <Badge 
+              variant={artifact ? "secondary" : "destructive"} 
+              className="text-xs flex items-center gap-1"
+            >
+              {artifact ? (
+                <>
+                  <FileText className="h-3 w-3" />
+                  Artifact
+                </>
+              ) : (
+                <>
+                  <AlertTriangle className="h-3 w-3" />
+                  Artifact Missing
+                </>
+              )}
             </Badge>
           )}
         </div>
@@ -161,7 +209,7 @@ export function MessageItem({ message, isLatest = false }: MessageItemProps) {
                       );
                     },
                     code: ({ node: _node, children, className, ...props }) => {
-                      const match = /language-(\w+)/.exec(className || '');
+                      const match = /language-(\\w+)/.exec(className || '');
                       const isInline = !match;
                       
                       return isInline ? (
@@ -181,38 +229,72 @@ export function MessageItem({ message, isLatest = false }: MessageItemProps) {
             </>
           )}
           
-          {/* Artifact */}
-          {artifact && hasTyped && shouldDisplayArtifact(message) && (
+          {/* Artifact Display */}
+          {hasArtifactMetadata && hasTyped && (
             <div className="mt-4 p-3 bg-gray-800/50 border border-gray-700 rounded-lg">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  {(() => {
-                    const IconComponent = getArtifactIcon(artifact.type);
-                    return <IconComponent className="h-4 w-4 text-gray-400" />;
-                  })()}
-                  <div>
-                    <div className="text-sm font-medium text-gray-200">
-                      {artifact.title}
-                    </div>
-                    <div className="text-xs text-gray-400 flex items-center gap-2">
-                      <span className="capitalize">{artifact.type}</span>
-                      {artifact.language && (
-                        <span>• {artifact.language}</span>
-                      )}
-                      <span>• v{artifact.version}</span>
-                    </div>
-                  </div>
+                  {artifact ? (
+                    <>
+                      {(() => {
+                        const IconComponent = getArtifactIcon(artifact.type);
+                        return <IconComponent className="h-4 w-4 text-gray-400" />;
+                      })()}
+                      <div>
+                        <div className="text-sm font-medium text-gray-200">
+                          {artifact.title}
+                        </div>
+                        <div className="text-xs text-gray-400 flex items-center gap-2">
+                          <span className="capitalize">{artifact.type}</span>
+                          {artifact.language && (
+                            <span>• {artifact.language}</span>
+                          )}
+                          <span>• v{artifact.version}</span>
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <AlertTriangle className="h-4 w-4 text-red-400" />
+                      <div>
+                        <div className="text-sm font-medium text-red-200">
+                          Artifact Not Found
+                        </div>
+                        <div className="text-xs text-red-400">
+                          ID: {artifactId} • Type: {message.metadata?.artifactType || 'unknown'}
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={handleOpenArtifact}
-                  className="text-gray-300 hover:text-white hover:bg-gray-700"
+                  disabled={!artifact && !artifactId}
+                  className={cn(
+                    "flex items-center gap-1",
+                    artifact 
+                      ? "text-gray-300 hover:text-white hover:bg-gray-700"
+                      : "text-red-300 hover:text-red-200 hover:bg-red-900/20"
+                  )}
                 >
-                  <ExternalLink className="h-4 w-4 mr-1" />
-                  Open
+                  <ExternalLink className="h-4 w-4" />
+                  {artifact ? "Open" : "Debug"}
                 </Button>
               </div>
+              
+              {/* Debug info for missing artifacts */}
+              {!artifact && artifactId && (
+                <div className="mt-2 p-2 bg-red-900/20 border border-red-800 rounded text-xs text-red-300">
+                  <div className="font-medium">Debug Info:</div>
+                  <div>Expected Artifact ID: {artifactId}</div>
+                  <div>Message ID: {message._id}</div>
+                  <div>Conversation ID: {message.conversationId}</div>
+                  <div>Has Original Content: {!!message.metadata?.originalContent}</div>
+                  <div>Code Blocks Removed: {!!message.metadata?.codeBlocksRemoved}</div>
+                </div>
+              )}
             </div>
           )}
           
