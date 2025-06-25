@@ -23,7 +23,23 @@ interface OllamaTagsResponse {
 }
 
 export class OllamaHealthCheck {
+  private static instance: OllamaHealthCheck;
   private deploymentConfig = getDeploymentConfig();
+
+  private constructor() {}
+
+  // NEW: Add singleton pattern for multi-host deployment (Subproject 3)
+  public static getInstance(): OllamaHealthCheck {
+    if (!OllamaHealthCheck.instance) {
+      OllamaHealthCheck.instance = new OllamaHealthCheck();
+    }
+    return OllamaHealthCheck.instance;
+  }
+
+  public async initialize(): Promise<void> {
+    // Initialization logic for multi-host deployment
+    logger.info('🏥 [OllamaHealthCheck] Initialized for multi-host deployment');
+  }
 
   async checkHealth(): Promise<OllamaHealthStatus> {
     // CRITICAL: In custom mode, skip all API calls and return predefined data
