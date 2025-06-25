@@ -10,6 +10,8 @@
  * - Event queue for multi-host timing issues
  * - Comprehensive error handling and recovery
  * - Real-time monitoring and diagnostics
+ * 
+ * FIXED: Handler lifecycle issue for follow-up messages in multi-host deployment
  */
 
 import { io, Socket } from 'socket.io-client';
@@ -48,6 +50,9 @@ class BulletproofWebSocketChatService {
   private eventQueue: Map<string, QueuedEvent[]> = new Map();
   private readonly EVENT_QUEUE_MAX_SIZE = 100;
   private readonly EVENT_QUEUE_MAX_AGE = 30000; // 30 seconds
+
+  // CRITICAL FIX: Direct UI handlers registry to bypass lifecycle manager timing issues
+  private uiHandlersRegistry: Map<string, ChatHandlers> = new Map();
 
   // Monitoring and health check
   private keepAliveInterval: NodeJS.Timeout | null = null;
@@ -145,6 +150,7 @@ class BulletproofWebSocketChatService {
           
           if (reason !== 'io client disconnect') {
             console.log('[BulletproofWebSocket] 🔄 Will attempt to reconnect automatically...');
+            console.log('[BulletproofWebSocket] 🛡️ Preserving UI handlers:', this.uiHandlersRegistry.size);
           }
         });
 
@@ -221,7 +227,7 @@ class BulletproofWebSocketChatService {
 
     console.log('[BulletproofWebSocket] 📤 Sending message with bulletproof ID:', messageId);
 
-    // Register handlers with the lifecycle manager
+    // CRITICAL FIX: Register handlers in BOTH lifecycle manager AND direct UI registry
     messageLifecycleManager.registerHandlers(messageId, {
       onThinking: handlers.onThinking,
       onGenerating: handlers.onGenerating,
@@ -230,6 +236,11 @@ class BulletproofWebSocketChatService {
       onError: handlers.onError,
       onConversationCreated: handlers.onConversationCreated
     });
+
+    // CRITICAL FIX: Register UI handlers directly for immediate access
+    this.uiHandlersRegistry.set(messageId, handlers);
+    console.log('[BulletproofWebSocket] 📝 Registered UI handlers directly for:', messageId);
+    console.log('[BulletproofWebSocket] 📊 Total UI handlers registered:', this.uiHandlersRegistry.size);
 
     // Send message to backend with deterministic ID
     const messageData: ClientEvents['chat:message'] = {
@@ -271,28 +282,28 @@ class BulletproofWebSocketChatService {
     // Enhanced event handlers with bulletproof processing
     this.socket.on('chat:thinking', (data: ServerEvents['chat:thinking']) => {
       console.log('[BulletproofWebSocket] 🤔 Received chat:thinking', data);
-      this.processEventSafely(data.messageId, 'thinking', data, () => {
+      this.processEventSafelyWithUIBridge(data.messageId, 'thinking', data, () => {
         messageLifecycleManager.updateMessageState(data.messageId, 'thinking');
       });
     });
 
     this.socket.on('chat:generating', (data: ServerEvents['chat:generating']) => {
       console.log('[BulletproofWebSocket] ⚡ Received chat:generating', data);
-      this.processEventSafely(data.messageId, 'generating', data, () => {
+      this.processEventSafelyWithUIBridge(data.messageId, 'generating', data, () => {
         messageLifecycleManager.updateMessageState(data.messageId, 'generating');
       });
     });
 
     this.socket.on('chat:token', (data: ServerEvents['chat:token']) => {
       console.log('[BulletproofWebSocket] 🔤 Received chat:token', data.messageId, 'token length:', data.token?.length || 0);
-      this.processEventSafely(data.messageId, 'token', data, () => {
+      this.processEventSafelyWithUIBridge(data.messageId, 'token', data, () => {
         messageLifecycleManager.updateMessageState(data.messageId, 'streaming', { token: data.token });
       });
     });
 
     this.socket.on('chat:complete', (data: ServerEvents['chat:complete']) => {
       console.log('[BulletproofWebSocket] ✅ Received chat:complete', data);
-      this.processEventSafely(data.messageId, 'complete', data, () => {
+      this.processEventSafelyWithUIBridge(data.messageId, 'complete', data, () => {
         messageLifecycleManager.updateMessageState(data.messageId, 'complete', {
           conversationId: data.conversationId,
           metadata: data.metadata
@@ -302,17 +313,27 @@ class BulletproofWebSocketChatService {
 
     this.socket.on('chat:error', (data: ServerEvents['chat:error']) => {
       console.error('[BulletproofWebSocket] ❌ Received chat:error', data);
-      this.processEventSafely(data.messageId, 'error', data, () => {
+      this.processEventSafelyWithUIBridge(data.messageId, 'error', data, () => {
         messageLifecycleManager.updateMessageState(data.messageId, 'error', { error: data.error });
       });
     });
 
     this.socket.on('conversation:created', (data: ServerEvents['conversation:created']) => {
       console.log('[BulletproofWebSocket] 🆕 Received conversation:created', data);
-      // Broadcast to all active messages that might need this conversation ID
+      
+      // CRITICAL FIX: Broadcast to all UI handlers directly
+      this.uiHandlersRegistry.forEach((handlers, messageId) => {
+        try {
+          handlers.onConversationCreated?.(data);
+          console.log('[BulletproofWebSocket] 🆕 Notified UI handler for message:', messageId);
+        } catch (error) {
+          console.error('[BulletproofWebSocket] ❌ Error in conversation:created UI handler:', error);
+        }
+      });
+      
+      // Update lifecycle manager
       const activeMessages = messageLifecycleManager.getAllActiveMessages();
       activeMessages.forEach(lifecycle => {
-        // Update any pending messages with the new conversation ID
         if (!lifecycle.conversationId) {
           lifecycle.conversationId = data.conversationId;
           console.log(`[BulletproofWebSocket] 🆕 Updated message ${lifecycle.id} with conversation ID: ${data.conversationId}`);
@@ -328,26 +349,72 @@ class BulletproofWebSocketChatService {
   }
 
   /**
-   * 🛡️ Processes events with bulletproof error handling and queuing
+   * 🛡️ CRITICAL FIX: Processes events with UI bridge for immediate handler execution
    */
-  private processEventSafely(
+  private processEventSafelyWithUIBridge(
     messageId: string, 
     eventName: string, 
     data: any, 
     processor: () => void
   ): void {
     try {
-      // Check if message lifecycle exists
+      // CRITICAL FIX: Check UI handlers registry FIRST for immediate processing
+      const uiHandlers = this.uiHandlersRegistry.get(messageId);
+      
+      if (uiHandlers) {
+        console.log(`[BulletproofWebSocket] 🎯 Processing ${eventName} for ${messageId} via UI bridge`);
+        
+        // Execute UI handler immediately
+        switch (eventName) {
+          case 'thinking':
+            uiHandlers.onThinking?.({ messageId });
+            break;
+          case 'generating':
+            uiHandlers.onGenerating?.({ messageId });
+            break;
+          case 'token':
+            uiHandlers.onToken?.({ messageId, token: data.token });
+            break;
+          case 'complete':
+            uiHandlers.onComplete?.({ 
+              messageId, 
+              conversationId: data.conversationId, 
+              metadata: data.metadata 
+            });
+            // Clean up UI handlers after completion
+            this.cleanupUIHandlers(messageId);
+            break;
+          case 'error':
+            uiHandlers.onError?.({ messageId, error: data.error });
+            // Clean up UI handlers after error
+            this.cleanupUIHandlers(messageId);
+            break;
+        }
+        
+        // Also run the lifecycle manager processor
+        try {
+          processor();
+        } catch (error) {
+          console.error(`[BulletproofWebSocket] ❌ Error in lifecycle processor for ${messageId}:`, error);
+        }
+        
+        console.log(`[BulletproofWebSocket] ✅ Successfully processed ${eventName} for ${messageId} via UI bridge`);
+        return;
+      }
+
+      // Fallback to original logic if no UI handlers found
       const lifecycle = messageLifecycleManager.getMessageLifecycle(messageId);
       
       if (lifecycle) {
-        // Message exists, process immediately
         processor();
-        console.log(`[BulletproofWebSocket] ✅ Processed ${eventName} for ${messageId}`);
+        console.log(`[BulletproofWebSocket] ✅ Processed ${eventName} for ${messageId} via lifecycle manager`);
       } else {
-        // Message not found, queue for later processing
-        console.warn(`[BulletproofWebSocket] ⚠️ Message not found for ${eventName} event: ${messageId} - queuing`);
+        console.warn(`[BulletproofWebSocket] ⚠️ No handlers found for ${eventName} event: ${messageId} - queuing`);
         this.queueEvent(messageId, eventName, data);
+        
+        // Log handler status for debugging
+        console.log(`[BulletproofWebSocket] 🔍 Available UI handler messageIds:`, Array.from(this.uiHandlersRegistry.keys()));
+        console.log(`[BulletproofWebSocket] 🔍 Available lifecycle messageIds:`, messageLifecycleManager.getAllActiveMessages().map(l => l.id));
         
         // Schedule retry processing
         setTimeout(() => {
@@ -358,6 +425,19 @@ class BulletproofWebSocketChatService {
       console.error(`[BulletproofWebSocket] ❌ Error processing ${eventName} for ${messageId}:`, error);
       this.queueEvent(messageId, eventName, data);
     }
+  }
+
+  /**
+   * 🧹 CRITICAL FIX: Clean up UI handlers after message completion
+   */
+  private cleanupUIHandlers(messageId: string, delay: number = 2000): void {
+    setTimeout(() => {
+      if (this.uiHandlersRegistry.has(messageId)) {
+        this.uiHandlersRegistry.delete(messageId);
+        console.log(`[BulletproofWebSocket] 🧹 Cleaned up UI handlers for message: ${messageId}`);
+        console.log(`[BulletproofWebSocket] 📊 Remaining UI handlers:`, this.uiHandlersRegistry.size);
+      }
+    }, delay);
   }
 
   /**
@@ -396,32 +476,37 @@ class BulletproofWebSocketChatService {
     const queuedEvent = queue.find(e => e.event === eventName);
     if (!queuedEvent) return;
 
-    // Check if message lifecycle now exists
+    // CRITICAL FIX: Check UI handlers first before lifecycle manager
+    const uiHandlers = this.uiHandlersRegistry.get(messageId);
     const lifecycle = messageLifecycleManager.getMessageLifecycle(messageId);
-    if (lifecycle) {
+    
+    if (uiHandlers || lifecycle) {
       console.log(`[BulletproofWebSocket] 🔄 Retrying queued ${eventName} for ${messageId}`);
       
-      // Process the event based on type
-      switch (eventName) {
-        case 'thinking':
-          messageLifecycleManager.updateMessageState(messageId, 'thinking');
-          break;
-        case 'generating':
-          messageLifecycleManager.updateMessageState(messageId, 'generating');
-          break;
-        case 'token':
-          messageLifecycleManager.updateMessageState(messageId, 'streaming', { token: queuedEvent.data.token });
-          break;
-        case 'complete':
-          messageLifecycleManager.updateMessageState(messageId, 'complete', {
-            conversationId: queuedEvent.data.conversationId,
-            metadata: queuedEvent.data.metadata
-          });
-          break;
-        case 'error':
-          messageLifecycleManager.updateMessageState(messageId, 'error', { error: queuedEvent.data.error });
-          break;
-      }
+      // Re-process using the UI bridge
+      this.processEventSafelyWithUIBridge(messageId, eventName, queuedEvent.data, () => {
+        // Process the event based on type for lifecycle manager
+        switch (eventName) {
+          case 'thinking':
+            messageLifecycleManager.updateMessageState(messageId, 'thinking');
+            break;
+          case 'generating':
+            messageLifecycleManager.updateMessageState(messageId, 'generating');
+            break;
+          case 'token':
+            messageLifecycleManager.updateMessageState(messageId, 'streaming', { token: queuedEvent.data.token });
+            break;
+          case 'complete':
+            messageLifecycleManager.updateMessageState(messageId, 'complete', {
+              conversationId: queuedEvent.data.conversationId,
+              metadata: queuedEvent.data.metadata
+            });
+            break;
+          case 'error':
+            messageLifecycleManager.updateMessageState(messageId, 'error', { error: queuedEvent.data.error });
+            break;
+        }
+      });
 
       // Remove processed event from queue
       const index = queue.indexOf(queuedEvent);
@@ -479,6 +564,9 @@ class BulletproofWebSocketChatService {
     }
     
     messageLifecycleManager.cancelMessage(messageId);
+    
+    // CRITICAL FIX: Clean up UI handlers immediately for cancelled messages
+    this.cleanupUIHandlers(messageId, 0);
   }
 
   /**
@@ -513,6 +601,7 @@ class BulletproofWebSocketChatService {
           transport: this.socket.io.engine.transport.name,
           readyState: this.socket.io.engine.readyState,
           activeMessages: stats.totalMessages,
+          uiHandlers: this.uiHandlersRegistry.size,
           queuedEvents: this.getTotalQueuedEvents(),
           lastHeartbeat: Math.round((Date.now() - this.lastHeartbeat) / 1000) + 's ago',
           isHealthy: this.isHealthy
@@ -575,6 +664,9 @@ class BulletproofWebSocketChatService {
     // Clear event queue
     this.eventQueue.clear();
     
+    // CRITICAL FIX: Clear UI handlers registry
+    this.uiHandlersRegistry.clear();
+    
     // Shutdown message lifecycle manager
     messageLifecycleManager.shutdown();
     
@@ -605,6 +697,7 @@ class BulletproofWebSocketChatService {
       heartbeatAge: Math.round((Date.now() - this.lastHeartbeat) / 1000),
       isHealthy: this.isHealthy,
       messageStats,
+      uiHandlers: this.uiHandlersRegistry.size,
       queuedEvents: this.getTotalQueuedEvents()
     };
   }
@@ -615,7 +708,8 @@ class BulletproofWebSocketChatService {
       state: lifecycle.state,
       duration: Math.round((Date.now() - lifecycle.createdAt) / 1000),
       lastActivity: Math.round((Date.now() - lifecycle.lastActivity) / 1000),
-      tokenCount: lifecycle.tokenCount
+      tokenCount: lifecycle.tokenCount,
+      hasUIHandlers: this.uiHandlersRegistry.has(lifecycle.id)
     }));
   }
 }
