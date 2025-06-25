@@ -105,3 +105,123 @@ export interface ArtifactMetadata {
   // Legacy support
   [key: string]: any; // Allow additional properties for backward compatibility
 }
+
+// MISSING TYPES - Adding these for multi-host deployment (Subproject 3)
+
+export interface CreateArtifactRequest {
+  title: string;
+  type: ArtifactType;
+  content: string;
+  language?: string;
+  conversationId: string;
+  messageId?: string;
+  metadata?: Partial<ArtifactMetadata>;
+}
+
+export interface UpdateArtifactRequest {
+  artifactId: string;
+  content?: string;
+  title?: string;
+  language?: string;
+  description?: string;
+  metadata?: Partial<ArtifactMetadata>;
+}
+
+export interface ArtifactOperationResponse {
+  success: boolean;
+  artifact?: Artifact;
+  error?: string;
+  operation: 'create' | 'update' | 'delete' | 'get' | 'list';
+  timestamp: Date;
+  // Multi-host specific fields
+  instanceId?: string;
+  syncStatus?: 'synced' | 'pending' | 'conflict' | 'error';
+  conflictData?: ArtifactConflictResolution;
+}
+
+export interface ArtifactHealthCheck {
+  healthy: boolean;
+  totalArtifacts: number;
+  corruptedArtifacts: number;
+  orphanedArtifacts: number;
+  inconsistentMetadata: number;
+  syncIssues: number;
+  lastCheckDate: Date;
+  issues: Array<{
+    type: 'corruption' | 'orphaned' | 'metadata' | 'sync' | 'checksum';
+    artifactId: string;
+    description: string;
+    severity: 'low' | 'medium' | 'high' | 'critical';
+  }>;
+  // Multi-host specific health metrics
+  instanceHealth?: {
+    [instanceId: string]: {
+      healthy: boolean;
+      lastSeen: Date;
+      artifactCount: number;
+      syncLatency: number;
+    };
+  };
+}
+
+export interface ArtifactSyncData {
+  artifactId: string;
+  syncStatus: 'synced' | 'pending' | 'conflict' | 'error';
+  lastSyncedAt: Date;
+  sourceInstance: string;
+  targetInstances: string[];
+  syncHash: string;
+  conflictResolution?: ArtifactConflictResolution;
+  retryCount: number;
+  maxRetries: number;
+  error?: string;
+}
+
+export interface ArtifactConflictResolution {
+  conflictId: string;
+  artifactId: string;
+  conflictType: 'content' | 'metadata' | 'version' | 'deletion';
+  resolutionStrategy: 'manual' | 'auto-merge' | 'latest-wins' | 'instance-priority';
+  conflictingVersions: Array<{
+    instanceId: string;
+    version: number;
+    timestamp: Date;
+    content: string;
+    metadata: ArtifactMetadata;
+  }>;
+  resolvedVersion?: {
+    content: string;
+    metadata: ArtifactMetadata;
+    resolutionTimestamp: Date;
+    resolvedBy: string; // instance or user ID
+  };
+  manualIntervention: boolean;
+  resolved: boolean;
+}
+
+export interface ArtifactMigrationData {
+  migrationId: string;
+  fromVersion: string;
+  toVersion: string;
+  status: 'pending' | 'in-progress' | 'completed' | 'failed' | 'rolled-back';
+  artifactsToMigrate: string[];
+  migratedArtifacts: string[];
+  failedArtifacts: Array<{
+    artifactId: string;
+    error: string;
+    canRetry: boolean;
+  }>;
+  startTime: Date;
+  endTime?: Date;
+  migrationSteps: Array<{
+    step: string;
+    status: 'pending' | 'completed' | 'failed';
+    timestamp?: Date;
+    error?: string;
+  }>;
+  rollbackPlan?: {
+    steps: string[];
+    backupLocation: string;
+    canRollback: boolean;
+  };
+}
