@@ -356,7 +356,7 @@ export const useBulletproofTypedMessagesStore = create<BulletproofTypedMessagesS
       },
 
       startTypewriter: (conversationId: string, messageId: string, estimatedDuration: number = 2000) => {
-        set((state) => ({
+        set(() => ({
           currentTypewriter: {
             messageId,
             conversationId,
