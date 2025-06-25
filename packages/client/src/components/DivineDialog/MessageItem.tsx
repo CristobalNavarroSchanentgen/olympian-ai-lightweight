@@ -9,6 +9,11 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useArtifactStore } from '@/stores/useArtifactStore';
 import { 
+  getDisplayContentForMessage, 
+  shouldDisplayArtifact, 
+  getArtifactForMessage 
+} from '@/lib/artifactUtils';
+import { 
   FileText, 
   Code, 
   Image, 
@@ -27,15 +32,15 @@ export function MessageItem({ message, isLatest = false }: MessageItemProps) {
   const [hasTyped, setHasTyped] = useState(!isLatest || isUser);
   
   const { 
-    getArtifactById, 
     selectArtifact, 
     setArtifactPanelOpen 
   } = useArtifactStore();
 
-  // Get artifact if this message has one
-  const artifact = message.metadata?.artifactId 
-    ? getArtifactById(message.metadata.artifactId)
-    : null;
+  // Get artifact if this message has one using the utility function
+  const artifact = getArtifactForMessage(message);
+
+  // Get the proper display content for this message
+  const displayContent = getDisplayContentForMessage(message);
 
   // Reset typing state when message changes
   useEffect(() => {
@@ -131,7 +136,7 @@ export function MessageItem({ message, isLatest = false }: MessageItemProps) {
             <>
               {!hasTyped ? (
                 <TypewriterText
-                  content={message.content}
+                  content={displayContent}
                   speed={15}
                   onComplete={() => setHasTyped(true)}
                 />
@@ -170,14 +175,14 @@ export function MessageItem({ message, isLatest = false }: MessageItemProps) {
                     },
                   }}
                 >
-                  {message.content}
+                  {displayContent}
                 </ReactMarkdown>
               )}
             </>
           )}
           
           {/* Artifact */}
-          {artifact && hasTyped && (
+          {artifact && hasTyped && shouldDisplayArtifact(message) && (
             <div className="mt-4 p-3 bg-gray-800/50 border border-gray-700 rounded-lg">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
