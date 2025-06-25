@@ -131,9 +131,7 @@ router.post('/', async (req, res, next) => {
     // Validate request body
     const validation = createArtifactSchema.safeParse(req.body);
     if (!validation.success) {
-      throw new AppError(400, 'Invalid artifact data', { 
-        details: validation.error.errors 
-      });
+      throw new AppError(400, `Invalid artifact data: ${validation.error.errors.map(e => e.message).join(', ')}`);
     }
     
     const artifactData = validation.data;
@@ -193,9 +191,7 @@ router.put('/:artifactId', async (req, res, next) => {
     // Validate request body
     const validation = updateArtifactSchema.safeParse(req.body);
     if (!validation.success) {
-      throw new AppError(400, 'Invalid update data', { 
-        details: validation.error.errors 
-      });
+      throw new AppError(400, `Invalid update data: ${validation.error.errors.map(e => e.message).join(', ')}`);
     }
     
     const updateData = validation.data;
@@ -275,9 +271,7 @@ router.post('/bulk', async (req, res, next) => {
     // Validate request body
     const validation = bulkOperationSchema.safeParse(req.body);
     if (!validation.success) {
-      throw new AppError(400, 'Invalid bulk operation data', { 
-        details: validation.error.errors 
-      });
+      throw new AppError(400, `Invalid bulk operation data: ${validation.error.errors.map(e => e.message).join(', ')}`);
     }
     
     const { conversationId, operations } = validation.data;
