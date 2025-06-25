@@ -6,7 +6,8 @@ import { configRouter } from './config';
 import { modelsRouter } from './models';
 import { progressiveRouter } from './progressive';
 import { mcpRouter } from './mcp';
-import { artifactsRouter } from './artifacts'; // NEW: Artifacts router
+import { artifactsRouter } from './artifacts'; // Existing artifacts router
+import { multiHostRouter } from './multihost'; // NEW: Multi-host coordination router
 
 const router = Router();
 
@@ -18,6 +19,7 @@ router.use('/config', configRouter);
 router.use('/models', modelsRouter);
 router.use('/progressive', progressiveRouter);
 router.use('/mcp', mcpRouter);
-router.use('/artifacts', artifactsRouter); // NEW: Mount artifacts endpoints
+router.use('/artifacts', artifactsRouter); // Existing artifacts endpoints
+router.use('/multihost', multiHostRouter); // NEW: Multi-host coordination endpoints
 
 export default router;
