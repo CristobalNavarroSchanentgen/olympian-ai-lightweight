@@ -134,19 +134,20 @@ export interface ArtifactOperationResponse {
   operation: 'create' | 'update' | 'delete' | 'get' | 'list';
   timestamp: Date;
   // Multi-host specific fields
+  version?: number; // Add version field that was being used
   instanceId?: string;
   syncStatus?: 'synced' | 'pending' | 'conflict' | 'error';
   conflictData?: ArtifactConflictResolution;
 }
 
 export interface ArtifactHealthCheck {
+  conversationId?: string; // Add optional conversationId field
   healthy: boolean;
   totalArtifacts: number;
-  corruptedArtifacts: number;
-  orphanedArtifacts: number;
-  inconsistentMetadata: number;
-  syncIssues: number;
-  lastCheckDate: Date;
+  syncedArtifacts: number; // Rename from corruptedArtifacts
+  conflictedArtifacts: number; // Rename from orphanedArtifacts  
+  erroredArtifacts: number; // Rename from inconsistentMetadata
+  lastSyncAt?: Date; // Rename from lastCheckDate
   issues: Array<{
     type: 'corruption' | 'orphaned' | 'metadata' | 'sync' | 'checksum';
     artifactId: string;
@@ -200,20 +201,33 @@ export interface ArtifactConflictResolution {
 }
 
 export interface ArtifactMigrationData {
-  migrationId: string;
-  fromVersion: string;
-  toVersion: string;
-  status: 'pending' | 'in-progress' | 'completed' | 'failed' | 'rolled-back';
-  artifactsToMigrate: string[];
-  migratedArtifacts: string[];
-  failedArtifacts: Array<{
+  migrationId?: string; // Make optional
+  fromVersion?: string; // Make optional
+  toVersion?: string; // Make optional
+  status?: 'pending' | 'in-progress' | 'completed' | 'failed' | 'rolled-back'; // Make optional
+  conversationId: string; // Add required conversationId
+  migratedCount: number; // Add required migratedCount
+  failedCount: number; // Add required failedCount
+  errors: Array<{
+    messageId?: string;
+    artifactId?: string;
+    error: string;
+    details?: string;
+    canRetry?: boolean;
+  }>; // Update errors structure
+  duration?: number; // Add duration field
+  strategy?: string; // Add strategy field
+  // Optional migration tracking fields
+  artifactsToMigrate?: string[];
+  migratedArtifacts?: string[];
+  failedArtifacts?: Array<{
     artifactId: string;
     error: string;
     canRetry: boolean;
   }>;
-  startTime: Date;
+  startTime?: Date;
   endTime?: Date;
-  migrationSteps: Array<{
+  migrationSteps?: Array<{
     step: string;
     status: 'pending' | 'completed' | 'failed';
     timestamp?: Date;
