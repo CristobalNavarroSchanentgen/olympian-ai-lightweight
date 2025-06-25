@@ -8,7 +8,7 @@ import { z } from 'zod';
 
 const router = Router();
 const db = DatabaseService.getInstance();
-const scanner = new ConnectionScanner();
+const scanner = ConnectionScanner.getInstance(); // Fix: Use singleton pattern
 
 // Validation schemas
 const createConnectionSchema = z.object({
