@@ -1,0 +1,261 @@
+# Multi-host Production Docker Compose with Phase 3 Optimizations
+# This configuration supports Redis coordination, monitoring, and horizontal scaling
+version: '3.8'
+
+services:
+  # Redis for multi-host coordination and caching
+  redis:
+    image: redis:7.2-alpine
+    container_name: olympian-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+      - ./docker/redis/redis.conf:/usr/local/etc/redis/redis.conf
+    command: redis-server /usr/local/etc/redis/redis.conf
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - olympian-network
+    environment:
+      - REDIS_REPLICATION_MODE=master
+
+  # MongoDB with enhanced configuration for artifacts
+  mongodb:
+    image: mongo:7.0
+    container_name: olympian-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+      - ./docker/mongodb/mongod.conf:/etc/mongod.conf
+      - ./docker/mongodb/init-replica.js:/docker-entrypoint-initdb.d/init-replica.js
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USERNAME:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-password}
+      MONGO_INITDB_DATABASE: olympian-ai
+    command: mongod --config /etc/mongod.conf --replSet rs0
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - olympian-network
+
+  # Nginx Load Balancer for multi-instance deployment
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: olympian-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/nginx/nginx-multihost.conf:/etc/nginx/nginx.conf
+      - ./docker/nginx/ssl:/etc/nginx/ssl
+      - nginx_logs:/var/log/nginx
+    depends_on:
+      - olympian-backend-1
+      - olympian-backend-2
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - olympian-network
+
+  # Primary Backend Instance
+  olympian-backend-1:
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile
+      args:
+        NODE_ENV: production
+        ENABLE_MULTI_HOST: "true"
+    container_name: olympian-backend-1
+    restart: unless-stopped
+    environment:
+      # Database Configuration
+      MONGODB_URI: mongodb://admin:password@mongodb:27017/olympian-ai?authSource=admin
+      
+      # Redis Configuration
+      REDIS_URL: redis://redis:6379
+      REDIS_OPTIONAL: "false"
+      
+      # Multi-host Configuration
+      HOSTNAME: olympian-backend-1
+      INSTANCE_ID: backend-1
+      ENABLE_COORDINATION: "true"
+      
+      # Performance Configuration
+      CDN_ENABLED: ${CDN_ENABLED:-false}
+      CDN_BASE_URL: ${CDN_BASE_URL:-}
+      
+      # Monitoring Configuration
+      HEALTH_CHECK_INTERVAL: 300000
+      MONITORING_ENABLED: "true"
+      
+      # Ollama Configuration
+      OLLAMA_HOST: ${OLLAMA_HOST:-http://host.docker.internal:11434}
+      
+      # Security
+      NODE_ENV: production
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost}
+      
+      # Logging
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      
+    volumes:
+      - app_logs_1:/app/logs
+    depends_on:
+      redis:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/api/multihost/health/simple"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - olympian-network
+
+  # Secondary Backend Instance (for load balancing)
+  olympian-backend-2:
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile
+      args:
+        NODE_ENV: production
+        ENABLE_MULTI_HOST: "true"
+    container_name: olympian-backend-2
+    restart: unless-stopped
+    environment:
+      # Database Configuration
+      MONGODB_URI: mongodb://admin:password@mongodb:27017/olympian-ai?authSource=admin
+      
+      # Redis Configuration
+      REDIS_URL: redis://redis:6379
+      REDIS_OPTIONAL: "false"
+      
+      # Multi-host Configuration
+      HOSTNAME: olympian-backend-2
+      INSTANCE_ID: backend-2
+      ENABLE_COORDINATION: "true"
+      
+      # Performance Configuration
+      CDN_ENABLED: ${CDN_ENABLED:-false}
+      CDN_BASE_URL: ${CDN_BASE_URL:-}
+      
+      # Monitoring Configuration
+      HEALTH_CHECK_INTERVAL: 300000
+      MONITORING_ENABLED: "true"
+      
+      # Ollama Configuration
+      OLLAMA_HOST: ${OLLAMA_HOST:-http://host.docker.internal:11434}
+      
+      # Security
+      NODE_ENV: production
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost}
+      
+      # Logging
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      
+    volumes:
+      - app_logs_2:/app/logs
+    depends_on:
+      redis:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/api/multihost/health/simple"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - olympian-network
+
+  # Frontend Application
+  olympian-frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend/Dockerfile
+      args:
+        NODE_ENV: production
+        VITE_API_URL: ${VITE_API_URL:-http://localhost/api}
+        VITE_WS_URL: ${VITE_WS_URL:-ws://localhost/ws}
+    container_name: olympian-frontend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+    depends_on:
+      - nginx
+    networks:
+      - olympian-network
+
+  # Monitoring Dashboard (Optional)
+  monitoring-dashboard:
+    image: grafana/grafana:10.2.0
+    container_name: olympian-monitoring
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning
+      - ./docker/grafana/dashboards:/var/lib/grafana/dashboards
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:3000}
+    networks:
+      - olympian-network
+    profiles:
+      - monitoring
+
+  # Redis Insight for Redis monitoring (Optional)
+  redis-insight:
+    image: redislabs/redisinsight:1.14.0
+    container_name: olympian-redis-insight
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    volumes:
+      - redis_insight_data:/db
+    depends_on:
+      - redis
+    networks:
+      - olympian-network
+    profiles:
+      - monitoring
+
+volumes:
+  mongodb_data:
+    driver: local
+  redis_data:
+    driver: local
+  grafana_data:
+    driver: local
+  redis_insight_data:
+    driver: local
+  app_logs_1:
+    driver: local
+  app_logs_2:
+    driver: local
+  nginx_logs:
+    driver: local
+
+networks:
+  olympian-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
