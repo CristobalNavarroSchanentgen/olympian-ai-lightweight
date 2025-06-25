@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { Conversation, Message, ModelCapability } from '@olympian/shared';
 import { api } from '@/services/api';
 import { toast } from '@/hooks/useToast';
-import { useTypedMessagesStore } from './useTypedMessagesStore';
+import { useBulletproofTypedMessagesStore } from './useBulletproofTypedMessagesStore';
 
 interface ChatStore {
   conversations: Conversation[];
@@ -97,7 +97,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       const activeConversationIds = conversations
         .map(c => getConversationId(c))
         .filter(Boolean);
-      useTypedMessagesStore.getState().cleanupOldConversations(activeConversationIds);
+      useBulletproofTypedMessagesStore.getState().performMaintenance(activeConversationIds);
     } catch (error) {
       console.error('❌ [useChatStore] fetchConversations error:', error);
       toast({
@@ -209,7 +209,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       }));
       
       // Clean up typed messages for deleted conversation
-      useTypedMessagesStore.getState().clearTypedMessages(id);
+      useBulletproofTypedMessagesStore.getState().clearTypedMessages(id);
       
       console.log('✅ [useChatStore] deleteConversation success');
       toast({
