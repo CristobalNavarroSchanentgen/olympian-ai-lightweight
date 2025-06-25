@@ -55,7 +55,11 @@ export class ArtifactService {
     const session = this.db.getClient().startSession();
     
     try {
-      let result: ArtifactOperationResponse = { success: false };
+      let result: ArtifactOperationResponse = { 
+        success: false, 
+        operation: 'create', 
+        timestamp: new Date() 
+      };
       
       await session.withTransaction(async () => {
         console.log(`🎨 [ArtifactService] Creating artifact for conversation: ${request.conversationId}`);
@@ -68,7 +72,7 @@ export class ArtifactService {
         const contentBuffer = Buffer.from(request.content, 'utf8');
         const contentSize = contentBuffer.length;
         const checksum = this.calculateChecksum(request.content);
-        const reconstructionHash = this.calculateReconstructionHash(request.metadata.originalContent || request.content);
+        const reconstructionHash = this.calculateReconstructionHash(request.metadata?.originalContent || request.content);
         
         // Prepare artifact document
         const artifactDoc: ArtifactDocument = {
@@ -86,12 +90,11 @@ export class ArtifactService {
           updatedAt: now,
           lastAccessedAt: now,
           metadata: {
-            detectionStrategy: request.metadata.detectionStrategy || 'automatic',
-            originalContent: request.metadata.originalContent || request.content,
-            processedContent: request.metadata.processedContent,
-            codeBlocksRemoved: request.metadata.codeBlocksRemoved || false,
+            detectionStrategy: request.metadata?.detectionStrategy || 'automatic',
+            originalContent: request.metadata?.originalContent || request.content,
+            processedContent: request.metadata?.processedContent,
+            codeBlocksRemoved: request.metadata?.codeBlocksRemoved || false,
             reconstructionHash,
-            fallbackData: request.metadata.fallbackData || {},
             syncStatus: 'synced',
             lastSyncedAt: now,
             contentSize,
@@ -125,8 +128,8 @@ export class ArtifactService {
             artifactId,
             artifactType: request.type,
             hasArtifact: true,
-            originalContent: request.metadata.originalContent || messageContent,
-            codeBlocksRemoved: request.metadata.codeBlocksRemoved || false,
+            originalContent: request.metadata?.originalContent || messageContent,
+            codeBlocksRemoved: request.metadata?.codeBlocksRemoved || false,
           };
 
           await this.db.messages.updateOne(
@@ -147,10 +150,12 @@ export class ArtifactService {
           console.log(`🔗 [ArtifactService] Updated message metadata for message: ${request.messageId}`);
         }
 
-        // Prepare response
+        // Prepare response with all required fields
         result = {
           success: true,
-          artifact: artifactDoc,
+          artifact: this.convertDocumentToArtifact(artifactDoc),
+          operation: 'create',
+          timestamp: now,
           version: 1,
           syncStatus: 'synced'
         };
@@ -168,6 +173,8 @@ export class ArtifactService {
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Failed to create artifact',
+        operation: 'create',
+        timestamp: new Date(),
         syncStatus: 'error'
       };
     } finally {
@@ -184,7 +191,11 @@ export class ArtifactService {
     const session = this.db.getClient().startSession();
     
     try {
-      let result: ArtifactOperationResponse = { success: false };
+      let result: ArtifactOperationResponse = { 
+        success: false, 
+        operation: 'update', 
+        timestamp: new Date() 
+      };
       
       await session.withTransaction(async () => {
         console.log(`🔄 [ArtifactService] Updating artifact: ${request.artifactId}`);
@@ -261,7 +272,9 @@ export class ArtifactService {
         
         result = {
           success: true,
-          artifact: updatedArtifact!,
+          artifact: this.convertDocumentToArtifact(updatedArtifact!),
+          operation: 'update',
+          timestamp: now,
           version: newVersion,
           syncStatus: 'synced'
         };
@@ -276,6 +289,8 @@ export class ArtifactService {
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Failed to update artifact',
+        operation: 'update',
+        timestamp: new Date(),
         syncStatus: 'error'
       };
     } finally {
@@ -352,7 +367,11 @@ export class ArtifactService {
     const session = this.db.getClient().startSession();
     
     try {
-      let result: ArtifactOperationResponse = { success: false };
+      let result: ArtifactOperationResponse = { 
+        success: false, 
+        operation: 'delete', 
+        timestamp: new Date() 
+      };
       
       await session.withTransaction(async () => {
         console.log(`🗑️ [ArtifactService] Deleting artifact: ${artifactId}`);
@@ -389,7 +408,11 @@ export class ArtifactService {
           console.log(`🧹 [ArtifactService] Cleaned up message metadata for: ${artifact.messageId}`);
         }
 
-        result = { success: true };
+        result = { 
+          success: true, 
+          operation: 'delete', 
+          timestamp: new Date() 
+        };
         console.log(`✅ [ArtifactService] Artifact deleted: ${artifactId}`);
       });
 
@@ -399,7 +422,9 @@ export class ArtifactService {
       console.error(`❌ [ArtifactService] Failed to delete artifact:`, error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to delete artifact'
+        error: error instanceof Error ? error.message : 'Failed to delete artifact',
+        operation: 'delete',
+        timestamp: new Date()
       };
     } finally {
       await session.endSession();
@@ -529,7 +554,12 @@ export class ArtifactService {
       ]);
 
       // Find specific issues
-      const issues: Array<{ artifactId: string; issue: string; severity: 'low' | 'medium' | 'high'; details?: string }> = [];
+      const issues: Array<{ 
+        type: 'corruption' | 'orphaned' | 'metadata' | 'sync' | 'checksum';
+        artifactId: string; 
+        description: string; 
+        severity: 'low' | 'medium' | 'high' | 'critical';
+      }> = [];
       
       // Check for artifacts without checksums
       const artifactsWithoutChecksum = await this.db.artifacts
@@ -539,10 +569,10 @@ export class ArtifactService {
       
       artifactsWithoutChecksum.forEach(artifact => {
         issues.push({
+          type: 'checksum',
           artifactId: artifact.id,
-          issue: 'Missing checksum',
-          severity: 'medium',
-          details: 'Artifact integrity cannot be verified'
+          description: 'Missing checksum - Artifact integrity cannot be verified',
+          severity: 'medium'
         });
       });
 
@@ -558,10 +588,10 @@ export class ArtifactService {
 
       oldUnsyncedArtifacts.forEach(artifact => {
         issues.push({
+          type: 'sync',
           artifactId: artifact.id,
-          issue: 'Long-term sync failure',
-          severity: 'high',
-          details: `Artifact has been in ${artifact.metadata.syncStatus} state for over 24 hours`
+          description: `Artifact has been in ${artifact.metadata.syncStatus} state for over 24 hours`,
+          severity: 'high'
         });
       });
 
@@ -572,6 +602,7 @@ export class ArtifactService {
 
       return {
         conversationId: conversationId || 'all',
+        healthy: issues.length === 0,
         totalArtifacts,
         syncedArtifacts,
         conflictedArtifacts,
@@ -584,15 +615,16 @@ export class ArtifactService {
       console.error(`❌ [ArtifactService] Health check failed:`, error);
       return {
         conversationId: conversationId || 'all',
+        healthy: false,
         totalArtifacts: 0,
         syncedArtifacts: 0,
         conflictedArtifacts: 0,
         erroredArtifacts: 0,
         issues: [{
+          type: 'sync',
           artifactId: 'system',
-          issue: 'Health check failed',
-          severity: 'high',
-          details: error instanceof Error ? error.message : 'Unknown error'
+          description: error instanceof Error ? error.message : 'Unknown error',
+          severity: 'high'
         }]
       };
     }
@@ -612,7 +644,11 @@ export class ArtifactService {
     const session = this.db.getClient().startSession();
     
     try {
-      let result: ArtifactOperationResponse = { success: false };
+      let result: ArtifactOperationResponse = { 
+        success: false, 
+        operation: 'create', 
+        timestamp: new Date() 
+      };
       
       await session.withTransaction(async () => {
         const now = new Date();
@@ -635,10 +671,10 @@ export class ArtifactService {
           lastAccessedAt: now,
           metadata: {
             detectionStrategy: 'migration_from_message',
-            originalContent: request.metadata.originalContent || request.content,
-            processedContent: request.metadata.processedContent,
-            codeBlocksRemoved: request.metadata.codeBlocksRemoved || false,
-            reconstructionHash: this.calculateReconstructionHash(request.metadata.originalContent || request.content),
+            originalContent: request.metadata?.originalContent || request.content,
+            processedContent: request.metadata?.processedContent,
+            codeBlocksRemoved: request.metadata?.codeBlocksRemoved || false,
+            reconstructionHash: this.calculateReconstructionHash(request.metadata?.originalContent || request.content),
             syncStatus: 'synced',
             lastSyncedAt: now,
             contentSize,
@@ -649,7 +685,14 @@ export class ArtifactService {
         };
 
         await this.db.artifacts.insertOne(artifactDoc, { session });
-        result = { success: true, artifact: artifactDoc, version: 1, syncStatus: 'synced' };
+        result = { 
+          success: true, 
+          artifact: this.convertDocumentToArtifact(artifactDoc), 
+          operation: 'create',
+          timestamp: now,
+          version: 1, 
+          syncStatus: 'synced' 
+        };
       });
 
       return result;
@@ -657,11 +700,24 @@ export class ArtifactService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to create artifact with ID'
+        error: error instanceof Error ? error.message : 'Failed to create artifact with ID',
+        operation: 'create',
+        timestamp: new Date()
       };
     } finally {
       await session.endSession();
     }
+  }
+
+  /**
+   * Convert ArtifactDocument to Artifact interface
+   */
+  private convertDocumentToArtifact(doc: ArtifactDocument): ArtifactDocument {
+    return {
+      ...doc,
+      createdAt: typeof doc.createdAt === 'string' ? new Date(doc.createdAt) : doc.createdAt,
+      updatedAt: typeof doc.updatedAt === 'string' ? new Date(doc.updatedAt) : doc.updatedAt
+    };
   }
 
   /**
