@@ -30,6 +30,11 @@ export interface MessageMetadata {
   // Code block removal metadata
   originalContent?: string; // Original content before code block removal
   codeBlocksRemoved?: boolean; // Whether code blocks were removed for display
+  // Artifact recreation metadata for subproject 3
+  recreationSuccess?: boolean; // Whether artifact recreation was successful
+  recreationFailed?: boolean; // Whether artifact recreation failed
+  recreationAttempts?: number; // Number of recreation attempts
+  fallbackUsed?: boolean; // Whether fallback strategy was used
 }
 
 export interface ChatRequest {
