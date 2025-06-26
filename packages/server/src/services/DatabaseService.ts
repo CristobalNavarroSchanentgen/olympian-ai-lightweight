@@ -39,16 +39,36 @@ export class DatabaseService {
     try {
       console.log('🔌 [DatabaseService] Connecting to MongoDB...');
       
-      this.client = new MongoClient(uri, {
-        serverApi: {
-          version: ServerApiVersion.v1,
-          strict: true,
-          deprecationErrors: true,
-        },
+      // Check deployment mode to configure MongoDB client appropriately
+      const deploymentMode = process.env.DEPLOYMENT_MODE || 'single-host';
+      const isMultiHost = deploymentMode === 'multi-host';
+      
+      // For multi-host deployment (subproject 3), disable strict mode to support text indexes
+      const clientOptions: any = {
         maxPoolSize: 10,
         serverSelectionTimeoutMS: 5000,
         socketTimeoutMS: 45000,
-      });
+      };
+
+      if (isMultiHost) {
+        console.log('🌐 [DatabaseService] Multi-host deployment detected - using compatible MongoDB settings');
+        // Use compatible settings for multi-host deployment
+        clientOptions.serverApi = {
+          version: ServerApiVersion.v1,
+          strict: false, // Disable strict mode for text index compatibility
+          deprecationErrors: false,
+        };
+      } else {
+        console.log('🏠 [DatabaseService] Single-host deployment - using strict MongoDB settings');
+        // Use strict settings for single-host deployments
+        clientOptions.serverApi = {
+          version: ServerApiVersion.v1,
+          strict: true,
+          deprecationErrors: true,
+        };
+      }
+      
+      this.client = new MongoClient(uri, clientOptions);
 
       await this.client.connect();
       
@@ -96,7 +116,23 @@ export class DatabaseService {
 
       // Existing message indexes
       await this.messages.createIndex({ conversationId: 1, createdAt: 1 });
-      await this.messages.createIndex({ content: 'text' });
+      
+      // Text index for content search - only create if not in strict mode
+      const deploymentMode = process.env.DEPLOYMENT_MODE || 'single-host';
+      const isMultiHost = deploymentMode === 'multi-host';
+      
+      try {
+        await this.messages.createIndex({ content: 'text' });
+        console.log('✅ [DatabaseService] Text index created for message content search');
+      } catch (textIndexError: any) {
+        if (textIndexError.code === 323 || textIndexError.codeName === 'APIStrictError') {
+          console.log('ℹ️ [DatabaseService] Skipping text index due to strict API mode - using alternative indexing');
+          // Create a regular index on content for basic search capabilities
+          await this.messages.createIndex({ content: 1 });
+        } else {
+          throw textIndexError;
+        }
+      }
 
       // NEW: Comprehensive artifact indexes for multi-host optimization
       console.log('📊 [DatabaseService] Creating artifact indexes...');
