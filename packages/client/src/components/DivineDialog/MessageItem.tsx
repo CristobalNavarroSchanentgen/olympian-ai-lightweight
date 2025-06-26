@@ -26,16 +26,36 @@ import {
 interface MessageItemProps {
   message: Message;
   isLatest?: boolean;
-  onUpdateMetadata?: (messageId: string, metadata: Partial<Message['metadata']>) => void;
+  onTypewriterComplete?: (messageId: string) => void;
 }
 
-export function MessageItem({ message, isLatest = false, onUpdateMetadata }: MessageItemProps) {
+export function MessageItem({ message, isLatest = false, onTypewriterComplete }: MessageItemProps) {
   const isUser = message.role === 'user';
   
-  // Check if typewriter has already completed based on metadata
-  const typewriterCompleted = message.metadata?.typewriterCompleted || false;
+  // Check if typewriter has already completed using localStorage and metadata
+  const getTypewriterCompleted = (): boolean => {
+    // First check metadata
+    if (message.metadata?.typewriterCompleted) {
+      return true;
+    }
+    
+    // Then check localStorage as fallback
+    try {
+      const messageId = message._id?.toString();
+      if (messageId) {
+        const completedMessages = JSON.parse(localStorage.getItem('typewriter-completed') || '{}');
+        return !!completedMessages[messageId];
+      }
+    } catch (error) {
+      console.warn('Failed to read typewriter completion state:', error);
+    }
+    
+    return false;
+  };
+
+  const typewriterCompleted = getTypewriterCompleted();
   
-  // Initialize hasTyped based on metadata and message type
+  // Initialize hasTyped based on multiple criteria
   // User messages and messages that have already completed typewriting should not animate
   const [hasTyped, setHasTyped] = useState(typewriterCompleted || !isLatest || isUser);
   
@@ -80,11 +100,10 @@ export function MessageItem({ message, isLatest = false, onUpdateMetadata }: Mes
   const handleTypewriterComplete = () => {
     setHasTyped(true);
     
-    // Update the message metadata to mark typewriter as completed
-    if (onUpdateMetadata && message._id) {
-      onUpdateMetadata(message._id.toString(), {
-        typewriterCompleted: true
-      });
+    // Update the localStorage tracking
+    const messageId = message._id?.toString();
+    if (messageId && onTypewriterComplete) {
+      onTypewriterComplete(messageId);
     }
   };
 
