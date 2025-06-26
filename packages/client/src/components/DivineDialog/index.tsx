@@ -201,6 +201,59 @@ export function DivineDialog() {
 
   const defaultLayout = getDefaultLayout();
 
+  // Extract the chat content into a stable component to prevent remounting
+  const ChatContent = () => (
+    <div className="h-full flex flex-col bg-gray-900">
+      {/* Header */}
+      <div className="border-b border-gray-800 px-4 py-2 flex-shrink-0 bg-gray-900/80 backdrop-blur-sm">
+        <div className="flex items-center justify-between">
+          {/* Left side - New button */}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleNewConversation}
+            className="flex items-center gap-2 text-gray-300 hover:text-white hover:bg-gray-800"
+          >
+            <Plus className="h-4 w-4" />
+            New
+          </Button>
+
+          {/* Center - Conversation title */}
+          <div className="text-lg font-semibold text-center flex-1 text-white">
+            {currentConversation ? currentConversation.title : 'New Conversation'}
+          </div>
+
+          {/* Right side - Model selector */}
+          <div className="flex items-center gap-2 justify-end">
+            <ModelSelector hasImages={hasImages} />
+          </div>
+        </div>
+      </div>
+
+      {/* Messages - This takes all available space */}
+      <div className="flex-1 overflow-y-auto p-4 bg-gray-900">
+        <MessageList
+          messages={messages}
+          streamedContent=""
+          isThinking={isThinking}
+          isGenerating={false}
+          isTransitioning={false}
+        />
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* Input - Fixed at bottom */}
+      <div className="border-t border-gray-800 p-4 flex-shrink-0 bg-gray-900/80 backdrop-blur-sm">
+        <ChatInput
+          onSendMessage={handleSendMessage}
+          onCancel={() => {}}
+          isDisabled={isThinking}
+          isGenerating={false}
+        />
+      </div>
+    </div>
+  );
+
   return (
     <div className="h-full flex bg-gray-900">
       {isArtifactPanelOpen ? (
@@ -217,55 +270,7 @@ export function DivineDialog() {
             id="chat-panel"
             order={1}
           >
-            <div className="h-full flex flex-col bg-gray-900">
-              {/* Header */}
-              <div className="border-b border-gray-800 px-4 py-2 flex-shrink-0 bg-gray-900/80 backdrop-blur-sm">
-                <div className="flex items-center justify-between">
-                  {/* Left side - New button */}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleNewConversation}
-                    className="flex items-center gap-2 text-gray-300 hover:text-white hover:bg-gray-800"
-                  >
-                    <Plus className="h-4 w-4" />
-                    New
-                  </Button>
-
-                  {/* Center - Conversation title */}
-                  <div className="text-lg font-semibold text-center flex-1 text-white">
-                    {currentConversation ? currentConversation.title : 'New Conversation'}
-                  </div>
-
-                  {/* Right side - Model selector */}
-                  <div className="flex items-center gap-2 justify-end">
-                    <ModelSelector hasImages={hasImages} />
-                  </div>
-                </div>
-              </div>
-
-              {/* Messages - This takes all available space */}
-              <div className="flex-1 overflow-y-auto p-4 bg-gray-900">
-                <MessageList
-                  messages={messages}
-                  streamedContent=""
-                  isThinking={isThinking}
-                  isGenerating={false}
-                  isTransitioning={false}
-                />
-                <div ref={messagesEndRef} />
-              </div>
-
-              {/* Input - Fixed at bottom */}
-              <div className="border-t border-gray-800 p-4 flex-shrink-0 bg-gray-900/80 backdrop-blur-sm">
-                <ChatInput
-                  onSendMessage={handleSendMessage}
-                  onCancel={() => {}}
-                  isDisabled={isThinking}
-                  isGenerating={false}
-                />
-              </div>
-            </div>
+            <ChatContent />
           </Panel>
 
           {/* Resizable Handle */}
@@ -285,55 +290,9 @@ export function DivineDialog() {
           </Panel>
         </PanelGroup>
       ) : (
-        // When artifact panel is closed, use single panel
-        <div className="flex-1 flex flex-col bg-gray-900">
-          {/* Header */}
-          <div className="border-b border-gray-800 px-4 py-2 flex-shrink-0 bg-gray-900/80 backdrop-blur-sm">
-            <div className="flex items-center justify-between">
-              {/* Left side - New button */}
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleNewConversation}
-                className="flex items-center gap-2 text-gray-300 hover:text-white hover:bg-gray-800"
-              >
-                <Plus className="h-4 w-4" />
-                New
-              </Button>
-
-              {/* Center - Conversation title */}
-              <div className="text-lg font-semibold text-center flex-1 text-white">
-                {currentConversation ? currentConversation.title : 'New Conversation'}
-              </div>
-
-              {/* Right side - Model selector */}
-              <div className="flex items-center gap-2 justify-end">
-                <ModelSelector hasImages={hasImages} />
-              </div>
-            </div>
-          </div>
-
-          {/* Messages - This takes all available space */}
-          <div className="flex-1 overflow-y-auto p-4 bg-gray-900">
-            <MessageList
-              messages={messages}
-              streamedContent=""
-              isThinking={isThinking}
-              isGenerating={false}
-              isTransitioning={false}
-            />
-            <div ref={messagesEndRef} />
-          </div>
-
-          {/* Input - Fixed at bottom */}
-          <div className="border-t border-gray-800 p-4 flex-shrink-0 bg-gray-900/80 backdrop-blur-sm">
-            <ChatInput
-              onSendMessage={handleSendMessage}
-              onCancel={() => {}}
-              isDisabled={isThinking}
-              isGenerating={false}
-            />
-          </div>
+        // When artifact panel is closed, use the same ChatContent component
+        <div className="flex-1">
+          <ChatContent />
         </div>
       )}
     </div>
