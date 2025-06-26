@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Message } from '@olympian/shared';
 import { format } from 'date-fns';
 import ReactMarkdown from 'react-markdown';
@@ -31,6 +31,7 @@ interface MessageItemProps {
 export function MessageItem({ message, isLatest = false }: MessageItemProps) {
   const isUser = message.role === 'user';
   const [hasTyped, setHasTyped] = useState(!isLatest || isUser);
+  const lastProcessedMessageIdRef = useRef<string | null>(null);
   
   const { 
     selectArtifact, 
@@ -49,10 +50,14 @@ export function MessageItem({ message, isLatest = false }: MessageItemProps) {
   const hasArtifactMetadata = !!message.metadata?.hasArtifact;
   const artifactId = message.metadata?.artifactId;
 
-  // Reset typing state when message changes
+  // Reset typing state only for genuinely new assistant messages
   useEffect(() => {
-    if (isLatest && !isUser) {
+    const messageId = message._id?.toString();
+    
+    // Only reset if this is a new message that we haven't processed before
+    if (isLatest && !isUser && messageId && messageId !== lastProcessedMessageIdRef.current) {
       setHasTyped(false);
+      lastProcessedMessageIdRef.current = messageId;
     }
   }, [message._id, isLatest, isUser]);
 
