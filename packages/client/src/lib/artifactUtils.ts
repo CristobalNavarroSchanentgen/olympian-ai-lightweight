@@ -126,7 +126,7 @@ export async function processMessagesForArtifacts(
           if (!integrityCheck.valid) {
             console.warn('⚠️ [artifactUtils] Artifact integrity check failed, attempting repair:', integrityCheck);
             
-            const repairResult = await attemptArtifactRepair(existingArtifact, message, conversationId);
+            const repairResult = await attemptArtifactRepair(existingArtifact, message);
             recreationReport.attempts.push(repairResult);
             recreationReport.finalResult = repairResult.success ? 'success' : 'partial';
             recreationReport.fallbackUsed = !repairResult.success;
@@ -413,8 +413,7 @@ function verifyArtifactBeforeCreation(artifact: Artifact): { valid: boolean; rea
  */
 async function attemptArtifactRepair(
   artifact: Artifact,
-  message: Message,
-  conversationId: string
+  message: Message
 ): Promise<RecreationAttempt> {
   const attempt: RecreationAttempt = {
     strategy: 'artifact_repair',
