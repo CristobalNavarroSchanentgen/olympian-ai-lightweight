@@ -70,9 +70,9 @@ services:
       # Docker environment indicator
       RUNNING_IN_DOCKER: "true"
       
-      # External services (configured in .env)
-      # Use Docker service name for MongoDB when containerized
-      MONGODB_URI: ${MONGODB_URI:-mongodb://mongodb:27017/olympian_ai_lite}
+      # MongoDB with replica set support for transactions
+      # Use replica set URI to enable transactions in multi-host deployment
+      MONGODB_URI: ${MONGODB_URI:-mongodb://mongodb:27017/olympian_ai_lite?replicaSet=rs0}
       OLLAMA_HOST: ${OLLAMA_HOST}
       
       # Optional: Multiple hosts for load balancing
@@ -104,8 +104,8 @@ services:
       - config-data:/config/.olympian-ai-lite
       - logs:/app/logs
     depends_on:
-      mongodb:
-        condition: service_healthy
+      mongodb-replica-init:
+        condition: service_completed_successfully
     # Resource limits for backend (increased for vision processing)
     deploy:
       resources:
@@ -119,14 +119,15 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
-  # MongoDB service - enabled for multi-host when using containerized option
+  # MongoDB configured as single-node replica set for transaction support
   mongodb:
     image: mongo:7
     container_name: olympian-mongodb
     restart: unless-stopped
-    # Remove port exposure as it's not needed when using Docker networking
+    command: mongod --replSet rs0 --bind_ip_all --port 27017
     volumes:
       - mongodb-data:/data/db
+      - mongodb-config:/data/configdb
     environment:
       MONGO_INITDB_DATABASE: olympian_ai_lite
     networks:
@@ -141,11 +142,69 @@ services:
           memory: 512M
           cpus: '0.5'
     healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
-      interval: 30s
-      timeout: 10s
+      test: |
+        test $$(mongosh --quiet --eval "
+          try {
+            db.runCommand({ping: 1}).ok
+          } catch(e) {
+            0
+          }
+        ") -eq 1
+      interval: 10s
+      timeout: 5s
       retries: 5
       start_period: 30s
+
+  # Replica set initialization service
+  mongodb-replica-init:
+    image: mongo:7
+    container_name: olympian-mongodb-replica-init
+    restart: "no"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - olympian-network
+    command: |
+      mongosh --host mongodb:27017 --eval '
+        try {
+          rs.status();
+          print("✅ Replica set already initialized");
+        } catch(e) {
+          print("🔧 Initializing replica set...");
+          rs.initiate({
+            _id: "rs0",
+            members: [
+              {
+                _id: 0,
+                host: "mongodb:27017"
+              }
+            ]
+          });
+          
+          // Wait for replica set to be ready
+          var attempts = 0;
+          while (attempts < 30) {
+            try {
+              var status = rs.status();
+              if (status.members[0].state === 1) {
+                print("✅ Replica set initialized successfully");
+                print("📊 MongoDB replica set status:", JSON.stringify(status, null, 2));
+                break;
+              }
+            } catch(e) {
+              print("⏳ Waiting for replica set to be ready... attempt", attempts + 1);
+            }
+            attempts++;
+            sleep(1000);
+          }
+          
+          if (attempts >= 30) {
+            print("❌ Failed to initialize replica set after 30 attempts");
+            quit(1);
+          }
+        }
+      '
 
   # Example MCP server (optional)
   mcp-filesystem:
@@ -178,6 +237,7 @@ volumes:
   config-data:
   logs:
   mongodb-data:
+  mongodb-config:
   mcp-data:
 
 networks:
