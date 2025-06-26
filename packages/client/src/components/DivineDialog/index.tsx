@@ -24,7 +24,13 @@ export function DivineDialog() {
     createConversation,
   } = useChatStore();
 
-  const { isArtifactPanelOpen } = useArtifactStore();
+  const { 
+    isArtifactPanelOpen, 
+    setArtifactPanelOpen, 
+    selectArtifact,
+    loadArtifactsForConversation,
+    getArtifactById 
+  } = useArtifactStore();
   
   const [isThinking, setIsThinking] = useState(false);
   const [hasImages, setHasImages] = useState(false);
@@ -85,7 +91,8 @@ export function DivineDialog() {
         hasMetadata: !!response.metadata,
         hasArtifact: !!response.artifact,
         artifactId: response.artifact?.id,
-        artifactType: response.artifact?.type
+        artifactType: response.artifact?.type,
+        metadata: response.metadata
       });
 
       // If this was a new conversation, update the current conversation
@@ -103,54 +110,34 @@ export function DivineDialog() {
       };
       addMessage(assistantMessage);
 
-      // Handle artifact if created by server
-      if (response.artifact) {
-        console.log('🎨 [DivineDialog] Server created artifact, syncing to client store:', response.artifact);
+      // Handle artifact if created by server - use proper server-first approach
+      if (response.artifact?.id) {
+        console.log('🎨 [DivineDialog] Server created artifact, syncing conversation artifacts:', response.artifact);
         
         try {
-          // Fetch the full artifact from server
-          const fullArtifact = await api.getArtifactById(response.artifact.id);
+          // Use server-first loading to sync all artifacts for this conversation
+          await loadArtifactsForConversation(response.conversationId, true);
+          console.log('✅ [DivineDialog] Artifacts synced from server');
           
-          if (fullArtifact) {
-            console.log('✅ [DivineDialog] Retrieved full artifact from server:', {
-              id: fullArtifact.id,
-              type: fullArtifact.type,
-              title: fullArtifact.title,
-              contentLength: fullArtifact.content.length
+          // Find and select the specific artifact that was just created
+          const createdArtifact = getArtifactById(response.artifact.id);
+          
+          if (createdArtifact) {
+            console.log('🎯 [DivineDialog] Found created artifact, selecting it:', {
+              id: createdArtifact.id,
+              type: createdArtifact.type,
+              title: createdArtifact.title
             });
-
-            // Convert server artifact to client format and recreate in store
-            // Using the deprecated recreateArtifact as a fallback since server has already created it
-            const { recreateArtifact, setArtifactPanelOpen, selectArtifact } = useArtifactStore.getState();
-            
-            const clientArtifact = {
-              id: fullArtifact.id,
-              title: fullArtifact.title,
-              type: fullArtifact.type,
-              content: fullArtifact.content,
-              language: fullArtifact.language,
-              version: fullArtifact.version || 1,
-              createdAt: new Date(fullArtifact.createdAt),
-              updatedAt: new Date(fullArtifact.updatedAt),
-              messageId: fullArtifact.messageId,
-              conversationId: fullArtifact.conversationId,
-              checksum: fullArtifact.checksum,
-              metadata: fullArtifact.metadata,
-            };
-
-            // Add artifact to store for immediate display
-            recreateArtifact(clientArtifact);
             
             // Open artifact panel and select the artifact
             setArtifactPanelOpen(true);
-            selectArtifact(clientArtifact);
-            
-            console.log('🎯 [DivineDialog] Artifact synced and selected for display');
+            selectArtifact(createdArtifact);
           } else {
-            console.warn('⚠️ [DivineDialog] Could not retrieve full artifact from server');
+            console.warn('⚠️ [DivineDialog] Created artifact not found in store after sync:', response.artifact.id);
           }
+          
         } catch (artifactError) {
-          console.error('❌ [DivineDialog] Failed to sync artifact from server:', artifactError);
+          console.error('❌ [DivineDialog] Failed to sync artifacts from server:', artifactError);
           // Continue without artifact rather than failing the whole operation
         }
       }
