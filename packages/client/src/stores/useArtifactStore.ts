@@ -152,6 +152,7 @@ function serverArtifactToClient(serverArtifact: ArtifactDocument): Artifact {
     messageId: serverArtifact.messageId,
     conversationId: serverArtifact.conversationId,
     checksum: serverArtifact.checksum,
+    metadata: serverArtifact.metadata,
   };
 }
 
@@ -171,33 +172,7 @@ function clientArtifactToCreateRequest(artifact: Omit<Artifact, 'id' | 'createdA
       reconstructionHash: '', // Will be calculated server-side
       syncStatus: 'synced',
       contentSize: Buffer.from(artifact.content, 'utf8').length,
-      fallbackData: {}
-    }
-  };
-}
-
-// Convert client Artifact to server ArtifactDocument for type compatibility
-function clientArtifactToDocument(artifact: Artifact): ArtifactDocument {
-  return {
-    id: artifact.id,
-    title: artifact.title,
-    type: artifact.type,
-    content: artifact.content,
-    language: artifact.language,
-    version: artifact.version,
-    createdAt: artifact.createdAt,
-    updatedAt: artifact.updatedAt,
-    messageId: artifact.messageId,
-    conversationId: artifact.conversationId,
-    checksum: artifact.checksum || '', // Ensure checksum is always a string
-    metadata: {
-      detectionStrategy: 'client_convert',
-      originalContent: artifact.content,
-      codeBlocksRemoved: false,
-      reconstructionHash: '',
-      syncStatus: 'synced',
-      contentSize: Buffer.from(artifact.content, 'utf8').length,
-      fallbackData: {}
+      ...artifact.metadata
     }
   };
 }
