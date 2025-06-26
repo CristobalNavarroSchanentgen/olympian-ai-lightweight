@@ -81,6 +81,12 @@ interface BulkArtifactResponse {
   };
 }
 
+// ENHANCED: Messages response with artifacts
+interface MessagesWithArtifactsResponse {
+  messages: Message[];
+  artifacts: ArtifactDocument[];
+}
+
 class ApiService {
   private client: AxiosInstance;
 
@@ -531,11 +537,33 @@ class ApiService {
     return data.data!;
   }
 
-  async getMessages(conversationId: string, page = 1, limit = 50): Promise<{ messages: Message[]; total: number }> {
-    const { data } = await this.client.get<ApiResponse<Message[]> & { total: number }>(
+  // ENHANCED: Get messages with artifacts
+  async getMessages(conversationId: string, page = 1, limit = 50): Promise<{ messages: Message[]; artifacts: ArtifactDocument[]; total: number }> {
+    console.log(`📋 [API] Getting messages with artifacts for conversation: ${conversationId}`);
+    
+    const { data } = await this.client.get<ApiResponse<MessagesWithArtifactsResponse> & { total: number }>(
       `/chat/conversations/${conversationId}/messages?page=${page}&limit=${limit}`
     );
-    return { messages: data.data || [], total: data.total };
+    
+    // Handle both old format (data as array) and new format (data as object with messages and artifacts)
+    if (Array.isArray(data.data)) {
+      // Old format - messages only
+      console.log(`⚠️ [API] Received legacy response format (messages only)`);
+      return { 
+        messages: data.data as Message[], 
+        artifacts: [], 
+        total: data.total 
+      };
+    } else {
+      // New format - messages and artifacts
+      const response = data.data as MessagesWithArtifactsResponse;
+      console.log(`✅ [API] Received enhanced response with ${response.messages?.length || 0} messages and ${response.artifacts?.length || 0} artifacts`);
+      return { 
+        messages: response.messages || [], 
+        artifacts: response.artifacts || [], 
+        total: data.total 
+      };
+    }
   }
 
   async deleteConversation(id: string): Promise<void> {
