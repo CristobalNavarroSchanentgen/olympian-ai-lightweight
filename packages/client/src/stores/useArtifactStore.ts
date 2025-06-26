@@ -194,26 +194,6 @@ function serverResponseToDocument(serverArtifact: ArtifactDocument): ArtifactDoc
   };
 }
 
-// Convert any artifact-like object to a safe ArtifactDocument 
-function artifactToDocument(artifact: Partial<Artifact> & { id: string; conversationId: string; content: string; title: string; type: any }): ArtifactDocument {
-  const now = new Date();
-  return {
-    ...artifact,
-    checksum: artifact.checksum || '',
-    version: artifact.version || 1,
-    createdAt: artifact.createdAt || now,
-    updatedAt: artifact.updatedAt || now,
-    metadata: artifact.metadata || {
-      syncStatus: 'synced',
-      codeBlocksRemoved: false,
-      detectionStrategy: 'client',
-      originalContent: artifact.content,
-      reconstructionHash: '',
-      contentSize: Buffer.from(artifact.content, 'utf8').length,
-    }
-  };
-}
-
 // =====================================
 // ZUSTAND STORE IMPLEMENTATION
 // =====================================
