@@ -35,6 +35,8 @@ export interface MessageMetadata {
   recreationFailed?: boolean; // Whether artifact recreation failed
   recreationAttempts?: number; // Number of recreation attempts
   fallbackUsed?: boolean; // Whether fallback strategy was used
+  // Typewriter effect metadata
+  typewriterCompleted?: boolean; // Whether typewriter effect has completed for this message
 }
 
 export interface ChatRequest {
