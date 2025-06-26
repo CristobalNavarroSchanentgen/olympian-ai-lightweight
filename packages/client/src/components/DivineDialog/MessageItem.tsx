@@ -26,13 +26,20 @@ import {
 interface MessageItemProps {
   message: Message;
   isLatest?: boolean;
+  onUpdateMetadata?: (messageId: string, metadata: Partial<Message['metadata']>) => void;
 }
 
-export function MessageItem({ message, isLatest = false }: MessageItemProps) {
+export function MessageItem({ message, isLatest = false, onUpdateMetadata }: MessageItemProps) {
   const isUser = message.role === 'user';
-  const [hasTyped, setHasTyped] = useState(!isLatest || isUser);
+  
+  // Check if typewriter has already completed based on metadata
+  const typewriterCompleted = message.metadata?.typewriterCompleted || false;
+  
+  // Initialize hasTyped based on metadata and message type
+  // User messages and messages that have already completed typewriting should not animate
+  const [hasTyped, setHasTyped] = useState(typewriterCompleted || !isLatest || isUser);
+  
   const lastProcessedMessageIdRef = useRef<string | null>(null);
-  const hasTypedCompletelyRef = useRef<boolean>(!isLatest || isUser);
   
   const { 
     selectArtifact, 
@@ -51,30 +58,34 @@ export function MessageItem({ message, isLatest = false }: MessageItemProps) {
   const hasArtifactMetadata = !!message.metadata?.hasArtifact;
   const artifactId = message.metadata?.artifactId;
 
-  // Reset typing state only for genuinely new assistant messages
+  // Reset typing state only for genuinely new assistant messages that haven't completed typewriting
   useEffect(() => {
     const messageId = message._id?.toString();
     
-    // Only reset if this is a new message that we haven't processed before
-    // AND we haven't already completed typing for this message
+    // Only trigger typewriter for new assistant messages that haven't completed typewriting
     if (isLatest && !isUser && messageId && 
         messageId !== lastProcessedMessageIdRef.current && 
-        !hasTypedCompletelyRef.current) {
+        !typewriterCompleted) {
       setHasTyped(false);
       lastProcessedMessageIdRef.current = messageId;
     }
     
-    // If this message is no longer the latest, ensure it's marked as typed
-    if (!isLatest && !hasTypedCompletelyRef.current) {
+    // If this message is no longer the latest or has already completed typewriting, ensure it's marked as typed
+    if (!isLatest || typewriterCompleted) {
       setHasTyped(true);
-      hasTypedCompletelyRef.current = true;
     }
-  }, [message._id, isLatest, isUser]);
+  }, [message._id, isLatest, isUser, typewriterCompleted]);
 
   // Handle typewriter completion
   const handleTypewriterComplete = () => {
     setHasTyped(true);
-    hasTypedCompletelyRef.current = true;
+    
+    // Update the message metadata to mark typewriter as completed
+    if (onUpdateMetadata && message._id) {
+      onUpdateMetadata(message._id.toString(), {
+        typewriterCompleted: true
+      });
+    }
   };
 
   // Debug artifact issues
@@ -203,7 +214,7 @@ export function MessageItem({ message, isLatest = false }: MessageItemProps) {
             <p className="text-sm text-white/90">{message.content}</p>
           ) : (
             <>
-              {!hasTyped ? (
+              {!hasTyped && !typewriterCompleted ? (
                 <TypewriterText
                   content={displayContent}
                   speed={15}
