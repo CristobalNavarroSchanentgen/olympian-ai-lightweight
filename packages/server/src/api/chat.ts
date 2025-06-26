@@ -8,7 +8,7 @@ import { modelProgressiveLoader } from '../services/ModelProgressiveLoader';
 import { AppError } from '../middleware/errorHandler';
 import { chatRateLimiter } from '../middleware/rateLimiter';
 import { z } from 'zod';
-import { Message, Conversation, ModelCapability, CreateArtifactRequest, ArtifactType } from '@olympian/shared';
+import { Message, Conversation, ModelCapability, CreateArtifactRequest, ArtifactType, Artifact } from '@olympian/shared';
 
 const router = Router();
 const db = DatabaseService.getInstance();
@@ -720,7 +720,7 @@ router.get('/conversations/:id/messages', async (req, res, next) => {
 
     // NEW: Fetch artifacts for this conversation
     console.log(`📋 [ChatAPI] Fetching artifacts for conversation: ${conversationId}`);
-    let artifacts = [];
+    let artifacts: Artifact[] = [];
     try {
       artifacts = await artifactService.getArtifactsForConversation(conversationId);
       console.log(`✅ [ChatAPI] Found ${artifacts.length} artifacts for conversation`);
