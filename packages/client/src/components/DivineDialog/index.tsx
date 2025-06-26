@@ -24,7 +24,7 @@ export function DivineDialog() {
     createConversation,
   } = useChatStore();
 
-  const { isArtifactPanelOpen, setArtifactPanelOpen, getArtifactById } = useArtifactStore();
+  const { isArtifactPanelOpen } = useArtifactStore();
   
   const [isThinking, setIsThinking] = useState(false);
   const [hasImages, setHasImages] = useState(false);
