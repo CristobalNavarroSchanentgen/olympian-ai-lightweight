@@ -3,7 +3,6 @@ import { Conversation, Message, ModelCapability } from '@olympian/shared';
 import { api } from '@/services/api';
 import { toast } from '@/hooks/useToast';
 import { useArtifactStore } from './useArtifactStore';
-import { processMessagesForArtifacts } from '@/lib/artifactUtils';
 
 interface ChatStore {
   conversations: Conversation[];
@@ -41,8 +40,8 @@ function detectVisionModelsByName(models: string[]): string[] {
     /bakllava/i,
     /llava-llama3/i,
     /llava-phi3/i,
-    /llava-v1\\.6/i,
-    /llama3\\.2-vision/i,
+    /llava-v1\.6/i,
+    /llama3\.2-vision/i,
     /moondream/i,
     /cogvlm/i,
     /instructblip/i,
@@ -169,43 +168,44 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     set({ isLoadingMessages: true });
     
     try {
-      const { messages } = await api.getMessages(conversationId);
-      console.log('✅ [useChatStore] fetchMessages success:', messages.length, 'messages');
+      // Get BOTH messages and artifacts from the API
+      const response = await api.getMessages(conversationId);
+      console.log('✅ [useChatStore] fetchMessages API response:', {
+        hasMessages: !!response.messages,
+        messageCount: response.messages?.length || 0,
+        hasArtifacts: !!response.artifacts,
+        artifactCount: response.artifacts?.length || 0
+      });
       
-      // Clear existing messages first to avoid conflicts
-      set({ messages: [] });
+      // Destructure both messages and artifacts
+      const { messages, artifacts } = response;
       
-      // Process messages to recreate artifacts with a slight delay to ensure store is ready
-      console.log('🔧 [useChatStore] Starting artifact processing for conversation:', conversationId);
-      
-      // Use setTimeout to ensure the artifact store is in a clean state
-      setTimeout(async () => {
-        try {
-          const processedMessages = await processMessagesForArtifacts(messages);
-          console.log('✅ [useChatStore] Artifact processing complete, setting processed messages');
-          
-          // Verify artifact recreation
-          const { artifacts } = useArtifactStore.getState();
-          const conversationArtifacts = artifacts[conversationId] || [];
-          console.log('📊 [useChatStore] Artifacts after processing:', {
-            conversationId,
-            artifactCount: conversationArtifacts.length,
-            messageCount: processedMessages.length,
-            messagesWithArtifacts: processedMessages.filter(m => m.metadata?.hasArtifact).length
+      // Clear and load artifacts directly from server - no recreation needed!
+      if (artifacts && artifacts.length > 0) {
+        console.log('🎨 [useChatStore] Loading server-provided artifacts:', artifacts.length);
+        const { clearArtifactsForConversation } = useArtifactStore.getState();
+        
+        // Clear existing artifacts for this conversation
+        clearArtifactsForConversation(conversationId);
+        
+        // Load each artifact into the store
+        artifacts.forEach(artifact => {
+          const { recreateArtifact } = useArtifactStore.getState();
+          recreateArtifact({
+            ...artifact,
+            createdAt: new Date(artifact.createdAt),
+            updatedAt: new Date(artifact.updatedAt)
           });
-          
-          set({ messages: processedMessages });
-        } catch (processingError) {
-          console.error('❌ [useChatStore] Artifact processing failed:', processingError);
-          // Fallback to original messages if processing fails
-          set({ messages });
-          toast({
-            title: 'Warning',
-            description: 'Some artifacts may not display correctly',
-            variant: 'destructive',
-          });
-        }
-      }, 100); // Small delay to ensure proper state management
+        });
+        
+        console.log('✅ [useChatStore] Server artifacts loaded successfully');
+      } else {
+        console.log('📭 [useChatStore] No artifacts to load for this conversation');
+      }
+      
+      // Set messages directly without any processing
+      set({ messages });
+      console.log('✅ [useChatStore] Messages loaded successfully:', messages.length);
       
     } catch (error) {
       console.error('❌ [useChatStore] fetchMessages error:', error);
