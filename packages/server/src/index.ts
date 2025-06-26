@@ -23,7 +23,7 @@ const server = createServer(app);
 
 // Environment variables
 const PORT = process.env.PORT || 3001;
-const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017';
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017';
 const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5173';
 
 // NEW: Multi-host environment variables
@@ -96,7 +96,7 @@ async function initializeServices() {
     // Connect to database first
     console.log('🔌 [Server] Connecting to MongoDB...');
     const db = DatabaseService.getInstance();
-    await db.connect(MONGO_URI);
+    await db.connect(MONGODB_URI);
     
     // NEW: Initialize Phase 3 multi-host services if enabled
     if (ENABLE_MULTI_HOST) {
@@ -275,7 +275,7 @@ async function startServer() {
     server.listen(PORT, () => {
       console.log(`\n🚀 [Server] Olympian AI Lightweight Server running on port ${PORT}`);
       console.log(`📡 [Server] WebSocket server initialized`);
-      console.log(`🗄️ [Server] Database connected: ${MONGO_URI}`);
+      console.log(`🗄️ [Server] Database connected: ${MONGODB_URI}`);
       console.log(`🎨 [Server] Artifacts collection initialized with schema validation`);
       
       // NEW: Multi-host status
