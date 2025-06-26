@@ -178,7 +178,8 @@ function clientArtifactToCreateRequest(artifact: Omit<Artifact, 'id' | 'createdA
 }
 
 // Convert server response artifact to ArtifactDocument with required checksum
-function serverResponseToDocument(serverArtifact: Artifact): ArtifactDocument {
+function serverResponseToDocument(serverArtifact: ArtifactDocument): ArtifactDocument {
+  // If it's already an ArtifactDocument, just ensure required fields
   return {
     ...serverArtifact,
     checksum: serverArtifact.checksum || '', // Ensure checksum is always a string
@@ -189,6 +190,26 @@ function serverResponseToDocument(serverArtifact: Artifact): ArtifactDocument {
       originalContent: serverArtifact.content,
       reconstructionHash: '',
       contentSize: Buffer.from(serverArtifact.content, 'utf8').length,
+    }
+  };
+}
+
+// Convert any artifact-like object to a safe ArtifactDocument 
+function artifactToDocument(artifact: Partial<Artifact> & { id: string; conversationId: string; content: string; title: string; type: any }): ArtifactDocument {
+  const now = new Date();
+  return {
+    ...artifact,
+    checksum: artifact.checksum || '',
+    version: artifact.version || 1,
+    createdAt: artifact.createdAt || now,
+    updatedAt: artifact.updatedAt || now,
+    metadata: artifact.metadata || {
+      syncStatus: 'synced',
+      codeBlocksRemoved: false,
+      detectionStrategy: 'client',
+      originalContent: artifact.content,
+      reconstructionHash: '',
+      contentSize: Buffer.from(artifact.content, 'utf8').length,
     }
   };
 }
@@ -357,8 +378,13 @@ export const useArtifactStore = create<ArtifactState>()(
             return localArtifact;
           }
           
+          // Safely handle server response
+          if (!serverResponse.artifact) {
+            throw new Error('Server response missing artifact data');
+          }
+          
           // Convert server response to client format
-          const serverArtifact = serverArtifactToClient(serverResponse.artifact);
+          const serverArtifact = serverArtifactToClient(serverResponse.artifact as ArtifactDocument);
           
           // Update local state with server response
           set((state) => {
@@ -372,7 +398,7 @@ export const useArtifactStore = create<ArtifactState>()(
             
             // Update server cache - ensure we're adding ArtifactDocument type
             const currentServerArtifacts = state.serverArtifacts[conversationId] || [];
-            const serverDocument = serverResponseToDocument(serverResponse.artifact);
+            const serverDocument = serverResponseToDocument(serverResponse.artifact as ArtifactDocument);
             
             return {
               artifacts: {
@@ -488,8 +514,13 @@ export const useArtifactStore = create<ArtifactState>()(
               throw new Error(serverResponse.error || 'Failed to update artifact on server');
             }
             
+            // Safely handle server response
+            if (!serverResponse.artifact) {
+              throw new Error('Server response missing artifact data');
+            }
+            
             // Update with server response
-            const serverArtifact = serverArtifactToClient(serverResponse.artifact);
+            const serverArtifact = serverArtifactToClient(serverResponse.artifact as ArtifactDocument);
             
             set((state) => {
               const conversationId = serverArtifact.conversationId;
@@ -500,7 +531,7 @@ export const useArtifactStore = create<ArtifactState>()(
               
               // Update server cache - ensure we're updating with ArtifactDocument type
               const serverArtifacts = state.serverArtifacts[conversationId] || [];
-              const serverDocument = serverResponseToDocument(serverResponse.artifact);
+              const serverDocument = serverResponseToDocument(serverResponse.artifact as ArtifactDocument);
               const updatedServerArtifacts = serverArtifacts.map(a => 
                 a.id === artifactId ? serverDocument : a
               );
@@ -616,17 +647,13 @@ export const useArtifactStore = create<ArtifactState>()(
         } catch (error) {
           console.error(`❌ [ArtifactStore] Failed to delete artifact:`, error);
           
-          // Reload to revert optimistic deletion
-          const artifactToDelete = get().artifacts;
-          if (artifactToDelete) {
-            // Find the conversation this artifact belonged to
-            for (const [conversationId, artifacts] of Object.entries(artifactToDelete)) {
-              const hadArtifact = artifacts.some(a => a.id === artifactId);
-              if (hadArtifact) {
-                await get().loadArtifactsForConversation(conversationId, true);
-                break;
-              }
-            }
+          // Reload to revert optimistic deletion  
+          const currentState = get();
+          const allConversations = Object.keys(currentState.artifacts);
+          
+          // Find which conversation this artifact belonged to and reload it
+          for (const conversationId of allConversations) {
+            await get().loadArtifactsForConversation(conversationId, true);
           }
           
           throw error;
