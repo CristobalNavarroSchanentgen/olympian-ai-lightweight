@@ -31,6 +31,10 @@ interface ChatStore {
   clearCurrentConversation: () => void;
 }
 
+// Simple rate limiting cache
+let lastVisionModelsFetch = 0;
+const VISION_MODELS_CACHE_DURATION = 30000; // 30 seconds
+
 // Fallback vision model detection based on common naming patterns
 function detectVisionModelsByName(models: string[]): string[] {
   console.log('🔍 [useChatStore] Running fallback vision model detection on models:', models);
@@ -225,7 +229,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       console.log('📊 [useChatStore] Number of models received:', allModels.length);
       console.log('📋 [useChatStore] Models list:', allModels);
       
-      // Try to fetch vision models from API
+      // Try to fetch vision models from API with rate limiting
       let visionModels: string[] = [];
       try {
         console.log('📞 [useChatStore] Step 2: Calling api.getVisionModels()...');
@@ -236,6 +240,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           length: visionModels?.length,
           data: visionModels
         });
+        
+        // Update cache timestamp
+        lastVisionModelsFetch = Date.now();
       } catch (error) {
         console.warn('⚠️ [useChatStore] Step 2 FAILED: Failed to fetch vision models from API, using fallback detection:', error);
         visionModels = detectVisionModelsByName(allModels);
@@ -317,10 +324,19 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
   fetchVisionModels: async () => {
     console.log('📞 [useChatStore] fetchVisionModels called');
+    
+    // Rate limiting: check if we've fetched recently
+    const now = Date.now();
+    if (now - lastVisionModelsFetch < VISION_MODELS_CACHE_DURATION) {
+      console.log('⏰ [useChatStore] fetchVisionModels rate limited, using cached data');
+      return;
+    }
+    
     try {
       const visionModels = await api.getVisionModels();
       console.log('✅ [useChatStore] fetchVisionModels success:', visionModels);
       set({ visionModels });
+      lastVisionModelsFetch = now;
     } catch (error) {
       console.error('❌ [useChatStore] fetchVisionModels error:', error);
       // Don't show toast for vision models as they are optional
