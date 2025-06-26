@@ -32,6 +32,7 @@ export function MessageItem({ message, isLatest = false }: MessageItemProps) {
   const isUser = message.role === 'user';
   const [hasTyped, setHasTyped] = useState(!isLatest || isUser);
   const lastProcessedMessageIdRef = useRef<string | null>(null);
+  const hasTypedCompletelyRef = useRef<boolean>(!isLatest || isUser);
   
   const { 
     selectArtifact, 
@@ -55,11 +56,26 @@ export function MessageItem({ message, isLatest = false }: MessageItemProps) {
     const messageId = message._id?.toString();
     
     // Only reset if this is a new message that we haven't processed before
-    if (isLatest && !isUser && messageId && messageId !== lastProcessedMessageIdRef.current) {
+    // AND we haven't already completed typing for this message
+    if (isLatest && !isUser && messageId && 
+        messageId !== lastProcessedMessageIdRef.current && 
+        !hasTypedCompletelyRef.current) {
       setHasTyped(false);
       lastProcessedMessageIdRef.current = messageId;
     }
+    
+    // If this message is no longer the latest, ensure it's marked as typed
+    if (!isLatest && !hasTypedCompletelyRef.current) {
+      setHasTyped(true);
+      hasTypedCompletelyRef.current = true;
+    }
   }, [message._id, isLatest, isUser]);
+
+  // Handle typewriter completion
+  const handleTypewriterComplete = () => {
+    setHasTyped(true);
+    hasTypedCompletelyRef.current = true;
+  };
 
   // Debug artifact issues
   useEffect(() => {
@@ -191,7 +207,7 @@ export function MessageItem({ message, isLatest = false }: MessageItemProps) {
                 <TypewriterText
                   content={displayContent}
                   speed={15}
-                  onComplete={() => setHasTyped(true)}
+                  onComplete={handleTypewriterComplete}
                 />
               ) : (
                 <ReactMarkdown
