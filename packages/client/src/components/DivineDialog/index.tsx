@@ -36,6 +36,46 @@ export function DivineDialog() {
   const [hasImages, setHasImages] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Track completed typewriter messages using a ref - persists across remounts
+  const completedTypewriterMessages = useRef<Set<string>>(new Set());
+
+  // Check if a message has completed typewriter effect
+  const hasCompletedTypewriter = (messageId: string | undefined): boolean => {
+    if (!messageId) return false;
+    return completedTypewriterMessages.current.has(messageId);
+  };
+
+  // Mark a message as having completed typewriter effect
+  const onTypewriterComplete = (messageId: string) => {
+    completedTypewriterMessages.current.add(messageId);
+    
+    // Also persist to localStorage as backup for page refreshes
+    try {
+      const completedMessages = JSON.parse(localStorage.getItem('typewriter-completed') || '{}');
+      completedMessages[messageId] = true;
+      localStorage.setItem('typewriter-completed', JSON.stringify(completedMessages));
+    } catch (error) {
+      console.warn('Failed to save typewriter completion state:', error);
+    }
+  };
+
+  // Initialize ref from localStorage on mount
+  useEffect(() => {
+    try {
+      const savedCompleted = localStorage.getItem('typewriter-completed');
+      if (savedCompleted) {
+        const completedMessages = JSON.parse(savedCompleted);
+        Object.keys(completedMessages).forEach(messageId => {
+          if (completedMessages[messageId]) {
+            completedTypewriterMessages.current.add(messageId);
+          }
+        });
+      }
+    } catch (error) {
+      console.warn('Failed to load typewriter completion state:', error);
+    }
+  }, []);
+
   useEffect(() => {
     fetchModels();
   }, [fetchModels]);
@@ -238,6 +278,8 @@ export function DivineDialog() {
           isThinking={isThinking}
           isGenerating={false}
           isTransitioning={false}
+          hasCompletedTypewriter={hasCompletedTypewriter}
+          onTypewriterComplete={onTypewriterComplete}
         />
         <div ref={messagesEndRef} />
       </div>
