@@ -57,6 +57,14 @@ function formatMessage(doc: any): Message {
   };
 }
 
+// Helper function to convert string ID to ObjectId if needed
+function toObjectId(id: string | ObjectId): ObjectId {
+  if (typeof id === 'string') {
+    return new ObjectId(id);
+  }
+  return id;
+}
+
 // Helper function to check if a model is basic (no capabilities)
 function isBasicModel(capabilities: ModelCapability | null): boolean {
   if (!capabilities) return false;
@@ -301,7 +309,7 @@ router.post('/stream', async (req, res, next) => {
     });
 
     // Send initial event to confirm connection
-    res.write(`data: ${JSON.stringify({ type: 'connected' })}\\n\\n`);
+    res.write(`data: ${JSON.stringify({ type: 'connected' })}\n\n`);
 
     try {
       // Get or create conversation
@@ -309,9 +317,9 @@ router.post('/stream', async (req, res, next) => {
       let conversation: Conversation;
       
       if (conversationId) {
-        // Validate existing conversation using string ID
+        // Validate existing conversation using proper ObjectId conversion
         const existingConv = await db.conversations.findOne({ 
-          _id: conversationId 
+          _id: toObjectId(conversationId)
         });
         if (!existingConv) {
           throw new AppError(404, 'Conversation not found');
@@ -340,7 +348,7 @@ router.post('/stream', async (req, res, next) => {
         type: 'conversation', 
         conversation,
         conversationId: convId 
-      })}\\n\\n`);
+      })}\n\n`);
 
       // Process the request WITHOUT saving the user message first
       // This prevents duplicate messages in the conversation history
@@ -353,14 +361,14 @@ router.post('/stream', async (req, res, next) => {
       });
 
       // Send thinking state
-      res.write(`data: ${JSON.stringify({ type: 'thinking', isThinking: true })}\\n\\n`);
+      res.write(`data: ${JSON.stringify({ type: 'thinking', isThinking: true })}\n\n`);
 
       // Start streaming response
       let assistantContent = '';
       const startTime = Date.now();
       let tokenCount = 0;
 
-      res.write(`data: ${JSON.stringify({ type: 'streaming_start' })}\\n\\n`);
+      res.write(`data: ${JSON.stringify({ type: 'streaming_start' })}\n\n`);
 
       await streamliner.streamChat(processedRequest, (token: string) => {
         assistantContent += token;
@@ -371,11 +379,11 @@ router.post('/stream', async (req, res, next) => {
           type: 'token', 
           token,
           content: assistantContent 
-        })}\\n\\n`);
+        })}\n\n`);
       });
 
       // Send streaming end
-      res.write(`data: ${JSON.stringify({ type: 'streaming_end' })}\\n\\n`);
+      res.write(`data: ${JSON.stringify({ type: 'streaming_end' })}\n\n`);
 
       // NOW save both messages AFTER the response is generated
       // This ensures the conversation history is correct for the next request
@@ -417,7 +425,7 @@ router.post('/stream', async (req, res, next) => {
       // Update assistant message with artifact metadata and processed content
       if (artifactResult.hasArtifact) {
         await db.messages.updateOne(
-          { _id: assistantMessageId },
+          { _id: toObjectId(assistantMessageId) },
           {
             $set: {
               content: artifactResult.processedContent,
@@ -438,12 +446,12 @@ router.post('/stream', async (req, res, next) => {
           type: 'artifact_created',
           artifactId: artifactResult.artifactId,
           artifactType: artifactResult.artifactType
-        })}\\n\\n`);
+        })}\n\n`);
       }
 
       // Update conversation
       await db.conversations.updateOne(
-        { _id: convId },
+        { _id: toObjectId(convId) },
         {
           $set: { updatedAt: new Date() },
           $inc: { messageCount: 2 },
@@ -463,14 +471,14 @@ router.post('/stream', async (req, res, next) => {
           codeBlocksRemoved: artifactResult.hasArtifact
         },
         conversationId: convId 
-      })}\\n\\n`);
+      })}\n\n`);
 
     } catch (streamError) {
       console.error('Streaming error:', streamError);
       res.write(`data: ${JSON.stringify({ 
         type: 'error', 
         error: streamError instanceof Error ? streamError.message : 'Unknown error' 
-      })}\\n\\n`);
+      })}\n\n`);
     }
 
     res.end();
@@ -499,9 +507,9 @@ router.post('/send', async (req, res, next) => {
     let conversation: Conversation;
     
     if (conversationId) {
-      // Validate existing conversation using string ID
+      // Validate existing conversation using proper ObjectId conversion
       const existingConv = await db.conversations.findOne({ 
-        _id: conversationId 
+        _id: toObjectId(conversationId)
       });
       if (!existingConv) {
         throw new AppError(404, 'Conversation not found');
@@ -595,7 +603,7 @@ router.post('/send', async (req, res, next) => {
       };
 
       await db.messages.updateOne(
-        { _id: assistantMessageId },
+        { _id: toObjectId(assistantMessageId) },
         {
           $set: {
             content: finalContent,
@@ -610,7 +618,7 @@ router.post('/send', async (req, res, next) => {
 
     // Update conversation
     await db.conversations.updateOne(
-      { _id: convId },
+      { _id: toObjectId(convId) },
       {
         $set: { updatedAt: new Date() },
         $inc: { messageCount: 2 },
@@ -639,7 +647,7 @@ router.post('/send', async (req, res, next) => {
 });
 
 // =====================================
-// EXISTING ENDPOINTS (unchanged)
+// EXISTING ENDPOINTS (updated with proper ObjectId handling)
 // =====================================
 
 // Get conversations
@@ -676,7 +684,7 @@ router.get('/conversations', async (req, res, next) => {
 router.get('/conversations/:id', async (req, res, next) => {
   try {
     const conversation = await db.conversations.findOne({
-      _id: req.params.id,
+      _id: toObjectId(req.params.id),
     });
 
     if (!conversation) {
@@ -731,7 +739,7 @@ router.get('/conversations/:id/memory-stats', async (req, res, next) => {
     
     // Verify conversation exists
     const conversation = await db.conversations.findOne({
-      _id: conversationId,
+      _id: toObjectId(conversationId),
     });
     
     if (!conversation) {
@@ -813,7 +821,7 @@ router.delete('/conversations/:id', async (req, res, next) => {
 
     // Delete the conversation
     const result = await db.conversations.deleteOne({ 
-      _id: conversationId 
+      _id: toObjectId(conversationId)
     });
 
     if (result.deletedCount === 0) {
