@@ -177,6 +177,22 @@ function clientArtifactToCreateRequest(artifact: Omit<Artifact, 'id' | 'createdA
   };
 }
 
+// Convert server response artifact to ArtifactDocument with required checksum
+function serverResponseToDocument(serverArtifact: Artifact): ArtifactDocument {
+  return {
+    ...serverArtifact,
+    checksum: serverArtifact.checksum || '', // Ensure checksum is always a string
+    metadata: serverArtifact.metadata || {
+      syncStatus: 'synced',
+      codeBlocksRemoved: false,
+      detectionStrategy: 'server',
+      originalContent: serverArtifact.content,
+      reconstructionHash: '',
+      contentSize: Buffer.from(serverArtifact.content, 'utf8').length,
+    }
+  };
+}
+
 // =====================================
 // ZUSTAND STORE IMPLEMENTATION
 // =====================================
@@ -356,7 +372,7 @@ export const useArtifactStore = create<ArtifactState>()(
             
             // Update server cache - ensure we're adding ArtifactDocument type
             const currentServerArtifacts = state.serverArtifacts[conversationId] || [];
-            const serverDocument = serverResponse.artifact as ArtifactDocument;
+            const serverDocument = serverResponseToDocument(serverResponse.artifact);
             
             return {
               artifacts: {
@@ -484,7 +500,7 @@ export const useArtifactStore = create<ArtifactState>()(
               
               // Update server cache - ensure we're updating with ArtifactDocument type
               const serverArtifacts = state.serverArtifacts[conversationId] || [];
-              const serverDocument = serverResponse.artifact as ArtifactDocument;
+              const serverDocument = serverResponseToDocument(serverResponse.artifact);
               const updatedServerArtifacts = serverArtifacts.map(a => 
                 a.id === artifactId ? serverDocument : a
               );
@@ -601,8 +617,16 @@ export const useArtifactStore = create<ArtifactState>()(
           console.error(`❌ [ArtifactStore] Failed to delete artifact:`, error);
           
           // Reload to revert optimistic deletion
+          const artifactToDelete = get().artifacts;
           if (artifactToDelete) {
-            await get().loadArtifactsForConversation(artifactToDelete.conversationId, true);
+            // Find the conversation this artifact belonged to
+            for (const [conversationId, artifacts] of Object.entries(artifactToDelete)) {
+              const hadArtifact = artifacts.some(a => a.id === artifactId);
+              if (hadArtifact) {
+                await get().loadArtifactsForConversation(conversationId, true);
+                break;
+              }
+            }
           }
           
           throw error;
