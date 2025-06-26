@@ -18,6 +18,17 @@ export function MessageList({
   isGenerating,
   isTransitioning = false,
 }: MessageListProps) {
+  // Handle typewriter completion tracking with localStorage as a fallback
+  const handleTypewriterComplete = (messageId: string) => {
+    try {
+      const completedMessages = JSON.parse(localStorage.getItem('typewriter-completed') || '{}');
+      completedMessages[messageId] = true;
+      localStorage.setItem('typewriter-completed', JSON.stringify(completedMessages));
+    } catch (error) {
+      console.warn('Failed to save typewriter completion state:', error);
+    }
+  };
+
   if (messages.length === 0 && !isThinking && !isGenerating) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-center">
@@ -36,6 +47,7 @@ export function MessageList({
           key={message._id?.toString() || index} 
           message={message} 
           isLatest={index === messages.length - 1 && message.role === 'assistant'}
+          onTypewriterComplete={handleTypewriterComplete}
         />
       ))}
       
@@ -74,7 +86,7 @@ export function MessageList({
                         <pre className="overflow-x-auto rounded-lg bg-background p-3" {...props} />
                       ),
                       code: ({ node, children, className, ...props }) => {
-                        const match = /language-(\w+)/.exec(className || '');
+                        const match = /language-(\\w+)/.exec(className || '');
                         const isInline = !match;
                         
                         return isInline ? (
