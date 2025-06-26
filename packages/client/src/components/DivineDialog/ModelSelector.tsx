@@ -24,17 +24,13 @@ export function ModelSelector({ hasImages }: ModelSelectorProps) {
     selectedVisionModel,
     selectModel,
     selectVisionModel,
-    fetchVisionModels,
     isLoadingModels
   } = useChatStore();
   
   const [showSettings, setShowSettings] = useState(false);
 
-  useEffect(() => {
-    console.log('🎨 [ModelSelector] Component mounted, fetching vision models...');
-    // Always fetch vision models on mount to show available options
-    fetchVisionModels();
-  }, [fetchVisionModels]);
+  // Remove the fetchVisionModels call since it's already handled in fetchModels()
+  // which is called from DivineDialog component. This prevents 429 rate limiting errors.
 
   // Debug logging
   useEffect(() => {
