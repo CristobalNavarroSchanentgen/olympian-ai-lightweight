@@ -176,37 +176,11 @@ function clientArtifactToCreateRequest(artifact: Omit<Artifact, 'id' | 'createdA
   };
 }
 
-// Convert client Artifact to server ArtifactDocument for type compatibility
-function clientArtifactToDocument(artifact: Artifact): ArtifactDocument {
-  return {
-    id: artifact.id,
-    title: artifact.title,
-    type: artifact.type,
-    content: artifact.content,
-    language: artifact.language,
-    version: artifact.version,
-    createdAt: artifact.createdAt,
-    updatedAt: artifact.updatedAt,
-    messageId: artifact.messageId,
-    conversationId: artifact.conversationId,
-    checksum: artifact.checksum || '', // Ensure checksum is always a string
-    metadata: {
-      detectionStrategy: 'client_convert',
-      originalContent: artifact.content,
-      codeBlocksRemoved: false,
-      reconstructionHash: '',
-      syncStatus: 'synced',
-      contentSize: Buffer.from(artifact.content, 'utf8').length,
-      fallbackData: {}
-    }
-  };
-}
-
 // =====================================
 // ZUSTAND STORE IMPLEMENTATION
 // =====================================
 
-export const useArtifactStore = create<ArtifactState>()(
+export const useArtifactStore = create<ArtifactState>()( 
   persist(
     (set, get) => ({
       // =====================================
@@ -977,8 +951,8 @@ export const useArtifactStore = create<ArtifactState>()(
           
           // Remove versions for artifacts in this conversation
           const conversationArtifacts = state.artifacts[conversationId] || [];
-          conversationArtifacts.forEach(artifact => {
-            delete newVersions[artifact.id];
+          conversationArtifacts.forEach(artifactObj => {
+            delete newVersions[artifactObj.id];
           });
           
           return {
