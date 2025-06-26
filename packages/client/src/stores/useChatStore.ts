@@ -168,7 +168,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     set({ isLoadingMessages: true });
     
     try {
-      // Get BOTH messages and artifacts from the API
+      // Get messages from the API
       const response = await api.getMessages(conversationId);
       console.log('✅ [useChatStore] fetchMessages API response:', {
         hasMessages: !!response.messages,
@@ -177,35 +177,14 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         artifactCount: response.artifacts?.length || 0
       });
       
-      // Destructure both messages and artifacts
-      const { messages, artifacts } = response;
-      
-      // Clear and load artifacts directly from server - no recreation needed!
-      if (artifacts && artifacts.length > 0) {
-        console.log('🎨 [useChatStore] Loading server-provided artifacts:', artifacts.length);
-        const { clearArtifactsForConversation } = useArtifactStore.getState();
-        
-        // Clear existing artifacts for this conversation
-        clearArtifactsForConversation(conversationId);
-        
-        // Load each artifact into the store
-        artifacts.forEach(artifact => {
-          const { recreateArtifact } = useArtifactStore.getState();
-          recreateArtifact({
-            ...artifact,
-            createdAt: new Date(artifact.createdAt),
-            updatedAt: new Date(artifact.updatedAt)
-          });
-        });
-        
-        console.log('✅ [useChatStore] Server artifacts loaded successfully');
-      } else {
-        console.log('📭 [useChatStore] No artifacts to load for this conversation');
-      }
-      
       // Set messages directly without any processing
-      set({ messages });
-      console.log('✅ [useChatStore] Messages loaded successfully:', messages.length);
+      set({ messages: response.messages });
+      console.log('✅ [useChatStore] Messages loaded successfully:', response.messages.length);
+      
+      // Use server-first artifact loading - the proper approach!
+      const { loadArtifactsForConversation } = useArtifactStore.getState();
+      await loadArtifactsForConversation(conversationId, true);
+      console.log('✅ [useChatStore] Artifacts loaded using server-first approach');
       
     } catch (error) {
       console.error('❌ [useChatStore] fetchMessages error:', error);
