@@ -181,7 +181,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       // Use setTimeout to ensure the artifact store is in a clean state
       setTimeout(async () => {
         try {
-          const processedMessages = await processMessagesForArtifacts(messages, conversationId);
+          const processedMessages = await processMessagesForArtifacts(messages);
           console.log('✅ [useChatStore] Artifact processing complete, setting processed messages');
           
           // Verify artifact recreation
