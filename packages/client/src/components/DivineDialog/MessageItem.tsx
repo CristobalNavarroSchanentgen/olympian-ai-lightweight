@@ -26,40 +26,20 @@ import {
 interface MessageItemProps {
   message: Message;
   isLatest?: boolean;
-  onTypewriterComplete?: (messageId: string) => void;
+  hasCompletedTypewriter: boolean;
+  onTypewriterComplete: (messageId: string) => void;
 }
 
-export function MessageItem({ message, isLatest = false, onTypewriterComplete }: MessageItemProps) {
+export function MessageItem({ 
+  message, 
+  isLatest = false, 
+  hasCompletedTypewriter,
+  onTypewriterComplete 
+}: MessageItemProps) {
   const isUser = message.role === 'user';
   
-  // Check if typewriter has already completed using localStorage and metadata
-  const getTypewriterCompleted = (): boolean => {
-    // First check metadata
-    if (message.metadata?.typewriterCompleted) {
-      return true;
-    }
-    
-    // Then check localStorage as fallback
-    try {
-      const messageId = message._id?.toString();
-      if (messageId) {
-        const completedMessages = JSON.parse(localStorage.getItem('typewriter-completed') || '{}');
-        return !!completedMessages[messageId];
-      }
-    } catch (error) {
-      console.warn('Failed to read typewriter completion state:', error);
-    }
-    
-    return false;
-  };
-
-  const typewriterCompleted = getTypewriterCompleted();
-  
-  // Initialize hasTyped based on multiple criteria
-  // User messages and messages that have already completed typewriting should not animate
-  const [hasTyped, setHasTyped] = useState(typewriterCompleted || !isLatest || isUser);
-  
-  const lastProcessedMessageIdRef = useRef<string | null>(null);
+  // Simple logic: show typewriter only if it's the latest assistant message that hasn't completed yet
+  const shouldShowTypewriter = !isUser && isLatest && !hasCompletedTypewriter;
   
   const { 
     selectArtifact, 
@@ -78,31 +58,10 @@ export function MessageItem({ message, isLatest = false, onTypewriterComplete }:
   const hasArtifactMetadata = !!message.metadata?.hasArtifact;
   const artifactId = message.metadata?.artifactId;
 
-  // Reset typing state only for genuinely new assistant messages that haven't completed typewriting
-  useEffect(() => {
-    const messageId = message._id?.toString();
-    
-    // Only trigger typewriter for new assistant messages that haven't completed typewriting
-    if (isLatest && !isUser && messageId && 
-        messageId !== lastProcessedMessageIdRef.current && 
-        !typewriterCompleted) {
-      setHasTyped(false);
-      lastProcessedMessageIdRef.current = messageId;
-    }
-    
-    // If this message is no longer the latest or has already completed typewriting, ensure it's marked as typed
-    if (!isLatest || typewriterCompleted) {
-      setHasTyped(true);
-    }
-  }, [message._id, isLatest, isUser, typewriterCompleted]);
-
   // Handle typewriter completion
   const handleTypewriterComplete = () => {
-    setHasTyped(true);
-    
-    // Update the localStorage tracking
     const messageId = message._id?.toString();
-    if (messageId && onTypewriterComplete) {
+    if (messageId) {
       onTypewriterComplete(messageId);
     }
   };
@@ -233,7 +192,7 @@ export function MessageItem({ message, isLatest = false, onTypewriterComplete }:
             <p className="text-sm text-white/90">{message.content}</p>
           ) : (
             <>
-              {!hasTyped && !typewriterCompleted ? (
+              {shouldShowTypewriter ? (
                 <TypewriterText
                   content={displayContent}
                   speed={15}
@@ -280,8 +239,8 @@ export function MessageItem({ message, isLatest = false, onTypewriterComplete }:
             </>
           )}
           
-          {/* Artifact Display */}
-          {hasArtifactMetadata && hasTyped && (
+          {/* Artifact Display - only show for completed messages */}
+          {hasArtifactMetadata && !shouldShowTypewriter && (
             <div className="mt-4 p-3 bg-gray-800/50 border border-gray-700 rounded-lg">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
