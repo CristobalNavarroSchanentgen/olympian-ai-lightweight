@@ -25,8 +25,8 @@ export async function processMessagesForArtifacts(
  */
 export function createArtifactFromDetection(
   content: string,
-  conversationId: string,
-  messageId?: string
+  _conversationId: string,
+  _messageId?: string
 ): { artifact: Artifact | null; processedContent: string; confidence: number } {
   console.warn('⚠️ [artifactUtils] createArtifactFromDetection is deprecated. Use server-side artifact creation.');
   return { artifact: null, processedContent: content, confidence: 0 };
