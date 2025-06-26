@@ -354,7 +354,7 @@ export const useArtifactStore = create<ArtifactState>()(
               a.id === localArtifact.id ? serverArtifact : a
             );
             
-            // Update server cache
+            // Update server cache - ensure we're adding ArtifactDocument type
             const currentServerArtifacts = state.serverArtifacts[conversationId] || [];
             
             return {
@@ -364,7 +364,7 @@ export const useArtifactStore = create<ArtifactState>()(
               },
               serverArtifacts: {
                 ...state.serverArtifacts,
-                [conversationId]: [...currentServerArtifacts, serverResponse.artifact!]
+                [conversationId]: [...currentServerArtifacts, serverResponse.artifact]
               },
               selectedArtifact: state.selectedArtifact?.id === localArtifact.id ? serverArtifact : state.selectedArtifact,
               versions: {
@@ -481,10 +481,10 @@ export const useArtifactStore = create<ArtifactState>()(
                 a.id === artifactId ? serverArtifact : a
               );
               
-              // Update server cache
+              // Update server cache - ensure we're updating with ArtifactDocument type
               const serverArtifacts = state.serverArtifacts[conversationId] || [];
               const updatedServerArtifacts = serverArtifacts.map(a => 
-                a.id === artifactId ? serverResponse.artifact! : a
+                a.id === artifactId ? serverResponse.artifact : a
               );
               
               return {
