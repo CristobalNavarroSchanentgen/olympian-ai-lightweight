@@ -9,7 +9,6 @@ import { ArtifactPanel } from '@/components/Artifacts';
 import { Button } from '@/components/ui/button';
 import { Message } from '@olympian/shared';
 import { toast } from '@/hooks/useToast';
-import { createArtifactFromDetection } from '@/lib/artifactUtils';
 import { Plus } from 'lucide-react';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 
@@ -25,7 +24,7 @@ export function DivineDialog() {
     createConversation,
   } = useChatStore();
 
-  const { isArtifactPanelOpen } = useArtifactStore();
+  const { isArtifactPanelOpen, setArtifactPanelOpen, getArtifactById } = useArtifactStore();
   
   const [isThinking, setIsThinking] = useState(false);
   const [hasImages, setHasImages] = useState(false);
@@ -71,7 +70,7 @@ export function DivineDialog() {
     setIsThinking(true);
 
     try {
-      // Use traditional API for all models
+      // Send message to server (server handles artifact creation)
       const response = await api.sendMessage({
         message: content,
         model: selectedModel,
@@ -80,42 +79,80 @@ export function DivineDialog() {
         images,
       });
 
+      console.log('🎯 [DivineDialog] Server response:', {
+        hasConversation: !!response.conversation,
+        messageLength: response.message?.length || 0,
+        hasMetadata: !!response.metadata,
+        hasArtifact: !!response.artifact,
+        artifactId: response.artifact?.id,
+        artifactType: response.artifact?.type
+      });
+
       // If this was a new conversation, update the current conversation
       if (!currentConversation && response.conversation) {
         setCurrentConversation(response.conversation);
       }
 
-      // Use the new utility function to create artifacts and process content
-      const { artifact, processedContent } = createArtifactFromDetection(
-        response.message,
-        response.conversationId,
-        // We'll get the message ID from the API response if available
-        undefined
-      );
-
-      // Add the assistant message to the store with enhanced metadata
+      // Create assistant message using server-provided data
       const assistantMessage: Message = {
         conversationId: response.conversationId,
         role: 'assistant',
-        content: processedContent, // Use processed content when code blocks are in artifacts
-        metadata: {
-          ...response.metadata,
-          artifactId: artifact?.id,
-          artifactType: artifact?.type,
-          hasArtifact: !!artifact,
-          // Store original content and code removal status
-          originalContent: response.message,
-          codeBlocksRemoved: processedContent !== response.message,
-        },
+        content: response.message, // Use server-processed content (code blocks removed if artifacts created)
+        metadata: response.metadata, // Use server-provided metadata (includes artifact info)
         createdAt: new Date(),
       };
       addMessage(assistantMessage);
 
-      // If an artifact was created, update it with the message ID
-      if (artifact && assistantMessage._id) {
-        // Note: In a real implementation, you might want to update the artifact
-        // with the message ID after the message is saved to the database
-        console.log('🔗 [DivineDialog] Artifact created for message:', assistantMessage._id);
+      // Handle artifact if created by server
+      if (response.artifact) {
+        console.log('🎨 [DivineDialog] Server created artifact, syncing to client store:', response.artifact);
+        
+        try {
+          // Fetch the full artifact from server
+          const fullArtifact = await api.getArtifactById(response.artifact.id);
+          
+          if (fullArtifact) {
+            console.log('✅ [DivineDialog] Retrieved full artifact from server:', {
+              id: fullArtifact.id,
+              type: fullArtifact.type,
+              title: fullArtifact.title,
+              contentLength: fullArtifact.content.length
+            });
+
+            // Convert server artifact to client format and recreate in store
+            // Using the deprecated recreateArtifact as a fallback since server has already created it
+            const { recreateArtifact, setArtifactPanelOpen, selectArtifact } = useArtifactStore.getState();
+            
+            const clientArtifact = {
+              id: fullArtifact.id,
+              title: fullArtifact.title,
+              type: fullArtifact.type,
+              content: fullArtifact.content,
+              language: fullArtifact.language,
+              version: fullArtifact.version || 1,
+              createdAt: new Date(fullArtifact.createdAt),
+              updatedAt: new Date(fullArtifact.updatedAt),
+              messageId: fullArtifact.messageId,
+              conversationId: fullArtifact.conversationId,
+              checksum: fullArtifact.checksum,
+              metadata: fullArtifact.metadata,
+            };
+
+            // Add artifact to store for immediate display
+            recreateArtifact(clientArtifact);
+            
+            // Open artifact panel and select the artifact
+            setArtifactPanelOpen(true);
+            selectArtifact(clientArtifact);
+            
+            console.log('🎯 [DivineDialog] Artifact synced and selected for display');
+          } else {
+            console.warn('⚠️ [DivineDialog] Could not retrieve full artifact from server');
+          }
+        } catch (artifactError) {
+          console.error('❌ [DivineDialog] Failed to sync artifact from server:', artifactError);
+          // Continue without artifact rather than failing the whole operation
+        }
       }
 
       // Reset states
