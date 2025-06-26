@@ -174,7 +174,7 @@ function detectArtifactContent(content: string): {
   const mermaidRegex = /```mermaid\n([\s\S]*?)```/g;
   const mermaidMatches = Array.from(content.matchAll(mermaidRegex));
   if (mermaidMatches.length > 0) {
-    const mermaidContent = mermaidMatches[0][2].trim();
+    const mermaidContent = mermaidMatches[0][1].trim();
     const processedContent = content.replace(mermaidRegex, '').trim();
     
     return {
@@ -319,7 +319,7 @@ router.post('/stream', async (req, res, next) => {
       if (conversationId) {
         // Validate existing conversation using proper ObjectId conversion
         const existingConv = await db.conversations.findOne({ 
-          _id: toObjectId(conversationId)
+          _id: toObjectId(conversationId) as any
         });
         if (!existingConv) {
           throw new AppError(404, 'Conversation not found');
@@ -425,7 +425,7 @@ router.post('/stream', async (req, res, next) => {
       // Update assistant message with artifact metadata and processed content
       if (artifactResult.hasArtifact) {
         await db.messages.updateOne(
-          { _id: toObjectId(assistantMessageId) },
+          { _id: toObjectId(assistantMessageId) as any },
           {
             $set: {
               content: artifactResult.processedContent,
@@ -451,7 +451,7 @@ router.post('/stream', async (req, res, next) => {
 
       // Update conversation
       await db.conversations.updateOne(
-        { _id: toObjectId(convId) },
+        { _id: toObjectId(convId) as any },
         {
           $set: { updatedAt: new Date() },
           $inc: { messageCount: 2 },
@@ -509,7 +509,7 @@ router.post('/send', async (req, res, next) => {
     if (conversationId) {
       // Validate existing conversation using proper ObjectId conversion
       const existingConv = await db.conversations.findOne({ 
-        _id: toObjectId(conversationId)
+        _id: toObjectId(conversationId) as any
       });
       if (!existingConv) {
         throw new AppError(404, 'Conversation not found');
@@ -603,7 +603,7 @@ router.post('/send', async (req, res, next) => {
       };
 
       await db.messages.updateOne(
-        { _id: toObjectId(assistantMessageId) },
+        { _id: toObjectId(assistantMessageId) as any },
         {
           $set: {
             content: finalContent,
@@ -618,7 +618,7 @@ router.post('/send', async (req, res, next) => {
 
     // Update conversation
     await db.conversations.updateOne(
-      { _id: toObjectId(convId) },
+      { _id: toObjectId(convId) as any },
       {
         $set: { updatedAt: new Date() },
         $inc: { messageCount: 2 },
@@ -684,7 +684,7 @@ router.get('/conversations', async (req, res, next) => {
 router.get('/conversations/:id', async (req, res, next) => {
   try {
     const conversation = await db.conversations.findOne({
-      _id: toObjectId(req.params.id),
+      _id: toObjectId(req.params.id) as any,
     });
 
     if (!conversation) {
@@ -739,7 +739,7 @@ router.get('/conversations/:id/memory-stats', async (req, res, next) => {
     
     // Verify conversation exists
     const conversation = await db.conversations.findOne({
-      _id: toObjectId(conversationId),
+      _id: toObjectId(conversationId) as any,
     });
     
     if (!conversation) {
@@ -821,7 +821,7 @@ router.delete('/conversations/:id', async (req, res, next) => {
 
     // Delete the conversation
     const result = await db.conversations.deleteOne({ 
-      _id: toObjectId(conversationId)
+      _id: toObjectId(conversationId) as any
     });
 
     if (result.deletedCount === 0) {
