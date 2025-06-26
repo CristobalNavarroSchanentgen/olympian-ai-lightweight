@@ -701,7 +701,7 @@ router.get('/conversations/:id', async (req, res, next) => {
   }
 });
 
-// Get messages for a conversation
+// ENHANCED: Get messages for a conversation WITH artifacts
 router.get('/conversations/:id/messages', async (req, res, next) => {
   try {
     const { page = 1, limit = 50 } = req.query;
@@ -718,9 +718,23 @@ router.get('/conversations/:id/messages', async (req, res, next) => {
       db.messages.countDocuments({ conversationId }),
     ]);
 
+    // NEW: Fetch artifacts for this conversation
+    console.log(`📋 [ChatAPI] Fetching artifacts for conversation: ${conversationId}`);
+    let artifacts = [];
+    try {
+      artifacts = await artifactService.getArtifactsForConversation(conversationId);
+      console.log(`✅ [ChatAPI] Found ${artifacts.length} artifacts for conversation`);
+    } catch (error) {
+      console.warn(`⚠️ [ChatAPI] Failed to fetch artifacts for conversation:`, error);
+      // Continue without artifacts rather than failing the entire request
+    }
+
     res.json({
       success: true,
-      data: messages.map(formatMessage),
+      data: {
+        messages: messages.map(formatMessage),
+        artifacts: artifacts // NEW: Include artifacts in response
+      },
       page: Number(page),
       pageSize: Number(limit),
       total,
