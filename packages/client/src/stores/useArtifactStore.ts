@@ -356,6 +356,7 @@ export const useArtifactStore = create<ArtifactState>()(
             
             // Update server cache - ensure we're adding ArtifactDocument type
             const currentServerArtifacts = state.serverArtifacts[conversationId] || [];
+            const serverDocument = serverResponse.artifact as ArtifactDocument;
             
             return {
               artifacts: {
@@ -364,7 +365,7 @@ export const useArtifactStore = create<ArtifactState>()(
               },
               serverArtifacts: {
                 ...state.serverArtifacts,
-                [conversationId]: [...currentServerArtifacts, serverResponse.artifact]
+                [conversationId]: [...currentServerArtifacts, serverDocument]
               },
               selectedArtifact: state.selectedArtifact?.id === localArtifact.id ? serverArtifact : state.selectedArtifact,
               versions: {
@@ -483,8 +484,9 @@ export const useArtifactStore = create<ArtifactState>()(
               
               // Update server cache - ensure we're updating with ArtifactDocument type
               const serverArtifacts = state.serverArtifacts[conversationId] || [];
+              const serverDocument = serverResponse.artifact as ArtifactDocument;
               const updatedServerArtifacts = serverArtifacts.map(a => 
-                a.id === artifactId ? serverResponse.artifact : a
+                a.id === artifactId ? serverDocument : a
               );
               
               return {
@@ -522,9 +524,9 @@ export const useArtifactStore = create<ArtifactState>()(
           
           // Revert optimistic update on error
           const currentState = get();
-          const artifact = Object.values(currentState.artifacts).flat().find(a => a.id === artifactId);
-          if (artifact) {
-            await get().loadArtifactsForConversation(artifact.conversationId, true);
+          const errorArtifact = Object.values(currentState.artifacts).flat().find(a => a.id === artifactId);
+          if (errorArtifact) {
+            await get().loadArtifactsForConversation(errorArtifact.conversationId, true);
           }
           
           throw error;
@@ -545,16 +547,16 @@ export const useArtifactStore = create<ArtifactState>()(
           // Get artifact before deletion
           const currentState = get();
           const allArtifacts = Object.values(currentState.artifacts).flat();
-          const artifact = allArtifacts.find(a => a.id === artifactId);
+          const artifactToDelete = allArtifacts.find(a => a.id === artifactId);
           
-          if (!artifact) {
+          if (!artifactToDelete) {
             console.warn(`⚠️ [ArtifactStore] Artifact not found for deletion: ${artifactId}`);
             return;
           }
           
           // Optimistic removal
           set((state) => {
-            const conversationId = artifact.conversationId;
+            const conversationId = artifactToDelete.conversationId;
             const conversationArtifacts = state.artifacts[conversationId] || [];
             const filteredArtifacts = conversationArtifacts.filter(a => a.id !== artifactId);
             
@@ -578,7 +580,7 @@ export const useArtifactStore = create<ArtifactState>()(
             
             // Update server cache
             set((state) => {
-              const conversationId = artifact.conversationId;
+              const conversationId = artifactToDelete.conversationId;
               const serverArtifacts = state.serverArtifacts[conversationId] || [];
               const filteredServerArtifacts = serverArtifacts.filter(a => a.id !== artifactId);
               
@@ -599,8 +601,8 @@ export const useArtifactStore = create<ArtifactState>()(
           console.error(`❌ [ArtifactStore] Failed to delete artifact:`, error);
           
           // Reload to revert optimistic deletion
-          if (artifact) {
-            await get().loadArtifactsForConversation(artifact.conversationId, true);
+          if (artifactToDelete) {
+            await get().loadArtifactsForConversation(artifactToDelete.conversationId, true);
           }
           
           throw error;
