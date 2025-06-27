@@ -12,7 +12,7 @@ import {
   MessageMetadata
 } from '@olympian/shared';
 import { DatabaseService } from './DatabaseService';
-import { ArtifactVersionService } from './ArtifactVersionService';
+import { ArtifactVersionService, ArtifactVersion } from './ArtifactVersionService';
 import { ObjectId, ClientSession, WithId } from 'mongodb';
 import { createHash } from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
@@ -321,14 +321,14 @@ export class ArtifactService {
   /**
    * Get artifact versions
    */
-  public async getArtifactVersions(artifactId: string) {
+  public async getArtifactVersions(artifactId: string): Promise<ArtifactVersion[]> {
     return await this.versionService.getVersions(artifactId);
   }
 
   /**
    * Get specific artifact version
    */
-  public async getArtifactVersion(artifactId: string, version: number) {
+  public async getArtifactVersion(artifactId: string, version: number): Promise<ArtifactVersion | null> {
     return await this.versionService.getVersion(artifactId, version);
   }
 
@@ -423,7 +423,7 @@ export class ArtifactService {
         }
 
         // Delete all versions
-        await this.db.getCollection('artifact_versions').deleteMany({ artifactId }, { session });
+        await this.db.getDatabase().collection('artifact_versions').deleteMany({ artifactId }, { session });
 
         // Clean up message metadata if messageId exists
         if (artifact.messageId) {
