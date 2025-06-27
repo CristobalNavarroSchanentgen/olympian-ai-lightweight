@@ -10,6 +10,7 @@ interface MessageListProps {
   isGenerating: boolean;
   isTransitioning?: boolean;
   hasCompletedTypewriter: (messageId: string | undefined) => boolean;
+  isMessageFinalized: (messageId: string | undefined) => boolean;
   onTypewriterComplete: (messageId: string) => void;
 }
 
@@ -20,6 +21,7 @@ export function MessageList({
   isGenerating,
   isTransitioning = false,
   hasCompletedTypewriter,
+  isMessageFinalized,
   onTypewriterComplete,
 }: MessageListProps) {
   if (messages.length === 0 && !isThinking && !isGenerating) {
@@ -41,6 +43,7 @@ export function MessageList({
           message={message} 
           isLatest={index === messages.length - 1 && message.role === 'assistant'}
           hasCompletedTypewriter={hasCompletedTypewriter(message._id?.toString())}
+          isMessageFinalized={isMessageFinalized(message._id?.toString())}
           onTypewriterComplete={onTypewriterComplete}
         />
       ))}
