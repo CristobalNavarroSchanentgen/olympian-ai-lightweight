@@ -87,6 +87,16 @@ interface MessagesWithArtifactsResponse {
   artifacts: ArtifactDocument[];
 }
 
+// NEW: Artifact version type
+interface ArtifactVersion {
+  artifactId: string;
+  version: number;
+  content: string;
+  createdAt: Date;
+  updatedAt: Date;
+  checksum: string;
+}
+
 class ApiService {
   private client: AxiosInstance;
 
@@ -156,6 +166,44 @@ class ApiService {
         return null;
       }
       console.error(`❌ [API] Failed to get artifact:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get all versions for an artifact
+   */
+  async getArtifactVersions(artifactId: string): Promise<ArtifactVersion[]> {
+    console.log(`📚 [API] Getting versions for artifact: ${artifactId}`);
+    try {
+      const { data } = await this.client.get<ApiResponse<ArtifactVersion[]> & { total: number }>(
+        `/artifacts/${artifactId}/versions`
+      );
+      console.log(`✅ [API] Retrieved ${data.data?.length || 0} versions for artifact`);
+      return data.data || [];
+    } catch (error) {
+      console.error(`❌ [API] Failed to get artifact versions:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get specific version of an artifact
+   */
+  async getArtifactVersion(artifactId: string, version: number): Promise<ArtifactVersion | null> {
+    console.log(`🔍 [API] Getting artifact ${artifactId} version ${version}`);
+    try {
+      const { data } = await this.client.get<ApiResponse<ArtifactVersion>>(
+        `/artifacts/${artifactId}/versions/${version}`
+      );
+      console.log(`✅ [API] Retrieved artifact version ${version}`);
+      return data.data || null;
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response?.status === 404) {
+        console.log(`📭 [API] Artifact version not found: ${artifactId} v${version}`);
+        return null;
+      }
+      console.error(`❌ [API] Failed to get artifact version:`, error);
       throw error;
     }
   }
@@ -877,4 +925,4 @@ class ApiService {
 }
 
 export const api = new ApiService();
-export type { StreamingEvent, BulkArtifactOperation, BulkArtifactRequest, BulkArtifactResponse };
+export type { StreamingEvent, BulkArtifactOperation, BulkArtifactRequest, BulkArtifactResponse, ArtifactVersion };
