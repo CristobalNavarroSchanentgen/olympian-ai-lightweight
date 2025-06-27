@@ -121,6 +121,62 @@ router.get('/:artifactId', async (req, res, next) => {
 });
 
 /**
+ * GET /api/artifacts/:artifactId/versions
+ * Get all versions for an artifact
+ */
+router.get('/:artifactId/versions', async (req, res, next) => {
+  try {
+    const { artifactId } = req.params;
+    
+    console.log(`📚 [ArtifactsAPI] Fetching versions for artifact: ${artifactId}`);
+    
+    const versions = await artifactService.getArtifactVersions(artifactId);
+    
+    res.json({
+      success: true,
+      data: versions,
+      total: versions.length,
+      timestamp: new Date()
+    });
+    
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/artifacts/:artifactId/versions/:version
+ * Get specific version of an artifact
+ */
+router.get('/:artifactId/versions/:version', async (req, res, next) => {
+  try {
+    const { artifactId, version } = req.params;
+    const versionNumber = parseInt(version, 10);
+    
+    if (isNaN(versionNumber) || versionNumber < 1) {
+      throw new AppError(400, 'Invalid version number');
+    }
+    
+    console.log(`🔍 [ArtifactsAPI] Fetching artifact ${artifactId} version ${versionNumber}`);
+    
+    const artifactVersion = await artifactService.getArtifactVersion(artifactId, versionNumber);
+    
+    if (!artifactVersion) {
+      throw new AppError(404, 'Artifact version not found');
+    }
+    
+    res.json({
+      success: true,
+      data: artifactVersion,
+      timestamp: new Date()
+    });
+    
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
  * POST /api/artifacts
  * Create new artifact
  */
