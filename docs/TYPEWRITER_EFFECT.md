@@ -38,11 +38,17 @@ This implementation adds a typewriter effect for basic models (models without vi
 - **Fallback**: Advanced models continue to use traditional REST API
 - **UI indicator**: Shows "Streaming Enabled" badge for basic models
 - **Real-time updates**: Handles streaming events to update UI state
+- **Re-typewriting prevention**: Tracks finalized messages to prevent typewriter effect on existing messages during UI events
 
 #### MessageList Component (`MessageList.tsx`)
 - **Streaming display**: Shows streaming content with typewriter effect
 - **Status indicators**: Different labels for "thinking", "streaming", and "typing" states
 - **TypewriterText integration**: Uses enhanced TypewriterText component for display
+
+#### MessageItem Component (`MessageItem.tsx`)
+- **Streaming mode**: New `isStreaming` prop for immediate display with cursor
+- **Smart typewriter logic**: Only shows typewriter for new messages, not existing ones
+- **UI event resilience**: Prevents re-typewriting when closing artifacts or switching conversations
 
 #### TypewriterText Component (`TypewriterText.tsx`)
 - **Streaming mode**: New `isStreaming` prop for immediate display with cursor
@@ -83,7 +89,7 @@ router.post('/stream', async (req, res, next) => {
       type: 'token', 
       token,
       content: assistantContent 
-    })}\n\n`);
+    })}\\n\\n`);
   });
 });
 ```
@@ -123,6 +129,29 @@ if (isBasicModel()) {
 }
 ```
 
+### Message Finalization System
+```typescript
+// Finalized messages tracking in DivineDialog
+const finalizedMessages = useRef<Set<string>>(new Set());
+
+const markMessageFinalized = (messageId: string) => {
+  finalizedMessages.current.add(messageId);
+  // Persist to localStorage
+};
+
+// Mark existing messages as finalized to prevent re-typewriting
+useEffect(() => {
+  messages.forEach(message => {
+    const messageId = message._id?.toString();
+    if (messageId && message.role === 'assistant') {
+      if (!isMessageFinalized(messageId)) {
+        markMessageFinalized(messageId);
+      }
+    }
+  });
+}, [messages]);
+```
+
 ### Enhanced TypewriterText Component
 ```typescript
 // Streaming mode with immediate display
@@ -140,11 +169,32 @@ if (isStreaming) {
 2. **Real-time response**: Text appears immediately as model generates it
 3. **Typewriter effect**: Blinking cursor shows active generation
 4. **Smooth flow**: thinking → streaming → complete states
+5. **No re-typewriting**: Existing messages won't re-animate on UI events
 
 ### Advanced Models (Traditional)
 1. **Standard flow**: thinking → complete (with post-generation typewriter effect)
 2. **Full capabilities**: Vision, tools, and reasoning features remain available
 3. **Backwards compatible**: No changes to existing functionality
+
+## Bug Fixes
+
+### Re-typewriting Issue (Fixed)
+**Problem**: When UI events occurred (closing artifacts, reloading conversations), the last message would incorrectly trigger the typewriter effect again.
+
+**Root Cause**: The system couldn't distinguish between:
+- Messages actively being generated (should have typewriter)
+- Messages loaded from existing conversations (should NOT have typewriter)
+
+**Solution**: Implemented message finalization tracking:
+- Added `finalizedMessages` ref to track messages that should never show typewriter again
+- Mark existing messages as finalized when conversations load
+- Updated `shouldShowTypewriter` logic to check finalized status
+- Preserve typewriter effect for new messages while preventing re-typewriting
+
+**Files Modified**:
+- `DivineDialog/index.tsx`: Added finalization tracking
+- `MessageList.tsx`: Pass finalization state to MessageItem
+- `MessageItem.tsx`: Check finalized status in typewriter logic
 
 ## Configuration
 
@@ -167,6 +217,7 @@ No additional environment variables required. Feature uses existing:
 4. **Smart Routing**: Automatically optimizes based on model capabilities
 5. **Backwards Compatible**: Advanced models retain full functionality
 6. **Resource Efficient**: Only basic models use streaming to minimize server load
+7. **UI Event Resilience**: No unwanted re-typewriting when interacting with UI
 
 ## Testing
 
@@ -188,6 +239,11 @@ No additional environment variables required. Feature uses existing:
 4. **Error Handling**:
    - Test streaming interruption
    - Verify graceful fallback to traditional API
+
+5. **UI Event Resilience**:
+   - Close and reopen artifact panel
+   - Switch between conversations
+   - Verify last message doesn't re-typewrite
 
 ## Future Enhancements
 
