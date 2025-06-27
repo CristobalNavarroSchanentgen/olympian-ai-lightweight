@@ -27,6 +27,7 @@ interface MessageItemProps {
   message: Message;
   isLatest?: boolean;
   hasCompletedTypewriter: boolean;
+  isMessageFinalized: boolean;
   onTypewriterComplete: (messageId: string) => void;
 }
 
@@ -34,12 +35,14 @@ export function MessageItem({
   message, 
   isLatest = false, 
   hasCompletedTypewriter,
+  isMessageFinalized,
   onTypewriterComplete 
 }: MessageItemProps) {
   const isUser = message.role === 'user';
   
-  // Simple logic: show typewriter only if it's the latest assistant message that hasn't completed yet
-  const shouldShowTypewriter = !isUser && isLatest && !hasCompletedTypewriter;
+  // Enhanced logic: show typewriter only if it's the latest assistant message 
+  // that hasn't completed yet AND hasn't been finalized (prevents re-typewriting existing messages)
+  const shouldShowTypewriter = !isUser && isLatest && !hasCompletedTypewriter && !isMessageFinalized;
   
   const { 
     selectArtifact, 
