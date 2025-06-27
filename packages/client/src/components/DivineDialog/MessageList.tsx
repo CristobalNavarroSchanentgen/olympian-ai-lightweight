@@ -9,9 +9,9 @@ interface MessageListProps {
   isThinking: boolean;
   isGenerating: boolean;
   isTransitioning?: boolean;
-  hasCompletedTypewriter: (messageId: string | undefined) => boolean;
-  isMessageFinalized: (messageId: string | undefined) => boolean;
-  onTypewriterComplete: (messageId: string) => void;
+  hasCompletedTypewriter: (message: Message, index?: number) => boolean;
+  isMessageFinalized: (message: Message, index?: number) => boolean;
+  onTypewriterComplete: (message: Message, index?: number) => void;
 }
 
 export function MessageList({
@@ -41,9 +41,10 @@ export function MessageList({
         <MessageItem 
           key={message._id?.toString() || index} 
           message={message} 
+          messageIndex={index}
           isLatest={index === messages.length - 1 && message.role === 'assistant'}
-          hasCompletedTypewriter={hasCompletedTypewriter(message._id?.toString())}
-          isMessageFinalized={isMessageFinalized(message._id?.toString())}
+          hasCompletedTypewriter={hasCompletedTypewriter(message, index)}
+          isMessageFinalized={isMessageFinalized(message, index)}
           onTypewriterComplete={onTypewriterComplete}
         />
       ))}
