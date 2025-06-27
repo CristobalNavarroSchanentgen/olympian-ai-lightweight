@@ -25,14 +25,16 @@ import {
 
 interface MessageItemProps {
   message: Message;
+  messageIndex: number;
   isLatest?: boolean;
   hasCompletedTypewriter: boolean;
   isMessageFinalized: boolean;
-  onTypewriterComplete: (messageId: string) => void;
+  onTypewriterComplete: (message: Message, index?: number) => void;
 }
 
 export function MessageItem({ 
   message, 
+  messageIndex,
   isLatest = false, 
   hasCompletedTypewriter,
   isMessageFinalized,
@@ -63,10 +65,7 @@ export function MessageItem({
 
   // Handle typewriter completion
   const handleTypewriterComplete = () => {
-    const messageId = message._id?.toString();
-    if (messageId) {
-      onTypewriterComplete(messageId);
-    }
+    onTypewriterComplete(message, messageIndex);
   };
 
   // Debug artifact issues
