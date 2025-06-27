@@ -12,6 +12,7 @@ import {
   MessageMetadata
 } from '@olympian/shared';
 import { DatabaseService } from './DatabaseService';
+import { ArtifactVersionService } from './ArtifactVersionService';
 import { ObjectId, ClientSession, WithId } from 'mongodb';
 import { createHash } from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
@@ -30,10 +31,12 @@ import { gzipSync, gunzipSync } from 'zlib';
 export class ArtifactService {
   private static instance: ArtifactService;
   private db: DatabaseService;
+  private versionService: ArtifactVersionService;
   private serverInstance: string;
 
   private constructor() {
     this.db = DatabaseService.getInstance();
+    this.versionService = ArtifactVersionService.getInstance();
     this.serverInstance = process.env.SERVER_INSTANCE_ID || `server-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     console.log(`🎨 [ArtifactService] Initialized with server instance: ${this.serverInstance}`);
   }
@@ -122,6 +125,9 @@ export class ArtifactService {
         // Insert artifact
         const insertResult = await this.db.artifacts.insertOne(artifactDoc, { session });
         console.log(`✅ [ArtifactService] Artifact created with ID: ${artifactId}`);
+
+        // Save initial version
+        await this.versionService.saveVersion(artifactId, 1, request.content, checksum);
 
         // Update message metadata if messageId provided and messageContent available
         if (request.messageId && messageContent) {
@@ -227,6 +233,14 @@ export class ArtifactService {
           updateData.content = request.content;
           updateData.checksum = this.calculateChecksum(request.content);
           
+          // Save version before updating
+          await this.versionService.saveVersion(
+            request.artifactId, 
+            newVersion, 
+            request.content, 
+            updateData.checksum
+          );
+          
           // Update content size and compression
           const contentSize = Buffer.from(request.content, 'utf8').length;
           updateData.metadata = {
@@ -302,6 +316,20 @@ export class ArtifactService {
     } finally {
       await session.endSession();
     }
+  }
+
+  /**
+   * Get artifact versions
+   */
+  public async getArtifactVersions(artifactId: string) {
+    return await this.versionService.getVersions(artifactId);
+  }
+
+  /**
+   * Get specific artifact version
+   */
+  public async getArtifactVersion(artifactId: string, version: number) {
+    return await this.versionService.getVersion(artifactId, version);
   }
 
   /**
@@ -393,6 +421,9 @@ export class ArtifactService {
         if (deleteResult.deletedCount === 0) {
           throw new Error('Failed to delete artifact');
         }
+
+        // Delete all versions
+        await this.db.getCollection('artifact_versions').deleteMany({ artifactId }, { session });
 
         // Clean up message metadata if messageId exists
         if (artifact.messageId) {
@@ -696,6 +727,10 @@ export class ArtifactService {
         };
 
         await this.db.artifacts.insertOne(artifactDoc, { session });
+        
+        // Save initial version
+        await this.versionService.saveVersion(artifactId, 1, request.content, checksum);
+        
         result = { 
           success: true, 
           artifact: this.convertDocumentToArtifact(artifactDoc), 
