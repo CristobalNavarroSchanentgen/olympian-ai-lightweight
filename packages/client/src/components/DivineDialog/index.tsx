@@ -126,11 +126,12 @@ export function DivineDialog() {
   }, []);
 
   // Mark existing messages as finalized when messages change (conversation load/switch)
+  // Only mark messages that have an _id (from database) to avoid finalizing new messages
   useEffect(() => {
     messages.forEach((message, index) => {
-      if (message.role === 'assistant') {
-        // If this message already existed (has an _id), mark it as finalized
-        // This prevents re-typewriting when switching conversations or UI events
+      if (message.role === 'assistant' && message._id) {
+        // Only mark messages with _id as finalized (they're from database/existing conversation)
+        // New messages without _id should get the typewriter effect
         if (!isMessageFinalized(message, index)) {
           markMessageFinalized(message, index);
         }
