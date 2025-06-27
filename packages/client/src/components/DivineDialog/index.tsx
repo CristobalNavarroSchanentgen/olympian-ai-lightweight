@@ -12,6 +12,17 @@ import { toast } from '@/hooks/useToast';
 import { Plus } from 'lucide-react';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 
+// Create a unique identifier for messages (handles messages without _id)
+const getMessageIdentifier = (message: Message, index?: number): string => {
+  if (message._id) {
+    return message._id.toString();
+  }
+  // Fallback for messages without _id: use content hash + timestamp + index
+  const timestamp = new Date(message.createdAt).getTime();
+  const contentHash = message.content.slice(0, 50); // First 50 chars as simple hash
+  return `temp_${timestamp}_${contentHash.replace(/\s+/g, '_')}_${index || 0}`;
+};
+
 export function DivineDialog() {
   const {
     currentConversation,
@@ -43,19 +54,20 @@ export function DivineDialog() {
   const finalizedMessages = useRef<Set<string>>(new Set());
 
   // Check if a message has completed typewriter effect
-  const hasCompletedTypewriter = (messageId: string | undefined): boolean => {
-    if (!messageId) return false;
+  const hasCompletedTypewriter = (message: Message, index?: number): boolean => {
+    const messageId = getMessageIdentifier(message, index);
     return completedTypewriterMessages.current.has(messageId);
   };
 
   // Check if a message is finalized (should never show typewriter again)
-  const isMessageFinalized = (messageId: string | undefined): boolean => {
-    if (!messageId) return false;
+  const isMessageFinalized = (message: Message, index?: number): boolean => {
+    const messageId = getMessageIdentifier(message, index);
     return finalizedMessages.current.has(messageId);
   };
 
   // Mark a message as finalized (will never show typewriter again)
-  const markMessageFinalized = (messageId: string) => {
+  const markMessageFinalized = (message: Message, index?: number) => {
+    const messageId = getMessageIdentifier(message, index);
     finalizedMessages.current.add(messageId);
     
     // Also persist to localStorage as backup
@@ -69,11 +81,12 @@ export function DivineDialog() {
   };
 
   // Mark a message as having completed typewriter effect
-  const onTypewriterComplete = (messageId: string) => {
+  const onTypewriterComplete = (message: Message, index?: number) => {
+    const messageId = getMessageIdentifier(message, index);
     completedTypewriterMessages.current.add(messageId);
     
     // Also mark as finalized when typewriter completes
-    markMessageFinalized(messageId);
+    markMessageFinalized(message, index);
     
     // Also persist to localStorage as backup for page refreshes
     try {
@@ -114,13 +127,12 @@ export function DivineDialog() {
 
   // Mark existing messages as finalized when messages change (conversation load/switch)
   useEffect(() => {
-    messages.forEach(message => {
-      const messageId = message._id?.toString();
-      if (messageId && message.role === 'assistant') {
+    messages.forEach((message, index) => {
+      if (message.role === 'assistant') {
         // If this message already existed (has an _id), mark it as finalized
         // This prevents re-typewriting when switching conversations or UI events
-        if (!isMessageFinalized(messageId)) {
-          markMessageFinalized(messageId);
+        if (!isMessageFinalized(message, index)) {
+          markMessageFinalized(message, index);
         }
       }
     });
