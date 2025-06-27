@@ -1,7 +1,7 @@
 import { DatabaseService } from './DatabaseService';
 import { ObjectId } from 'mongodb';
 
-interface ArtifactVersion {
+export interface ArtifactVersion {
   artifactId: string;
   version: number;
   content: string;
@@ -33,7 +33,7 @@ export class ArtifactVersionService {
    */
   public async saveVersion(artifactId: string, version: number, content: string, checksum: string): Promise<void> {
     const now = new Date();
-    await this.db.getCollection('artifact_versions').insertOne({
+    await this.db.getDatabase().collection('artifact_versions').insertOne({
       artifactId,
       version,
       content,
@@ -47,7 +47,7 @@ export class ArtifactVersionService {
    * Get all versions for an artifact
    */
   public async getVersions(artifactId: string): Promise<ArtifactVersion[]> {
-    const versions = await this.db.getCollection('artifact_versions')
+    const versions = await this.db.getDatabase().collection('artifact_versions')
       .find({ artifactId })
       .sort({ version: -1 })
       .toArray();
@@ -59,7 +59,7 @@ export class ArtifactVersionService {
    * Get specific version of an artifact
    */
   public async getVersion(artifactId: string, version: number): Promise<ArtifactVersion | null> {
-    const versionDoc = await this.db.getCollection('artifact_versions')
+    const versionDoc = await this.db.getDatabase().collection('artifact_versions')
       .findOne({ artifactId, version });
     
     return versionDoc as unknown as ArtifactVersion;
