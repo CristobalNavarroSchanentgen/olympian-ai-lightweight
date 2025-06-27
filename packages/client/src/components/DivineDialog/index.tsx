@@ -39,15 +39,41 @@ export function DivineDialog() {
   // Track completed typewriter messages using a ref - persists across remounts
   const completedTypewriterMessages = useRef<Set<string>>(new Set());
 
+  // Track finalized messages - messages that should never show typewriter again
+  const finalizedMessages = useRef<Set<string>>(new Set());
+
   // Check if a message has completed typewriter effect
   const hasCompletedTypewriter = (messageId: string | undefined): boolean => {
     if (!messageId) return false;
     return completedTypewriterMessages.current.has(messageId);
   };
 
+  // Check if a message is finalized (should never show typewriter again)
+  const isMessageFinalized = (messageId: string | undefined): boolean => {
+    if (!messageId) return false;
+    return finalizedMessages.current.has(messageId);
+  };
+
+  // Mark a message as finalized (will never show typewriter again)
+  const markMessageFinalized = (messageId: string) => {
+    finalizedMessages.current.add(messageId);
+    
+    // Also persist to localStorage as backup
+    try {
+      const finalized = JSON.parse(localStorage.getItem('typewriter-finalized') || '{}');
+      finalized[messageId] = true;
+      localStorage.setItem('typewriter-finalized', JSON.stringify(finalized));
+    } catch (error) {
+      console.warn('Failed to save finalized message state:', error);
+    }
+  };
+
   // Mark a message as having completed typewriter effect
   const onTypewriterComplete = (messageId: string) => {
     completedTypewriterMessages.current.add(messageId);
+    
+    // Also mark as finalized when typewriter completes
+    markMessageFinalized(messageId);
     
     // Also persist to localStorage as backup for page refreshes
     try {
@@ -59,7 +85,7 @@ export function DivineDialog() {
     }
   };
 
-  // Initialize ref from localStorage on mount
+  // Initialize refs from localStorage on mount
   useEffect(() => {
     try {
       const savedCompleted = localStorage.getItem('typewriter-completed');
@@ -71,10 +97,34 @@ export function DivineDialog() {
           }
         });
       }
+
+      const savedFinalized = localStorage.getItem('typewriter-finalized');
+      if (savedFinalized) {
+        const finalizedMessagesData = JSON.parse(savedFinalized);
+        Object.keys(finalizedMessagesData).forEach(messageId => {
+          if (finalizedMessagesData[messageId]) {
+            finalizedMessages.current.add(messageId);
+          }
+        });
+      }
     } catch (error) {
-      console.warn('Failed to load typewriter completion state:', error);
+      console.warn('Failed to load typewriter state:', error);
     }
   }, []);
+
+  // Mark existing messages as finalized when messages change (conversation load/switch)
+  useEffect(() => {
+    messages.forEach(message => {
+      const messageId = message._id?.toString();
+      if (messageId && message.role === 'assistant') {
+        // If this message already existed (has an _id), mark it as finalized
+        // This prevents re-typewriting when switching conversations or UI events
+        if (!isMessageFinalized(messageId)) {
+          markMessageFinalized(messageId);
+        }
+      }
+    });
+  }, [messages]);
 
   useEffect(() => {
     fetchModels();
@@ -279,6 +329,7 @@ export function DivineDialog() {
           isGenerating={false}
           isTransitioning={false}
           hasCompletedTypewriter={hasCompletedTypewriter}
+          isMessageFinalized={isMessageFinalized}
           onTypewriterComplete={onTypewriterComplete}
         />
         <div ref={messagesEndRef} />
