@@ -8,7 +8,10 @@ import {
   MultiArtifactCreationRequest,
   MultiArtifactCreationResponse,
   BatchArtifactOperation,
-  MULTI_ARTIFACT_CONFIG
+  MULTI_ARTIFACT_CONFIG,
+  validateArtifactCreationRules,
+  detectDuplicateArtifacts,
+  calculateContentHash
 } from '@olympian/shared';
 import { ArtifactService } from '../services/ArtifactService';
 import { AppError } from '../middleware/errorHandler';
@@ -47,7 +50,12 @@ const createArtifactSchema = z.object({
     partOfMultiArtifact: z.boolean().optional(),
     artifactIndex: z.number().optional(),
     totalArtifactsInMessage: z.number().optional(),
-    groupingStrategy: z.string().optional()
+    groupingStrategy: z.string().optional(),
+    // Phase 6: Enhanced metadata
+    contentHash: z.string().optional(),
+    isDuplicate: z.boolean().optional(),
+    duplicateOf: z.string().optional(),
+    similarityScore: z.number().optional()
   }).optional().default({})
 });
 
@@ -67,7 +75,12 @@ const updateArtifactSchema = z.object({
     partOfMultiArtifact: z.boolean().optional(),
     artifactIndex: z.number().optional(),
     totalArtifactsInMessage: z.number().optional(),
-    groupingStrategy: z.string().optional()
+    groupingStrategy: z.string().optional(),
+    // Phase 6: Enhanced metadata updates
+    contentHash: z.string().optional(),
+    isDuplicate: z.boolean().optional(),
+    duplicateOf: z.string().optional(),
+    similarityScore: z.number().optional()
   }).optional()
 }).refine(data => data.content || data.title || data.metadata || data.order !== undefined, {
   message: "At least one field (content, title, order, or metadata) must be provided"
@@ -100,6 +113,110 @@ const bulkOperationSchema = z.object({
     artifact: z.union([createArtifactSchema, updateArtifactSchema]).optional(),
     artifactId: z.string().optional()
   })).min(1).max(50) // Limit bulk operations
+});
+
+// NEW: Phase 6 validation schema
+const validateArtifactsSchema = z.object({
+  artifacts: z.array(z.object({
+    content: z.string(),
+    type: z.enum(['text', 'code', 'html', 'react', 'svg', 'mermaid', 'json', 'csv', 'markdown']),
+    title: z.string().optional()
+  })).min(1).max(20)
+});
+
+// =====================================
+// PHASE 6: VALIDATION ENDPOINTS
+// =====================================
+
+/**
+ * NEW: POST /api/artifacts/validate
+ * Validate artifacts before creation (Phase 6)
+ */
+router.post('/validate', async (req, res, next) => {
+  try {
+    console.log(`🔍 [ArtifactsAPI] Validating artifact creation rules`);
+    
+    // Validate request body
+    const validation = validateArtifactsSchema.safeParse(req.body);
+    if (!validation.success) {
+      throw new AppError(400, `Invalid validation request: ${validation.error.errors.map(e => e.message).join(', ')}`);
+    }
+    
+    const { artifacts } = validation.data;
+    
+    // Apply Phase 6 validation rules
+    const validationResult = validateArtifactCreationRules(artifacts);
+    
+    // Detect duplicates
+    const duplicates = detectDuplicateArtifacts(artifacts);
+    
+    // Calculate content hashes
+    const artifactsWithHashes = artifacts.map((artifact, index) => ({
+      index,
+      ...artifact,
+      contentHash: calculateContentHash(artifact.content),
+      contentSize: Buffer.from(artifact.content, 'utf8').length
+    }));
+    
+    res.json({
+      success: validationResult.valid,
+      data: {
+        validation: validationResult,
+        duplicates: duplicates.map(dup => ({
+          ...dup,
+          similarity: Math.round(dup.similarity * 100) / 100 // Round to 2 decimal places
+        })),
+        artifacts: artifactsWithHashes,
+        summary: {
+          totalArtifacts: artifacts.length,
+          validArtifacts: artifacts.filter(a => a.content.length >= MULTI_ARTIFACT_CONFIG.MIN_CONTENT_SIZE).length,
+          duplicateArtifacts: duplicates.length,
+          withinLimits: artifacts.length <= MULTI_ARTIFACT_CONFIG.MAX_ARTIFACTS_PER_MESSAGE,
+          config: {
+            maxArtifacts: MULTI_ARTIFACT_CONFIG.MAX_ARTIFACTS_PER_MESSAGE,
+            minContentSize: MULTI_ARTIFACT_CONFIG.MIN_CONTENT_SIZE,
+            duplicateThreshold: MULTI_ARTIFACT_CONFIG.DUPLICATE_DETECTION.SIMILARITY_THRESHOLD
+          }
+        }
+      },
+      timestamp: new Date()
+    });
+    
+    console.log(`✅ [ArtifactsAPI] Validation completed: ${validationResult.valid ? 'PASSED' : 'FAILED'}`);
+    
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * NEW: GET /api/artifacts/validation-rules
+ * Get current validation rules and configuration (Phase 6)
+ */
+router.get('/validation-rules', async (req, res, next) => {
+  try {
+    res.json({
+      success: true,
+      data: {
+        limits: {
+          maxArtifactsPerMessage: MULTI_ARTIFACT_CONFIG.MAX_ARTIFACTS_PER_MESSAGE,
+          minContentSize: MULTI_ARTIFACT_CONFIG.MIN_CONTENT_SIZE
+        },
+        duplicateDetection: {
+          enabled: MULTI_ARTIFACT_CONFIG.DUPLICATE_DETECTION.ENABLE_FUZZY_MATCHING,
+          similarityThreshold: MULTI_ARTIFACT_CONFIG.DUPLICATE_DETECTION.SIMILARITY_THRESHOLD,
+          minContentSizeForDetection: MULTI_ARTIFACT_CONFIG.DUPLICATE_DETECTION.MIN_CONTENT_SIZE_FOR_DETECTION,
+          algorithm: MULTI_ARTIFACT_CONFIG.DUPLICATE_DETECTION.HASH_ALGORITHM
+        },
+        groupingStrategies: MULTI_ARTIFACT_CONFIG.GROUPING_STRATEGIES,
+        separationMarkers: MULTI_ARTIFACT_CONFIG.SEPARATION_MARKERS,
+        supportedTypes: ['text', 'code', 'html', 'react', 'svg', 'mermaid', 'json', 'csv', 'markdown']
+      },
+      timestamp: new Date()
+    });
+  } catch (error) {
+    next(error);
+  }
 });
 
 // =====================================
@@ -168,6 +285,18 @@ router.post('/multi-create', async (req, res, next) => {
     
     const { conversationId, messageId, artifacts, originalContent, processedContent, metadata } = validation.data;
     
+    // Phase 6: Validate artifacts before creation
+    const validationResult = validateArtifactCreationRules(artifacts);
+    if (!validationResult.valid) {
+      throw new AppError(400, `Artifact validation failed: ${validationResult.errors.join(', ')}`);
+    }
+    
+    // Phase 6: Check for duplicates
+    const duplicates = detectDuplicateArtifacts(artifacts);
+    if (duplicates.length > 0) {
+      console.warn(`⚠️ [ArtifactsAPI] Found ${duplicates.length} potential duplicates, proceeding with creation but marking them`);
+    }
+    
     // Create artifacts sequentially to maintain order
     const createdArtifacts = [];
     const errors = [];
@@ -176,6 +305,11 @@ router.post('/multi-create', async (req, res, next) => {
       const artifactData = artifacts[i];
       
       try {
+        // Phase 6: Check if this artifact is a duplicate
+        const isDuplicate = duplicates.some(dup => dup.index === i);
+        const duplicateInfo = duplicates.find(dup => dup.index === i);
+        const contentHash = calculateContentHash(artifactData.content);
+        
         const createRequest: CreateArtifactRequest = {
           conversationId,
           messageId,
@@ -196,6 +330,11 @@ router.post('/multi-create', async (req, res, next) => {
             artifactIndex: i,
             totalArtifactsInMessage: artifacts.length,
             groupingStrategy: metadata?.groupingStrategy || 'api-multi-create',
+            // Phase 6: Enhanced metadata
+            contentHash,
+            isDuplicate,
+            duplicateOf: isDuplicate ? duplicateInfo?.duplicateOf.toString() : undefined,
+            similarityScore: duplicateInfo?.similarity,
             fallbackData: metadata?.fallbackData || {}
           }
         };
@@ -473,6 +612,19 @@ router.post('/', async (req, res, next) => {
     
     const artifactData = validation.data;
     
+    // Phase 6: Validate single artifact
+    const validationResult = validateArtifactCreationRules([{
+      content: artifactData.content,
+      type: artifactData.type
+    }]);
+    
+    if (!validationResult.valid) {
+      throw new AppError(400, `Artifact validation failed: ${validationResult.errors.join(', ')}`);
+    }
+    
+    // Phase 6: Calculate content hash
+    const contentHash = calculateContentHash(artifactData.content);
+    
     // Prepare creation request
     const createRequest: CreateArtifactRequest = {
       conversationId: artifactData.conversationId,
@@ -496,6 +648,11 @@ router.post('/', async (req, res, next) => {
         artifactIndex: artifactData.metadata?.artifactIndex,
         totalArtifactsInMessage: artifactData.metadata?.totalArtifactsInMessage,
         groupingStrategy: artifactData.metadata?.groupingStrategy,
+        // Phase 6: Enhanced metadata
+        contentHash,
+        isDuplicate: artifactData.metadata?.isDuplicate || false,
+        duplicateOf: artifactData.metadata?.duplicateOf,
+        similarityScore: artifactData.metadata?.similarityScore,
         fallbackData: artifactData.metadata?.fallbackData || {}
       }
     };
@@ -540,6 +697,24 @@ router.put('/:artifactId', async (req, res, next) => {
     
     const updateData = validation.data;
     
+    // Phase 6: If content is being updated, validate and calculate new hash
+    let enhancedMetadata = updateData.metadata || {};
+    if (updateData.content) {
+      const validationResult = validateArtifactCreationRules([{
+        content: updateData.content,
+        type: 'code' // Default type for validation, actual type will be preserved
+      }]);
+      
+      if (!validationResult.valid) {
+        throw new AppError(400, `Content validation failed: ${validationResult.errors.join(', ')}`);
+      }
+      
+      enhancedMetadata.contentHash = calculateContentHash(updateData.content);
+      enhancedMetadata.isDuplicate = false; // Reset duplicate flag on content change
+      enhancedMetadata.duplicateOf = undefined;
+      enhancedMetadata.similarityScore = undefined;
+    }
+    
     // Prepare update request
     const updateRequest: UpdateArtifactRequest = {
       artifactId,
@@ -547,7 +722,7 @@ router.put('/:artifactId', async (req, res, next) => {
       title: updateData.title,
       description: updateData.description,
       metadata: {
-        ...updateData.metadata,
+        ...enhancedMetadata,
         // Handle order updates through metadata if not directly provided
         ...(updateData.order !== undefined && { artifactIndex: updateData.order })
       }
@@ -925,6 +1100,7 @@ router.get('/debug/stats', async (req, res, next) => {
       db.artifacts.countDocuments({ 'metadata.syncStatus': 'error' }),
       // NEW: Multi-artifact statistics
       db.artifacts.countDocuments({ 'metadata.partOfMultiArtifact': true }),
+      db.artifacts.countDocuments({ 'metadata.isDuplicate': true }),
       db.artifacts.aggregate([
         { $group: { _id: null, avgSize: { $avg: '$metadata.contentSize' } } }
       ]).toArray(),
@@ -944,10 +1120,12 @@ router.get('/debug/stats', async (req, res, next) => {
         conflictedArtifacts: stats[3],
         erroredArtifacts: stats[4],
         multiArtifacts: stats[5], // NEW: Multi-artifact count
-        averageContentSize: stats[6][0]?.avgSize || 0,
-        messagesWithMultipleArtifacts: stats[7][0]?.messagesWithMultipleArtifacts || 0, // NEW
+        duplicateArtifacts: stats[6], // NEW: Phase 6 duplicate count
+        averageContentSize: stats[7][0]?.avgSize || 0,
+        messagesWithMultipleArtifacts: stats[8][0]?.messagesWithMultipleArtifacts || 0, // NEW
         compressionRatio: stats[0] > 0 ? (stats[1] / stats[0] * 100).toFixed(2) + '%' : '0%',
-        multiArtifactRatio: stats[0] > 0 ? (stats[5] / stats[0] * 100).toFixed(2) + '%' : '0%' // NEW
+        multiArtifactRatio: stats[0] > 0 ? (stats[5] / stats[0] * 100).toFixed(2) + '%' : '0%', // NEW
+        duplicateRatio: stats[0] > 0 ? (stats[6] / stats[0] * 100).toFixed(2) + '%' : '0%' // NEW: Phase 6
       },
       timestamp: new Date()
     });
