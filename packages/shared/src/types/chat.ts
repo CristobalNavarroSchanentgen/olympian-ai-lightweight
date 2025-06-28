@@ -1,3 +1,6 @@
+// Import from artifacts.ts instead of redefining
+import type { ArtifactReference } from './artifacts';
+
 export interface Conversation {
   _id?: string;
   title: string;
@@ -15,19 +18,6 @@ export interface Message {
   images?: string[]; // Array of base64 images
   metadata?: MessageMetadata;
   createdAt: Date;
-}
-
-// Multi-artifact configuration
-export const MAX_ARTIFACTS_PER_MESSAGE = 10;
-export const MIN_ARTIFACT_CONTENT_SIZE = 20;
-
-// Multi-artifact metadata structure
-export interface ArtifactReference {
-  artifactId: string;
-  artifactType: 'text' | 'code' | 'html' | 'react' | 'svg' | 'mermaid' | 'json' | 'csv' | 'markdown';
-  title?: string;
-  language?: string;
-  order: number; // Sequence order for display
 }
 
 export interface MessageMetadata {
