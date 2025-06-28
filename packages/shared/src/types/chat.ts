@@ -17,24 +17,49 @@ export interface Message {
   createdAt: Date;
 }
 
+// Multi-artifact configuration
+export const MAX_ARTIFACTS_PER_MESSAGE = 10;
+export const MIN_ARTIFACT_CONTENT_SIZE = 20;
+
+// Multi-artifact metadata structure
+export interface ArtifactReference {
+  artifactId: string;
+  artifactType: 'text' | 'code' | 'html' | 'react' | 'svg' | 'mermaid' | 'json' | 'csv' | 'markdown';
+  title?: string;
+  language?: string;
+  order: number; // Sequence order for display
+}
+
 export interface MessageMetadata {
   tokens?: number;
   generationTime?: number;
   model?: string;
   error?: string;
   visionModel?: string; // Vision model used for image processing
-  // Artifact-related metadata
+  
+  // NEW: Multi-artifact support (Phase 1)
+  artifacts?: ArtifactReference[]; // Array of artifacts for multi-artifact support
+  
+  // LEGACY: Single artifact metadata (deprecated but kept for backward compatibility)
   artifactId?: string;
   artifactType?: 'text' | 'code' | 'html' | 'react' | 'svg' | 'mermaid' | 'json' | 'csv' | 'markdown';
   hasArtifact?: boolean;
+  
   // Code block removal metadata
   originalContent?: string; // Original content before code block removal
   codeBlocksRemoved?: boolean; // Whether code blocks were removed for display
+  
+  // Multi-artifact processing metadata
+  artifactCount?: number; // Total number of artifacts created from this message
+  artifactCreationStrategy?: string; // Strategy used for artifact grouping/creation
+  multipleCodeBlocks?: boolean; // Whether message contained multiple code blocks
+  
   // Artifact recreation metadata for subproject 3
   recreationSuccess?: boolean; // Whether artifact recreation was successful
   recreationFailed?: boolean; // Whether artifact recreation failed
   recreationAttempts?: number; // Number of recreation attempts
   fallbackUsed?: boolean; // Whether fallback strategy was used
+  
   // Typewriter effect metadata
   typewriterCompleted?: boolean; // Whether typewriter effect has completed for this message
 }
@@ -72,4 +97,51 @@ export interface VisionError {
   error: 'VISION_UNSUPPORTED';
   message: string;
   available_vision_models: string[];
+}
+
+// Multi-artifact detection and creation utilities
+export interface MultiArtifactDetectionResult {
+  shouldCreateArtifacts: boolean;
+  artifacts: Array<{
+    type: 'text' | 'code' | 'html' | 'react' | 'svg' | 'mermaid' | 'json' | 'csv' | 'markdown';
+    title: string;
+    language?: string;
+    content: string;
+    startIndex: number;
+    endIndex: number;
+  }>;
+  processedContent: string; // Content with artifacts removed
+  artifactCount: number;
+  detectionStrategy: string;
+}
+
+// Helper functions for backward compatibility
+export function hasMultipleArtifacts(metadata?: MessageMetadata): boolean {
+  return !!(metadata?.artifacts && metadata.artifacts.length > 1);
+}
+
+export function getArtifactCount(metadata?: MessageMetadata): number {
+  if (metadata?.artifacts) {
+    return metadata.artifacts.length;
+  }
+  return metadata?.hasArtifact ? 1 : 0;
+}
+
+export function getFirstArtifact(metadata?: MessageMetadata): ArtifactReference | undefined {
+  if (metadata?.artifacts && metadata.artifacts.length > 0) {
+    return metadata.artifacts[0];
+  }
+  // Fallback to legacy format
+  if (metadata?.artifactId && metadata?.artifactType) {
+    return {
+      artifactId: metadata.artifactId,
+      artifactType: metadata.artifactType,
+      order: 0
+    };
+  }
+  return undefined;
+}
+
+export function isLegacyArtifactFormat(metadata?: MessageMetadata): boolean {
+  return !!(metadata?.artifactId && !metadata?.artifacts);
 }
