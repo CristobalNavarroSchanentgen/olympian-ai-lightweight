@@ -130,6 +130,19 @@ export interface ArtifactUpdateRequest {
   description?: string;
 }
 
+// Multi-artifact configuration
+export const MAX_ARTIFACTS_PER_MESSAGE = 10;
+export const MIN_ARTIFACT_CONTENT_SIZE = 20;
+
+// Multi-artifact metadata structure
+export interface ArtifactReference {
+  artifactId: string;
+  artifactType: ArtifactType;
+  title?: string;
+  language?: string;
+  order: number; // Sequence order for display
+}
+
 // Enhanced message metadata to include artifact information
 export interface ArtifactMessageMetadata {
   artifactId?: string;
