@@ -18,15 +18,6 @@ export interface Artifact {
   groupId?: string; // Optional grouping identifier for related artifacts
 }
 
-// NEW: Reference to an artifact in message metadata (Phase 4)
-export interface ArtifactReference {
-  artifactId: string;
-  artifactType: ArtifactType;
-  title: string;
-  language?: string;
-  order: number;
-}
-
 // NEW: Enhanced document type for database storage
 export interface ArtifactDocument extends Omit<Artifact, 'createdAt' | 'updatedAt'> {
   _id?: string; // MongoDB ObjectId
@@ -479,10 +470,6 @@ export const MULTI_ARTIFACT_CONFIG = {
   }
 } as const;
 
-// Export convenience constants for backward compatibility
-export const MAX_ARTIFACTS_PER_MESSAGE = MULTI_ARTIFACT_CONFIG.MAX_ARTIFACTS_PER_MESSAGE;
-export const MIN_ARTIFACT_CONTENT_SIZE = MULTI_ARTIFACT_CONFIG.MIN_CONTENT_SIZE;
-
 // =====================================================
 // PHASE 6: ENHANCED DUPLICATE DETECTION LOGIC
 // =====================================================
@@ -607,7 +594,7 @@ export function shouldGroupArtifacts(
 export function detectSeparationMarkers(content: string): number {
   const markers = MULTI_ARTIFACT_CONFIG.SEPARATION_MARKERS;
   return markers.reduce((count, marker) => {
-    const regex = new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+    const regex = new RegExp(marker.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&'), 'gi');
     const matches = content.match(regex);
     return count + (matches ? matches.length : 0);
   }, 0);
@@ -629,10 +616,10 @@ export function generateArtifactTitle(
 }
 
 /**
- * Phase 6: Validate artifact creation rules
+ * Phase 6: Validate artifact creation rules - Fixed to handle missing title
  */
 export function validateArtifactCreationRules(
-  artifacts: Array<{ content: string; type: ArtifactType }>
+  artifacts: Array<{ content: string; type: ArtifactType; title?: string }>
 ): {
   valid: boolean;
   errors: string[];
@@ -654,10 +641,13 @@ export function validateArtifactCreationRules(
     errors.push(`${tooSmall.length} artifacts have content smaller than ${MULTI_ARTIFACT_CONFIG.MIN_CONTENT_SIZE} characters`);
   }
   
-  // Rule 3: Duplicate detection
-  const duplicates = detectDuplicateArtifacts(artifacts);
-  if (duplicates.length > 0) {
-    warnings.push(`Found ${duplicates.length} potential duplicate artifacts`);
+  // Rule 3: Duplicate detection - only check artifacts with titles
+  const artifactsWithTitles = artifacts.filter(artifact => artifact.title) as Array<{ content: string; title: string; type: ArtifactType }>;
+  if (artifactsWithTitles.length > 0) {
+    const duplicates = detectDuplicateArtifacts(artifactsWithTitles);
+    if (duplicates.length > 0) {
+      warnings.push(`Found ${duplicates.length} potential duplicate artifacts`);
+    }
   }
   
   return {
