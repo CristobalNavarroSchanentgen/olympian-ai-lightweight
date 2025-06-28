@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Artifact } from '@olympian/shared';
 import { useArtifactStore } from '@/stores/useArtifactStore';
 import { Button } from '@/components/ui/button';
@@ -23,6 +23,7 @@ import {
   X,
 } from 'lucide-react';
 import { toast } from '@/hooks/useToast';
+import { calculateArtifactVersion } from '@/utils/artifactVersioning';
 
 interface ArtifactHeaderProps {
   artifact: Artifact;
@@ -35,6 +36,7 @@ export function ArtifactHeader({ artifact }: ArtifactHeaderProps) {
     deleteArtifact,
     getVersionsForArtifact,
     setArtifactPanelOpen,
+    getArtifactsForConversation,
   } = useArtifactStore();
   
   const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -43,6 +45,12 @@ export function ArtifactHeader({ artifact }: ArtifactHeaderProps) {
 
   const versions = getVersionsForArtifact(artifact.id);
   const canShowPreview = ['html', 'react', 'svg', 'mermaid'].includes(artifact.type);
+
+  // Calculate the actual version based on title grouping
+  const calculatedVersion = useMemo(() => {
+    const allArtifacts = getArtifactsForConversation(artifact.conversationId);
+    return calculateArtifactVersion(artifact, allArtifacts);
+  }, [artifact, getArtifactsForConversation]);
 
   const handleTitleSave = () => {
     if (editedTitle.trim() && editedTitle !== artifact.title) {
@@ -184,7 +192,7 @@ export function ArtifactHeader({ artifact }: ArtifactHeaderProps) {
           {artifact.language && (
             <span>{artifact.language}</span>
           )}
-          <span>v{artifact.version}</span>
+          <span>v{calculatedVersion}</span>
         </div>
         <span>{new Date(artifact.updatedAt).toLocaleDateString()}</span>
       </div>
