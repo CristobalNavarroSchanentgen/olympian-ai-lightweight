@@ -8,7 +8,24 @@ import { modelProgressiveLoader } from '../services/ModelProgressiveLoader';
 import { AppError } from '../middleware/errorHandler';
 import { chatRateLimiter } from '../middleware/rateLimiter';
 import { z } from 'zod';
-import { Message, Conversation, ModelCapability, CreateArtifactRequest, ArtifactType, Artifact } from '@olympian/shared';
+import { 
+  Message, 
+  Conversation, 
+  ModelCapability, 
+  CreateArtifactRequest, 
+  ArtifactType, 
+  Artifact,
+  MultiArtifactCreationRequest,
+  MultiArtifactCreationResponse,
+  ArtifactDetectionResult,
+  MULTI_ARTIFACT_CONFIG,
+  MAX_ARTIFACTS_PER_MESSAGE,
+  MIN_ARTIFACT_CONTENT_SIZE,
+  detectSeparationMarkers,
+  shouldGroupArtifacts,
+  generateArtifactTitle,
+  ArtifactReference
+} from '@olympian/shared';
 
 const router = Router();
 const db = DatabaseService.getInstance();
@@ -92,22 +109,28 @@ async function getModelCapabilitiesWithFallback(modelName: string): Promise<Mode
   }
 }
 
-// =====================================
-// NEW: ARTIFACT DETECTION AND CREATION
-// =====================================
+// =====================================================
+// PHASE 2: ENHANCED MULTI-ARTIFACT DETECTION LOGIC
+// =====================================================
 
 /**
- * Enhanced artifact detection for assistant responses
- * Detects code blocks, HTML, SVG, JSON, and other artifact-worthy content
+ * Phase 2: Enhanced multi-artifact detection for assistant responses
+ * Detects multiple code blocks, HTML, SVG, JSON, and other artifact-worthy content
+ * Implements smart grouping rules and separation detection
  */
-function detectArtifactContent(content: string): {
-  shouldCreateArtifact: boolean;
-  type?: ArtifactType;
-  title?: string;
-  language?: string;
-  extractedContent?: string;
-  processedContent?: string;
-} {
+function detectMultiArtifactContent(content: string): ArtifactDetectionResult {
+  const detectedArtifacts: Array<{
+    type: ArtifactType;
+    title: string;
+    language?: string;
+    content: string;
+    startIndex: number;
+    endIndex: number;
+    confidence: number;
+  }> = [];
+
+  let processedContent = content;
+  
   // Enhanced regex patterns for different artifact types
   const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g;
   const htmlRegex = /<!DOCTYPE html|<html|<div|<p>|<span>|<h[1-6]>/i;
@@ -115,93 +138,396 @@ function detectArtifactContent(content: string): {
   const jsonRegex = /```json\n([\s\S]*?)```/g;
   const csvRegex = /```csv\n([\s\S]*?)```/g;
   const reactRegex = /```(jsx?|tsx?)\n([\s\S]*?)```/g;
-  
-  // Check for code blocks first
+  const mermaidRegex = /```mermaid\n([\s\S]*?)```/g;
+
+  // Phase 2: Detect separation markers for explicit artifact separation
+  const separationMarkerCount = detectSeparationMarkers(content);
+  const hasExplicitSeparation = separationMarkerCount > 1;
+
+  console.log(`🔍 [MultiArtifactDetection] Analyzing content... Separation markers: ${separationMarkerCount}`);
+
+  // 1. Detect all code blocks first
   const codeMatches = Array.from(content.matchAll(codeBlockRegex));
-  if (codeMatches.length > 0) {
-    const firstMatch = codeMatches[0];
-    const language = firstMatch[1] || 'text';
-    const code = firstMatch[2].trim();
-    
-    // Determine artifact type based on language
+  console.log(`📦 [MultiArtifactDetection] Found ${codeMatches.length} code blocks`);
+
+  for (let i = 0; i < codeMatches.length; i++) {
+    const match = codeMatches[i];
+    const language = match[1] || 'text';
+    const code = match[2].trim();
+    const startIndex = match.index || 0;
+    const endIndex = startIndex + match[0].length;
+
+    // Skip if content is too small
+    if (code.length < MIN_ARTIFACT_CONTENT_SIZE) {
+      console.log(`⏭️ [MultiArtifactDetection] Skipping small code block (${code.length} chars)`);
+      continue;
+    }
+
+    // Determine artifact type and confidence based on language and content
     let artifactType: ArtifactType = 'code';
-    let title = `${language.charAt(0).toUpperCase() + language.slice(1)} Code`;
-    
+    let confidence = 0.8;
+    let title = generateArtifactTitle(`${language.charAt(0).toUpperCase() + language.slice(1)} Code`, i, codeMatches.length, language);
+
+    // Enhanced type detection
     if (language.toLowerCase() === 'html' || htmlRegex.test(code)) {
       artifactType = 'html';
-      title = 'HTML Document';
+      title = generateArtifactTitle('HTML Document', i, codeMatches.length);
+      confidence = 0.9;
     } else if (language.toLowerCase() === 'json') {
       artifactType = 'json';
-      title = 'JSON Data';
+      title = generateArtifactTitle('JSON Data', i, codeMatches.length);
+      confidence = 0.95;
     } else if (language.toLowerCase() === 'csv') {
       artifactType = 'csv';
-      title = 'CSV Data';
+      title = generateArtifactTitle('CSV Data', i, codeMatches.length);
+      confidence = 0.95;
+    } else if (language.toLowerCase() === 'mermaid') {
+      artifactType = 'mermaid';
+      title = generateArtifactTitle('Mermaid Diagram', i, codeMatches.length);
+      confidence = 0.9;
     } else if (['jsx', 'tsx', 'javascript', 'js', 'typescript', 'ts'].includes(language.toLowerCase()) && 
                (code.includes('React') || code.includes('useState') || code.includes('useEffect') || code.includes('Component'))) {
       artifactType = 'react';
-      title = 'React Component';
+      title = generateArtifactTitle('React Component', i, codeMatches.length);
+      confidence = 0.85;
     }
-    
-    // Remove code blocks from content for prose display
-    const processedContent = content.replace(codeBlockRegex, '').trim();
-    
-    return {
-      shouldCreateArtifact: code.length > 20, // Only create for substantial content
+
+    detectedArtifacts.push({
       type: artifactType,
       title,
       language: language || undefined,
-      extractedContent: code,
-      processedContent: processedContent || 'Generated artifact content'
-    };
+      content: code,
+      startIndex,
+      endIndex,
+      confidence
+    });
   }
-  
-  // Check for SVG content
-  const svgMatches = content.match(svgRegex);
-  if (svgMatches && svgMatches.length > 0) {
-    const svgContent = svgMatches[0];
-    const processedContent = content.replace(svgRegex, '').trim();
-    
-    return {
-      shouldCreateArtifact: true,
-      type: 'svg',
-      title: 'SVG Diagram',
-      extractedContent: svgContent,
-      processedContent: processedContent || 'Generated SVG diagram'
-    };
+
+  // 2. Detect standalone SVG content (not in code blocks)
+  const svgMatches = Array.from(content.matchAll(svgRegex));
+  for (let i = 0; i < svgMatches.length; i++) {
+    const match = svgMatches[i];
+    const svgContent = match[0];
+    const startIndex = match.index || 0;
+    const endIndex = startIndex + svgContent.length;
+
+    // Check if this SVG is already part of a code block
+    const isInCodeBlock = detectedArtifacts.some(artifact => 
+      startIndex >= artifact.startIndex && endIndex <= artifact.endIndex
+    );
+
+    if (!isInCodeBlock) {
+      detectedArtifacts.push({
+        type: 'svg',
+        title: generateArtifactTitle('SVG Diagram', i, svgMatches.length),
+        content: svgContent,
+        startIndex,
+        endIndex,
+        confidence: 0.9
+      });
+    }
   }
-  
-  // Check for mermaid diagrams
-  const mermaidRegex = /```mermaid\n([\s\S]*?)```/g;
-  const mermaidMatches = Array.from(content.matchAll(mermaidRegex));
-  if (mermaidMatches.length > 0) {
-    const mermaidContent = mermaidMatches[0][1].trim();
-    const processedContent = content.replace(mermaidRegex, '').trim();
-    
-    return {
-      shouldCreateArtifact: true,
-      type: 'mermaid',
-      title: 'Mermaid Diagram',
-      extractedContent: mermaidContent,
-      processedContent: processedContent || 'Generated Mermaid diagram'
-    };
+
+  // 3. Phase 2: Apply smart grouping rules
+  const groupedArtifacts = applySmartGrouping(detectedArtifacts, hasExplicitSeparation);
+  console.log(`🎯 [MultiArtifactDetection] After grouping: ${groupedArtifacts.length} artifacts (was ${detectedArtifacts.length})`);
+
+  // 4. Remove all detected artifacts from content for prose display
+  processedContent = removeArtifactsFromContent(content, groupedArtifacts);
+
+  // 5. Limit to maximum allowed artifacts
+  const finalArtifacts = groupedArtifacts.slice(0, MAX_ARTIFACTS_PER_MESSAGE);
+  if (groupedArtifacts.length > MAX_ARTIFACTS_PER_MESSAGE) {
+    console.warn(`⚠️ [MultiArtifactDetection] Limited to ${MAX_ARTIFACTS_PER_MESSAGE} artifacts (found ${groupedArtifacts.length})`);
   }
-  
-  // Check for standalone HTML content (not in code blocks)
-  if (htmlRegex.test(content) && !content.includes('```')) {
-    return {
-      shouldCreateArtifact: true,
-      type: 'html',
-      title: 'HTML Content',
-      extractedContent: content,
-      processedContent: 'Generated HTML content'
-    };
-  }
-  
-  return { shouldCreateArtifact: false };
+
+  const shouldCreateArtifacts = finalArtifacts.length > 0;
+  const detectionStrategy = determineDetectionStrategy(finalArtifacts, hasExplicitSeparation, separationMarkerCount);
+
+  return {
+    shouldCreateArtifact: shouldCreateArtifacts,
+    artifacts: finalArtifacts,
+    totalArtifacts: finalArtifacts.length,
+    processedContent: processedContent.trim() || 'Generated artifact content',
+    codeBlocksRemoved: shouldCreateArtifacts,
+    detectionStrategy,
+    smartGrouping: {
+      groupedByLanguage: detectionStrategy.includes('language'),
+      groupedByType: detectionStrategy.includes('type'),
+      explicitSeparation: hasExplicitSeparation
+    }
+  };
 }
 
 /**
- * Create artifact from detected content and update message metadata
+ * Phase 2: Apply smart grouping rules to detected artifacts
+ */
+function applySmartGrouping(
+  artifacts: Array<{
+    type: ArtifactType;
+    title: string;
+    language?: string;
+    content: string;
+    startIndex: number;
+    endIndex: number;
+    confidence: number;
+  }>,
+  hasExplicitSeparation: boolean
+): Array<{
+  type: ArtifactType;
+  title: string;
+  language?: string;
+  content: string;
+  startIndex: number;
+  endIndex: number;
+  confidence: number;
+}> {
+  if (artifacts.length <= 1) return artifacts;
+
+  // If explicit separation markers are present, don't group
+  if (hasExplicitSeparation) {
+    console.log(`🎯 [SmartGrouping] Explicit separation detected, keeping all artifacts separate`);
+    return artifacts;
+  }
+
+  const grouped: typeof artifacts = [];
+  const processed = new Set<number>();
+
+  for (let i = 0; i < artifacts.length; i++) {
+    if (processed.has(i)) continue;
+
+    const current = artifacts[i];
+    const candidates = [current];
+    processed.add(i);
+
+    // Look for artifacts that should be grouped with current
+    for (let j = i + 1; j < artifacts.length; j++) {
+      if (processed.has(j)) continue;
+
+      const candidate = artifacts[j];
+      
+      // Apply grouping rules
+      if (shouldGroupArtifacts(current, candidate)) {
+        console.log(`🔗 [SmartGrouping] Grouping ${current.type}(${current.language}) with ${candidate.type}(${candidate.language})`);
+        candidates.push(candidate);
+        processed.add(j);
+      }
+    }
+
+    if (candidates.length === 1) {
+      // Single artifact, keep as is
+      grouped.push(current);
+    } else {
+      // Multiple artifacts to group
+      const combinedContent = candidates.map(c => c.content).join('\n\n');
+      const groupedArtifact = {
+        ...current,
+        title: generateArtifactTitle(`${current.language || current.type} Collection`, 0, 1, current.language),
+        content: combinedContent,
+        startIndex: Math.min(...candidates.map(c => c.startIndex)),
+        endIndex: Math.max(...candidates.map(c => c.endIndex)),
+        confidence: Math.max(...candidates.map(c => c.confidence))
+      };
+      grouped.push(groupedArtifact);
+    }
+  }
+
+  return grouped;
+}
+
+/**
+ * Phase 2: Remove detected artifacts from content for prose display
+ */
+function removeArtifactsFromContent(
+  content: string,
+  artifacts: Array<{ startIndex: number; endIndex: number; title: string }>
+): string {
+  if (artifacts.length === 0) return content;
+
+  // Sort artifacts by startIndex in reverse order to maintain indices
+  const sortedArtifacts = [...artifacts].sort((a, b) => b.startIndex - a.startIndex);
+  
+  let result = content;
+  
+  for (const artifact of sortedArtifacts) {
+    const beforeArtifact = result.slice(0, artifact.startIndex).trim();
+    const afterArtifact = result.slice(artifact.endIndex).trim();
+    
+    // Create a placeholder for the artifact
+    const placeholder = `[Created ${artifact.title} artifact]`;
+    
+    // Combine with proper spacing
+    const parts = [beforeArtifact, placeholder, afterArtifact].filter(part => part.length > 0);
+    result = parts.join(' ');
+  }
+  
+  return result;
+}
+
+/**
+ * Phase 2: Determine the detection strategy used
+ */
+function determineDetectionStrategy(
+  artifacts: Array<{ type: ArtifactType; language?: string }>,
+  hasExplicitSeparation: boolean,
+  separationMarkerCount: number
+): string {
+  const strategies: string[] = [];
+  
+  if (hasExplicitSeparation) {
+    strategies.push('explicit-separation');
+  }
+  
+  const types = new Set(artifacts.map(a => a.type));
+  const languages = new Set(artifacts.map(a => a.language).filter(Boolean));
+  
+  if (types.size > 1) {
+    strategies.push('type-based-grouping');
+  }
+  
+  if (languages.size > 1) {
+    strategies.push('language-based-grouping');
+  }
+  
+  if (artifacts.length > 1 && !hasExplicitSeparation) {
+    strategies.push('sequence-based-detection');
+  }
+  
+  strategies.push('regex-pattern-matching');
+  
+  return strategies.join('+');
+}
+
+// =====================================================
+// PHASE 3: ENHANCED ARTIFACT CREATION FLOW
+// =====================================================
+
+/**
+ * Phase 3: Create multiple artifacts from detected content and update message metadata
+ */
+async function createMultiArtifactsFromResponse(
+  content: string,
+  conversationId: string,
+  messageId: string
+): Promise<{
+  processedContent: string;
+  artifacts: ArtifactReference[];
+  hasArtifact: boolean;
+  artifactCount: number;
+  creationStrategy: string;
+}> {
+  try {
+    const detection = detectMultiArtifactContent(content);
+    
+    if (!detection.shouldCreateArtifact || !detection.artifacts || detection.artifacts.length === 0) {
+      return {
+        processedContent: content,
+        artifacts: [],
+        hasArtifact: false,
+        artifactCount: 0,
+        creationStrategy: 'none'
+      };
+    }
+    
+    console.log(`🎨 [ChatAPI] Creating ${detection.artifacts.length} artifacts for message ${messageId}`);
+    
+    // Phase 3: Create multiple artifacts sequentially
+    const createdArtifacts: ArtifactReference[] = [];
+    const creationErrors: Array<{ index: number; title: string; error: string }> = [];
+    
+    for (let i = 0; i < detection.artifacts.length; i++) {
+      const detectedArtifact = detection.artifacts[i];
+      
+      try {
+        // Create artifact request
+        const createRequest: CreateArtifactRequest = {
+          conversationId,
+          messageId,
+          title: detectedArtifact.title,
+          type: detectedArtifact.type,
+          content: detectedArtifact.content,
+          language: detectedArtifact.language,
+          order: i,
+          metadata: {
+            detectionStrategy: detection.detectionStrategy || 'multi-artifact-analysis',
+            originalContent: content,
+            processedContent: detection.processedContent,
+            codeBlocksRemoved: true,
+            reconstructionHash: '', // Will be calculated in service
+            syncStatus: 'synced',
+            contentSize: Buffer.from(detectedArtifact.content, 'utf8').length,
+            partOfMultiArtifact: detection.artifacts!.length > 1,
+            artifactIndex: i,
+            totalArtifactsInMessage: detection.artifacts!.length,
+            groupingStrategy: detection.detectionStrategy,
+            fallbackData: {
+              detectionMethod: 'multi-artifact-regex-pattern-matching',
+              originalLength: content.length,
+              extractedLength: detectedArtifact.content.length,
+              confidence: detectedArtifact.confidence
+            }
+          }
+        };
+        
+        // Create individual artifact
+        const result = await artifactService.createArtifact(createRequest, content);
+        
+        if (result.success && result.artifact) {
+          console.log(`✅ [ChatAPI] Artifact ${i + 1}/${detection.artifacts.length} created: ${result.artifact.id}`);
+          
+          createdArtifacts.push({
+            artifactId: result.artifact.id,
+            artifactType: detectedArtifact.type,
+            title: detectedArtifact.title,
+            language: detectedArtifact.language,
+            order: i
+          });
+        } else {
+          console.warn(`⚠️ [ChatAPI] Failed to create artifact ${i + 1}: ${result.error}`);
+          creationErrors.push({
+            index: i,
+            title: detectedArtifact.title,
+            error: result.error || 'Unknown error'
+          });
+        }
+        
+      } catch (error) {
+        console.error(`❌ [ChatAPI] Error creating artifact ${i + 1}:`, error);
+        creationErrors.push({
+          index: i,
+          title: detectedArtifact.title,
+          error: error instanceof Error ? error.message : 'Unknown error'
+        });
+      }
+    }
+    
+    // Log creation results
+    if (creationErrors.length > 0) {
+      console.warn(`⚠️ [ChatAPI] ${creationErrors.length}/${detection.artifacts.length} artifacts failed to create`);
+    }
+    
+    return {
+      processedContent: detection.processedContent || content,
+      artifacts: createdArtifacts,
+      hasArtifact: createdArtifacts.length > 0,
+      artifactCount: createdArtifacts.length,
+      creationStrategy: `multi-artifact-${detection.detectionStrategy}`
+    };
+    
+  } catch (error) {
+    console.error(`❌ [ChatAPI] Error in multi-artifact creation:`, error);
+    return {
+      processedContent: content,
+      artifacts: [],
+      hasArtifact: false,
+      artifactCount: 0,
+      creationStrategy: 'error'
+    };
+  }
+}
+
+/**
+ * Legacy wrapper for backward compatibility
  */
 async function createArtifactFromResponse(
   content: string,
@@ -213,76 +539,23 @@ async function createArtifactFromResponse(
   artifactType?: ArtifactType;
   hasArtifact: boolean;
 }> {
-  try {
-    const detection = detectArtifactContent(content);
-    
-    if (!detection.shouldCreateArtifact || !detection.extractedContent) {
-      return {
-        processedContent: content,
-        hasArtifact: false
-      };
-    }
-    
-    console.log(`🎨 [ChatAPI] Creating artifact of type '${detection.type}' for message ${messageId}`);
-    
-    // Create artifact request
-    const createRequest: CreateArtifactRequest = {
-      conversationId,
-      messageId,
-      title: detection.title || 'Generated Artifact',
-      type: detection.type!,
-      content: detection.extractedContent,
-      language: detection.language,
-      metadata: {
-        detectionStrategy: 'chat_response_analysis',
-        originalContent: content,
-        processedContent: detection.processedContent,
-        codeBlocksRemoved: true,
-        reconstructionHash: '', // Will be calculated in service
-        syncStatus: 'synced',
-        contentSize: Buffer.from(detection.extractedContent, 'utf8').length,
-        fallbackData: {
-          detectionMethod: 'regex_pattern_matching',
-          originalLength: content.length,
-          extractedLength: detection.extractedContent.length
-        }
-      }
-    };
-    
-    // Create artifact
-    const result = await artifactService.createArtifact(createRequest, content);
-    
-    if (result.success && result.artifact) {
-      console.log(`✅ [ChatAPI] Artifact created successfully: ${result.artifact.id}`);
-      
-      return {
-        processedContent: detection.processedContent || content,
-        artifactId: result.artifact.id,
-        artifactType: detection.type,
-        hasArtifact: true
-      };
-    } else {
-      console.warn(`⚠️ [ChatAPI] Failed to create artifact: ${result.error}`);
-      return {
-        processedContent: content,
-        hasArtifact: false
-      };
-    }
-    
-  } catch (error) {
-    console.error(`❌ [ChatAPI] Error creating artifact:`, error);
-    return {
-      processedContent: content,
-      hasArtifact: false
-    };
-  }
+  const result = await createMultiArtifactsFromResponse(content, conversationId, messageId);
+  
+  // Return legacy format for backward compatibility
+  const firstArtifact = result.artifacts[0];
+  return {
+    processedContent: result.processedContent,
+    artifactId: firstArtifact?.artifactId,
+    artifactType: firstArtifact?.artifactType,
+    hasArtifact: result.hasArtifact
+  };
 }
 
 // =====================================
 // ENHANCED STREAMING ENDPOINT
 // =====================================
 
-// NEW: Streaming endpoint for basic models with typewriter effect + artifact creation
+// NEW: Streaming endpoint for basic models with typewriter effect + multi-artifact creation
 router.post('/stream', async (req, res, next) => {
   try {
     // Validate input
@@ -414,39 +687,48 @@ router.post('/stream', async (req, res, next) => {
       const assistantResult = await db.messages.insertOne(assistantMessageDoc as any);
       const assistantMessageId = assistantResult.insertedId.toString();
 
-      // NEW: Create artifacts and update message content
-      console.log(`🎨 [ChatAPI] Processing assistant response for artifacts...`);
-      const artifactResult = await createArtifactFromResponse(
+      // NEW: Create multi-artifacts and update message content
+      console.log(`🎨 [ChatAPI] Processing assistant response for multi-artifacts...`);
+      const artifactResult = await createMultiArtifactsFromResponse(
         assistantContent,
         convId,
         assistantMessageId
       );
 
-      // Update assistant message with artifact metadata and processed content
+      // Update assistant message with multi-artifact metadata and processed content
       if (artifactResult.hasArtifact) {
         await db.messages.updateOne(
           { _id: toObjectId(assistantMessageId) as any },
           {
             $set: {
               content: artifactResult.processedContent,
-              'metadata.artifactId': artifactResult.artifactId,
-              'metadata.artifactType': artifactResult.artifactType,
+              'metadata.artifacts': artifactResult.artifacts,
               'metadata.hasArtifact': true,
+              'metadata.artifactCount': artifactResult.artifactCount,
+              'metadata.artifactCreationStrategy': artifactResult.creationStrategy,
+              'metadata.multipleCodeBlocks': artifactResult.artifactCount > 1,
               'metadata.originalContent': assistantContent,
               'metadata.codeBlocksRemoved': true,
+              // Legacy compatibility
+              'metadata.artifactId': artifactResult.artifacts[0]?.artifactId,
+              'metadata.artifactType': artifactResult.artifacts[0]?.artifactType,
               updatedAt: new Date()
             }
           }
         );
 
-        console.log(`✅ [ChatAPI] Assistant message updated with artifact metadata`);
+        console.log(`✅ [ChatAPI] Assistant message updated with ${artifactResult.artifactCount} artifacts`);
         
-        // Send artifact creation notification
-        res.write(`data: ${JSON.stringify({ 
-          type: 'artifact_created',
-          artifactId: artifactResult.artifactId,
-          artifactType: artifactResult.artifactType
-        })}\n\n`);
+        // Send artifact creation notifications
+        for (const artifact of artifactResult.artifacts) {
+          res.write(`data: ${JSON.stringify({ 
+            type: 'artifact_created',
+            artifactId: artifact.artifactId,
+            artifactType: artifact.artifactType,
+            title: artifact.title,
+            order: artifact.order
+          })}\n\n`);
+        }
       }
 
       // Update conversation
@@ -464,11 +746,16 @@ router.post('/stream', async (req, res, next) => {
         message: artifactResult.processedContent,
         metadata: {
           ...assistantMessageDoc.metadata,
-          artifactId: artifactResult.artifactId,
-          artifactType: artifactResult.artifactType,
+          artifacts: artifactResult.artifacts,
           hasArtifact: artifactResult.hasArtifact,
+          artifactCount: artifactResult.artifactCount,
+          artifactCreationStrategy: artifactResult.creationStrategy,
+          multipleCodeBlocks: artifactResult.artifactCount > 1,
           originalContent: artifactResult.hasArtifact ? assistantContent : undefined,
-          codeBlocksRemoved: artifactResult.hasArtifact
+          codeBlocksRemoved: artifactResult.hasArtifact,
+          // Legacy compatibility
+          artifactId: artifactResult.artifacts[0]?.artifactId,
+          artifactType: artifactResult.artifacts[0]?.artifactType
         },
         conversationId: convId 
       })}\n\n`);
@@ -491,7 +778,7 @@ router.post('/stream', async (req, res, next) => {
 // ENHANCED SEND MESSAGE ENDPOINT
 // =====================================
 
-// Send a chat message (HTTP fallback for WebSocket) + artifact creation
+// Send a chat message (HTTP fallback for WebSocket) + multi-artifact creation
 router.post('/send', async (req, res, next) => {
   try {
     // Validate input
@@ -579,15 +866,15 @@ router.post('/send', async (req, res, next) => {
     const assistantResult = await db.messages.insertOne(assistantMessageDoc as any);
     const assistantMessageId = assistantResult.insertedId.toString();
 
-    // NEW: Create artifacts and update message content
-    console.log(`🎨 [ChatAPI] Processing assistant response for artifacts...`);
-    const artifactResult = await createArtifactFromResponse(
+    // NEW: Create multi-artifacts and update message content
+    console.log(`🎨 [ChatAPI] Processing assistant response for multi-artifacts...`);
+    const artifactResult = await createMultiArtifactsFromResponse(
       assistantContent,
       convId,
       assistantMessageId
     );
 
-    // Update assistant message with artifact metadata if artifacts were created
+    // Update assistant message with multi-artifact metadata if artifacts were created
     let finalContent = assistantContent;
     let finalMetadata = assistantMessageDoc.metadata;
     
@@ -595,11 +882,16 @@ router.post('/send', async (req, res, next) => {
       finalContent = artifactResult.processedContent;
       finalMetadata = {
         ...assistantMessageDoc.metadata,
-        artifactId: artifactResult.artifactId,
-        artifactType: artifactResult.artifactType,
+        artifacts: artifactResult.artifacts,
         hasArtifact: true,
+        artifactCount: artifactResult.artifactCount,
+        artifactCreationStrategy: artifactResult.creationStrategy,
+        multipleCodeBlocks: artifactResult.artifactCount > 1,
         originalContent: assistantContent,
-        codeBlocksRemoved: true
+        codeBlocksRemoved: true,
+        // Legacy compatibility
+        artifactId: artifactResult.artifacts[0]?.artifactId,
+        artifactType: artifactResult.artifacts[0]?.artifactType
       };
 
       await db.messages.updateOne(
@@ -613,7 +905,7 @@ router.post('/send', async (req, res, next) => {
         }
       );
 
-      console.log(`✅ [ChatAPI] Assistant message updated with artifact metadata`);
+      console.log(`✅ [ChatAPI] Assistant message updated with ${artifactResult.artifactCount} artifacts`);
     }
 
     // Update conversation
@@ -633,10 +925,13 @@ router.post('/send', async (req, res, next) => {
         conversationId: convId,
         message: finalContent,
         metadata: finalMetadata,
-        // NEW: Include artifact information in response
+        // NEW: Include multi-artifact information in response
+        artifacts: artifactResult.hasArtifact ? artifactResult.artifacts : undefined,
+        artifactCount: artifactResult.artifactCount,
+        // Legacy artifact information for backward compatibility
         artifact: artifactResult.hasArtifact ? {
-          id: artifactResult.artifactId,
-          type: artifactResult.artifactType
+          id: artifactResult.artifacts[0]?.artifactId,
+          type: artifactResult.artifacts[0]?.artifactType
         } : undefined
       },
       timestamp: new Date(),
