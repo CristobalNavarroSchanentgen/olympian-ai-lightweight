@@ -18,6 +18,9 @@ import {
   ArtifactOperationResponse,
   ArtifactHealthCheck,
   ArtifactMigrationData,
+  // NEW: Multi-artifact types (Phase 5)
+  MultiArtifactCreationRequest,
+  MultiArtifactCreationResponse,
 } from '@olympian/shared';
 
 interface ProgressiveUpdate {
@@ -48,6 +51,8 @@ interface StreamingEvent {
   // NEW: Artifact-related fields
   artifactId?: string;
   artifactType?: string;
+  title?: string; // NEW: Artifact title
+  order?: number; // NEW: Artifact order
 }
 
 // NEW: Bulk artifact operation types
@@ -97,6 +102,47 @@ interface ArtifactVersion {
   checksum: string;
 }
 
+// NEW: Multi-artifact API response types (Phase 5)
+interface ArtifactsByMessageResponse {
+  success: boolean;
+  data: {
+    messageId: string;
+    artifacts: ArtifactDocument[];
+    total: number;
+    hasMultipleArtifacts: boolean;
+    metadata: {
+      groupingStrategy?: string;
+      detectionStrategy?: string;
+      partOfMultiArtifact: boolean;
+    };
+  };
+}
+
+interface ArtifactReorderRequest {
+  artifactOrder: Array<{
+    artifactId: string;
+    order: number;
+  }>;
+}
+
+interface ArtifactReorderResponse {
+  success: boolean;
+  data: {
+    messageId: string;
+    results: Array<{
+      artifactId: string;
+      success: boolean;
+      error?: string;
+      newOrder?: number;
+    }>;
+    summary: {
+      total: number;
+      successful: number;
+      failed: number;
+    };
+  };
+}
+
 class ApiService {
   private client: AxiosInstance;
 
@@ -129,7 +175,7 @@ class ApiService {
   }
 
   // =====================================
-  // NEW: ARTIFACT API METHODS
+  // ARTIFACT API METHODS (enhanced with multi-artifact support)
   // =====================================
 
   /**
@@ -145,6 +191,59 @@ class ApiService {
       return data.data || [];
     } catch (error) {
       console.error(`❌ [API] Failed to get artifacts for conversation:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * NEW: Get artifacts specifically for a message ID (Phase 5)
+   */
+  async getArtifactsByMessageId(messageId: string): Promise<ArtifactsByMessageResponse> {
+    console.log(`📋 [API] Getting artifacts for message: ${messageId}`);
+    try {
+      const { data } = await this.client.get<ArtifactsByMessageResponse>(
+        `/artifacts/by-message/${messageId}`
+      );
+      console.log(`✅ [API] Retrieved ${data.data?.artifacts?.length || 0} artifacts for message: ${messageId}`);
+      return data;
+    } catch (error) {
+      console.error(`❌ [API] Failed to get artifacts for message:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * NEW: Create multiple artifacts in a single request (Phase 5)
+   */
+  async createMultipleArtifacts(request: MultiArtifactCreationRequest): Promise<MultiArtifactCreationResponse> {
+    console.log(`🎨 [API] Creating ${request.artifacts.length} artifacts for message: ${request.messageId}`);
+    try {
+      const { data } = await this.client.post<MultiArtifactCreationResponse>(
+        '/artifacts/multi-create',
+        request
+      );
+      console.log(`✅ [API] Created ${data.artifactCount} artifacts successfully`);
+      return data;
+    } catch (error) {
+      console.error(`❌ [API] Failed to create multiple artifacts:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * NEW: Reorder artifacts within a message (Phase 5)
+   */
+  async reorderArtifactsInMessage(messageId: string, request: ArtifactReorderRequest): Promise<ArtifactReorderResponse> {
+    console.log(`🔄 [API] Reordering ${request.artifactOrder.length} artifacts in message: ${messageId}`);
+    try {
+      const { data } = await this.client.put<ArtifactReorderResponse>(
+        `/artifacts/by-message/${messageId}/reorder`,
+        request
+      );
+      console.log(`✅ [API] Reordered artifacts: ${data.data.summary.successful}/${data.data.summary.total} successful`);
+      return data;
+    } catch (error) {
+      console.error(`❌ [API] Failed to reorder artifacts:`, error);
       throw error;
     }
   }
@@ -367,10 +466,10 @@ class ApiService {
   }
 
   // =====================================
-  // ENHANCED STREAMING WITH ARTIFACTS
+  // ENHANCED STREAMING WITH MULTI-ARTIFACTS
   // =====================================
 
-  // NEW: Streaming API for basic models with artifact support
+  // NEW: Streaming API for basic models with enhanced artifact support
   async sendMessageStreaming(
     params: {
       message: string;
@@ -444,9 +543,14 @@ class ApiService {
               const eventData = JSON.parse(line.slice(6));
               onEvent(eventData);
               
-              // NEW: Handle artifact creation events
+              // NEW: Enhanced artifact creation event handling (Phase 5)
               if (eventData.type === 'artifact_created') {
-                console.log(`🎨 [API] Artifact created during streaming: ${eventData.artifactId} (${eventData.artifactType})`);
+                console.log(`🎨 [API] Artifact created during streaming:`, {
+                  id: eventData.artifactId,
+                  type: eventData.artifactType,
+                  title: eventData.title,
+                  order: eventData.order
+                });
               }
             } catch (error) {
               console.warn('Failed to parse streaming event:', error);
@@ -460,10 +564,10 @@ class ApiService {
   }
 
   // =====================================
-  // ENHANCED CHAT API WITH ARTIFACTS
+  // ENHANCED CHAT API WITH MULTI-ARTIFACTS
   // =====================================
 
-  // Chat API - ENHANCED with artifact support
+  // Chat API - ENHANCED with multi-artifact support
   async sendMessage(params: {
     message: string;
     model: string;
@@ -475,7 +579,16 @@ class ApiService {
     conversationId: string;
     message: string;
     metadata: any;
-    artifact?: { id: string; type: string }; // NEW: Artifact info
+    // ENHANCED: Multi-artifact support (Phase 5)
+    artifacts?: Array<{
+      artifactId: string;
+      artifactType: string;
+      title?: string;
+      order?: number;
+    }>;
+    artifactCount?: number;
+    // Legacy artifact information for backward compatibility
+    artifact?: { id: string; type: string };
   }> {
     // Match nginx timeout configuration: 300s for vision processing
     const hasImages = params.images && params.images.length > 0;
@@ -488,6 +601,13 @@ class ApiService {
       conversationId: string;
       message: string;
       metadata: any;
+      artifacts?: Array<{
+        artifactId: string;
+        artifactType: string;
+        title?: string;
+        order?: number;
+      }>;
+      artifactCount?: number;
       artifact?: { id: string; type: string };
     }>>('/chat/send', params, {
       timeout,
@@ -498,8 +618,11 @@ class ApiService {
       } : undefined,
     });
 
-    // NEW: Log artifact creation if present
-    if (data.data!.artifact) {
+    // NEW: Enhanced artifact logging (Phase 5)
+    if (data.data!.artifacts && data.data!.artifacts.length > 0) {
+      console.log(`🎨 [API] ${data.data!.artifacts.length} artifacts created:`, 
+        data.data!.artifacts.map(a => `${a.artifactId} (${a.artifactType})`));
+    } else if (data.data!.artifact) {
       console.log(`🎨 [API] Artifact created: ${data.data!.artifact.id} (${data.data!.artifact.type})`);
     }
 
@@ -925,4 +1048,14 @@ class ApiService {
 }
 
 export const api = new ApiService();
-export type { StreamingEvent, BulkArtifactOperation, BulkArtifactRequest, BulkArtifactResponse, ArtifactVersion };
+export type { 
+  StreamingEvent, 
+  BulkArtifactOperation, 
+  BulkArtifactRequest, 
+  BulkArtifactResponse, 
+  ArtifactVersion,
+  // NEW: Multi-artifact types (Phase 5)
+  ArtifactsByMessageResponse,
+  ArtifactReorderRequest,
+  ArtifactReorderResponse
+};
