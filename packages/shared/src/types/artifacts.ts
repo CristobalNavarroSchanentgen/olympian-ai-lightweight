@@ -18,6 +18,15 @@ export interface Artifact {
   groupId?: string; // Optional grouping identifier for related artifacts
 }
 
+// NEW: Reference to an artifact in message metadata (Phase 4)
+export interface ArtifactReference {
+  artifactId: string;
+  artifactType: ArtifactType;
+  title: string;
+  language?: string;
+  order: number;
+}
+
 // NEW: Enhanced document type for database storage
 export interface ArtifactDocument extends Omit<Artifact, 'createdAt' | 'updatedAt'> {
   _id?: string; // MongoDB ObjectId
@@ -189,11 +198,17 @@ export interface ArtifactMetadata {
   lightweight?: boolean; // Whether this is a lightweight version
   
   // Additional metadata for compression and caching
-  compressionType?: 'none' | 'gzip';
+  compressionType?: 'none' | 'gzip' | 'lz4';
   cacheKey?: string;
   
+  // NEW: Phase 6 duplicate detection metadata
+  contentHash?: string; // Hash for duplicate detection
+  similarityScore?: number; // 0-1 similarity to other artifacts
+  isDuplicate?: boolean; // Flag for detected duplicates
+  duplicateOf?: string; // Reference to original artifact if this is a duplicate
+  
   // Legacy support
-  [key: string]: any; // Allow additional properties for backward compatibility
+  fallbackData?: Record<string, any>; // Allow additional properties for backward compatibility
 }
 
 // MISSING TYPES FOR SUBPROJECT 3 - Adding these to fix compilation errors
@@ -455,8 +470,124 @@ export const MULTI_ARTIFACT_CONFIG = {
     '---', '===', '## ', '### ',
     'Part 1:', 'Part 2:', 'Section ',
     '1.', '2.', '3.', '4.', '5.'
-  ]
+  ],
+  DUPLICATE_DETECTION: {
+    SIMILARITY_THRESHOLD: 0.95, // 95% similarity considered duplicate
+    MIN_CONTENT_SIZE_FOR_DETECTION: 50, // Minimum size to check for duplicates
+    HASH_ALGORITHM: 'sha256',
+    ENABLE_FUZZY_MATCHING: true
+  }
 } as const;
+
+// Export convenience constants for backward compatibility
+export const MAX_ARTIFACTS_PER_MESSAGE = MULTI_ARTIFACT_CONFIG.MAX_ARTIFACTS_PER_MESSAGE;
+export const MIN_ARTIFACT_CONTENT_SIZE = MULTI_ARTIFACT_CONFIG.MIN_CONTENT_SIZE;
+
+// =====================================================
+// PHASE 6: ENHANCED DUPLICATE DETECTION LOGIC
+// =====================================================
+
+/**
+ * Calculate content hash for duplicate detection
+ */
+export function calculateContentHash(content: string): string {
+  // Simple hash function for content comparison
+  // In production, this should use a proper crypto library
+  let hash = 0;
+  for (let i = 0; i < content.length; i++) {
+    const char = content.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32-bit integer
+  }
+  return Math.abs(hash).toString(16);
+}
+
+/**
+ * Calculate similarity score between two artifacts
+ */
+export function calculateSimilarityScore(content1: string, content2: string): number {
+  if (content1 === content2) return 1.0;
+  if (content1.length === 0 || content2.length === 0) return 0.0;
+  
+  const shorter = content1.length < content2.length ? content1 : content2;
+  const longer = content1.length >= content2.length ? content1 : content2;
+  
+  // Simple Levenshtein distance-based similarity
+  const editDistance = calculateEditDistance(shorter, longer);
+  const maxLength = Math.max(content1.length, content2.length);
+  
+  return 1 - (editDistance / maxLength);
+}
+
+/**
+ * Calculate edit distance for similarity comparison
+ */
+function calculateEditDistance(str1: string, str2: string): number {
+  const matrix = [];
+  
+  for (let i = 0; i <= str2.length; i++) {
+    matrix[i] = [i];
+  }
+  
+  for (let j = 0; j <= str1.length; j++) {
+    matrix[0][j] = j;
+  }
+  
+  for (let i = 1; i <= str2.length; i++) {
+    for (let j = 1; j <= str1.length; j++) {
+      if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
+        matrix[i][j] = matrix[i - 1][j - 1];
+      } else {
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j - 1] + 1, // substitution
+          matrix[i][j - 1] + 1,     // insertion
+          matrix[i - 1][j] + 1      // deletion
+        );
+      }
+    }
+  }
+  
+  return matrix[str2.length][str1.length];
+}
+
+/**
+ * Detect duplicates in a list of artifacts
+ */
+export function detectDuplicateArtifacts(
+  artifacts: Array<{ content: string; title: string; type: ArtifactType }>
+): Array<{ index: number; duplicateOf: number; similarity: number }> {
+  const duplicates: Array<{ index: number; duplicateOf: number; similarity: number }> = [];
+  
+  for (let i = 0; i < artifacts.length; i++) {
+    const current = artifacts[i];
+    
+    // Skip if content is too small for meaningful duplicate detection
+    if (current.content.length < MULTI_ARTIFACT_CONFIG.DUPLICATE_DETECTION.MIN_CONTENT_SIZE_FOR_DETECTION) {
+      continue;
+    }
+    
+    for (let j = i + 1; j < artifacts.length; j++) {
+      const candidate = artifacts[j];
+      
+      // Skip if different types (less likely to be duplicates)
+      if (current.type !== candidate.type) {
+        continue;
+      }
+      
+      const similarity = calculateSimilarityScore(current.content, candidate.content);
+      
+      if (similarity >= MULTI_ARTIFACT_CONFIG.DUPLICATE_DETECTION.SIMILARITY_THRESHOLD) {
+        duplicates.push({
+          index: j,
+          duplicateOf: i,
+          similarity
+        });
+      }
+    }
+  }
+  
+  return duplicates;
+}
 
 // Smart grouping logic helpers
 export function shouldGroupArtifacts(
@@ -495,4 +626,43 @@ export function generateArtifactTitle(
   }
   
   return `${baseTitle} (${index + 1} of ${total})`;
+}
+
+/**
+ * Phase 6: Validate artifact creation rules
+ */
+export function validateArtifactCreationRules(
+  artifacts: Array<{ content: string; type: ArtifactType }>
+): {
+  valid: boolean;
+  errors: string[];
+  warnings: string[];
+} {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  
+  // Rule 1: Maximum artifacts per message
+  if (artifacts.length > MULTI_ARTIFACT_CONFIG.MAX_ARTIFACTS_PER_MESSAGE) {
+    errors.push(`Too many artifacts: ${artifacts.length} exceeds maximum of ${MULTI_ARTIFACT_CONFIG.MAX_ARTIFACTS_PER_MESSAGE}`);
+  }
+  
+  // Rule 2: Minimum content size
+  const tooSmall = artifacts.filter(artifact => 
+    artifact.content.length < MULTI_ARTIFACT_CONFIG.MIN_CONTENT_SIZE
+  );
+  if (tooSmall.length > 0) {
+    errors.push(`${tooSmall.length} artifacts have content smaller than ${MULTI_ARTIFACT_CONFIG.MIN_CONTENT_SIZE} characters`);
+  }
+  
+  // Rule 3: Duplicate detection
+  const duplicates = detectDuplicateArtifacts(artifacts);
+  if (duplicates.length > 0) {
+    warnings.push(`Found ${duplicates.length} potential duplicate artifacts`);
+  }
+  
+  return {
+    valid: errors.length === 0,
+    errors,
+    warnings
+  };
 }
