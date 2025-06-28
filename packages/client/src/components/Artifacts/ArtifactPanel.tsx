@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useArtifactStore } from '@/stores/useArtifactStore';
 import { useChatStore } from '@/stores/useChatStore';
 import { ArtifactViewer } from './ArtifactViewer';
@@ -16,7 +16,8 @@ import {
   Layers,
   Grid3X3,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  RefreshCw
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -126,11 +127,13 @@ function ArtifactTabs({
 function MultiArtifactIndicator({ 
   count, 
   selectedIndex, 
-  onShowList 
+  onShowList,
+  isLoading = false
 }: { 
   count: number; 
   selectedIndex?: number; 
   onShowList: () => void; 
+  isLoading?: boolean;
 }) {
   if (count <= 1) return null;
 
@@ -140,8 +143,13 @@ function MultiArtifactIndicator({
       size="sm"
       onClick={onShowList}
       className="h-7 px-2 text-xs gap-1"
+      disabled={isLoading}
     >
-      <Grid3X3 className="h-3 w-3" />
+      {isLoading ? (
+        <RefreshCw className="h-3 w-3 animate-spin" />
+      ) : (
+        <Grid3X3 className="h-3 w-3" />
+      )}
       <span>{count} artifacts</span>
       {selectedIndex !== undefined && (
         <Badge variant="secondary" className="text-xs h-4 px-1">
@@ -161,6 +169,7 @@ export function ArtifactPanel() {
     isArtifactPanelOpen,
     showArtifactTabs,
     artifactTabsCollapsed,
+    isLoadingArtifacts,
     getArtifactsForConversation,
     getMessageArtifacts,
     hasMultipleArtifactsInMessage,
@@ -170,9 +179,11 @@ export function ArtifactPanel() {
     toggleArtifactPanel,
     selectArtifact,
     collapseArtifactTabs,
+    loadArtifactsForConversation,
   } = useArtifactStore();
 
   const [showArtifactList, setShowArtifactList] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const conversationArtifacts = currentConversation 
     ? getArtifactsForConversation(currentConversation._id || '') 
@@ -187,6 +198,16 @@ export function ArtifactPanel() {
     ? hasMultipleArtifactsInMessage(selectedMessageId) 
     : false;
 
+  // NEW: Auto-load artifacts when conversation changes (Phase 4)
+  useEffect(() => {
+    if (currentConversation?._id && conversationArtifacts.length === 0 && !isLoadingArtifacts) {
+      console.log('🔄 [ArtifactPanel] Auto-loading artifacts for conversation:', currentConversation._id);
+      loadArtifactsForConversation(currentConversation._id).catch(error => {
+        console.error('❌ [ArtifactPanel] Failed to auto-load artifacts:', error);
+      });
+    }
+  }, [currentConversation?._id, conversationArtifacts.length, isLoadingArtifacts, loadArtifactsForConversation]);
+
   // NEW: Handle keyboard navigation (Phase 4)
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (!hasMultipleInCurrentMessage) return;
@@ -197,6 +218,21 @@ export function ArtifactPanel() {
     } else if (e.key === 'ArrowRight' && e.ctrlKey) {
       e.preventDefault();
       selectNextArtifactInMessage();
+    }
+  };
+
+  // NEW: Handle manual refresh (Phase 4)
+  const handleRefresh = async () => {
+    if (!currentConversation?._id || isRefreshing) return;
+    
+    setIsRefreshing(true);
+    try {
+      await loadArtifactsForConversation(currentConversation._id, true);
+      console.log('✅ [ArtifactPanel] Artifacts refreshed successfully');
+    } catch (error) {
+      console.error('❌ [ArtifactPanel] Failed to refresh artifacts:', error);
+    } finally {
+      setIsRefreshing(false);
     }
   };
 
@@ -230,6 +266,7 @@ export function ArtifactPanel() {
               count={conversationArtifacts.length}
               selectedIndex={hasMultipleInCurrentMessage ? selectedArtifactIndex : undefined}
               onShowList={() => setShowArtifactList(!showArtifactList)}
+              isLoading={isLoadingArtifacts}
             />
             
             {/* NEW: Current message context indicator (Phase 4) */}
@@ -242,6 +279,20 @@ export function ArtifactPanel() {
           </div>
           
           <div className="flex items-center gap-1">
+            {/* NEW: Refresh button for artifacts (Phase 4) */}
+            {conversationArtifacts.length > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleRefresh}
+                disabled={isRefreshing || isLoadingArtifacts}
+                className="h-7 w-7 p-0"
+                title="Refresh artifacts"
+              >
+                <RefreshCw className={cn("h-3 w-3", (isRefreshing || isLoadingArtifacts) && "animate-spin")} />
+              </Button>
+            )}
+            
             {/* NEW: Quick navigation for current message artifacts (Phase 4) */}
             {hasMultipleInCurrentMessage && !showArtifactList && (
               <>
@@ -320,16 +371,16 @@ export function ArtifactPanel() {
         ) : selectedArtifact ? (
           <div className="h-full overflow-hidden">
             {/* NEW: Artifact context info (Phase 4) */}
-            {hasMultipleInCurrentMessage && (
+            {hasMultipleInCurrentMessage && currentMessageArtifacts && (
               <div className="px-3 py-2 bg-muted/20 border-b border-border text-xs text-muted-foreground">
                 <div className="flex items-center justify-between">
                   <span>
-                    Artifact {selectedArtifactIndex + 1} of {currentMessageArtifacts?.totalCount} 
-                    {currentMessageArtifacts?.artifacts[selectedArtifactIndex]?.language && 
+                    Artifact {selectedArtifactIndex + 1} of {currentMessageArtifacts.totalCount} 
+                    {currentMessageArtifacts.artifacts[selectedArtifactIndex]?.language && 
                       ` • ${currentMessageArtifacts.artifacts[selectedArtifactIndex].language}`
                     }
                   </span>
-                  {currentMessageArtifacts?.artifacts[selectedArtifactIndex]?.order !== undefined && (
+                  {currentMessageArtifacts.artifacts[selectedArtifactIndex]?.order !== undefined && (
                     <span>Order: {currentMessageArtifacts.artifacts[selectedArtifactIndex].order}</span>
                   )}
                 </div>
@@ -354,23 +405,37 @@ export function ArtifactPanel() {
             
             <Card className="p-8 text-center max-w-sm">
               <FileText className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-              <h3 className="text-lg font-medium mb-2">No artifacts yet</h3>
+              <h3 className="text-lg font-medium mb-2">
+                {isLoadingArtifacts ? 'Loading artifacts...' : 'No artifacts yet'}
+              </h3>
               <p className="text-sm text-muted-foreground mb-4">
-                {conversationArtifacts.length === 0 
-                  ? "Ask the AI to create code, documents, or other content to see them here."
-                  : "Select an artifact to view and edit it."
-                }
+                {isLoadingArtifacts ? (
+                  "Loading artifacts for this conversation..."
+                ) : conversationArtifacts.length === 0 ? (
+                  "Ask the AI to create code, documents, or other content to see them here."
+                ) : (
+                  "Select an artifact to view and edit it."
+                )}
               </p>
               
               {/* NEW: Multi-artifact tips (Phase 4) */}
-              {conversationArtifacts.length > 1 && (
+              {conversationArtifacts.length > 1 && !isLoadingArtifacts && (
                 <div className="text-xs text-muted-foreground bg-muted/50 rounded-md p-3 mt-4">
                   <p className="font-medium mb-1">💡 Tips:</p>
                   <ul className="text-left space-y-1">
                     <li>• Use Ctrl+← → to navigate between artifacts in a message</li>
                     <li>• Click the artifact count to see all artifacts</li>
                     <li>• Artifacts from the same message are grouped together</li>
+                    <li>• Use the refresh button to sync with server</li>
                   </ul>
+                </div>
+              )}
+
+              {/* NEW: Loading indicator (Phase 4) */}
+              {isLoadingArtifacts && (
+                <div className="mt-4 flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                  <span>Loading artifacts...</span>
                 </div>
               )}
             </Card>
