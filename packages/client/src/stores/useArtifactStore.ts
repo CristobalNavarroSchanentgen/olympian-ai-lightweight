@@ -8,7 +8,13 @@ import {
   CreateArtifactRequest,
   UpdateArtifactRequest,
   ArtifactHealthCheck,
-  ArtifactMigrationData 
+  ArtifactMigrationData,
+  MultiArtifactCreationRequest,
+  MultiArtifactCreationResponse,
+  ArtifactReference,
+  getArtifactCount,
+  hasMultipleArtifacts,
+  getFirstArtifact
 } from '@olympian/shared';
 import { api } from '@/services/api';
 
@@ -28,19 +34,35 @@ interface ArtifactSyncStatus {
   }>;
 }
 
+// NEW: Multi-artifact specific interfaces (Phase 4)
+interface MessageArtifacts {
+  messageId: string;
+  artifacts: Artifact[];
+  hasMultiple: boolean;
+  selectedIndex: number; // Currently selected artifact index
+  totalCount: number;
+}
+
 interface ArtifactState {
   // =====================================
-  // CORE STATE - Enhanced for server sync
+  // CORE STATE - Enhanced for multi-artifact support
   // =====================================
   
   // Current artifacts by conversation (server-first)
   artifacts: Record<string, Artifact[]>; // conversationId -> artifacts
+  
+  // NEW: Artifacts grouped by message (Phase 4)
+  messageArtifacts: Record<string, MessageArtifacts>; // messageId -> artifacts
   
   // Server artifacts cache (raw from server)
   serverArtifacts: Record<string, ArtifactDocument[]>; // conversationId -> server artifacts
   
   // Currently selected artifact
   selectedArtifact: Artifact | null;
+  
+  // NEW: Currently selected message artifacts (Phase 4)
+  selectedMessageId: string | null;
+  selectedArtifactIndex: number; // Index within message artifacts
   
   // Current view mode for artifacts
   viewMode: ArtifactViewMode;
@@ -51,8 +73,12 @@ interface ArtifactState {
   // UI state
   isArtifactPanelOpen: boolean;
   
+  // NEW: Multi-artifact UI state (Phase 4)
+  showArtifactTabs: boolean; // Whether to show tabs for multiple artifacts
+  artifactTabsCollapsed: boolean; // Whether artifact tabs are collapsed
+  
   // =====================================
-  // NEW: SERVER SYNCHRONIZATION STATE
+  // SERVER SYNCHRONIZATION STATE
   // =====================================
   
   // Sync status per conversation
@@ -72,7 +98,7 @@ interface ArtifactState {
   migrationResults: Record<string, any>; // conversationId -> migration result
   
   // =====================================
-  // ENHANCED ACTIONS - Server-first approach
+  // ENHANCED ACTIONS - Multi-artifact support (Phase 4)
   // =====================================
   
   // Primary artifact operations (server-backed)
@@ -80,6 +106,11 @@ interface ArtifactState {
   createArtifact: (artifact: Omit<Artifact, 'id' | 'createdAt' | 'updatedAt'>) => Promise<Artifact>;
   updateArtifact: (artifactId: string, content: string, description?: string) => Promise<void>;
   deleteArtifact: (artifactId: string) => Promise<void>;
+  
+  // NEW: Multi-artifact operations (Phase 4)
+  loadArtifactsByMessageId: (messageId: string) => Promise<MessageArtifacts>;
+  createMultipleArtifacts: (request: MultiArtifactCreationRequest) => Promise<MultiArtifactCreationResponse>;
+  reorderArtifactsInMessage: (messageId: string, artifactOrder: Array<{ artifactId: string; order: number }>) => Promise<void>;
   
   // Bulk operations
   bulkCreateArtifacts: (conversationId: string, artifacts: Array<Omit<Artifact, 'id' | 'createdAt' | 'updatedAt'>>) => Promise<void>;
@@ -95,17 +126,31 @@ interface ArtifactState {
   syncArtifact: (artifactId: string) => Promise<void>;
   syncAllArtifacts: (conversationId: string) => Promise<void>;
   
-  // UI actions (unchanged)
+  // UI actions (enhanced for multi-artifact)
   selectArtifact: (artifact: Artifact | null) => void;
+  selectArtifactInMessage: (messageId: string, artifactIndex: number) => void;
+  selectNextArtifactInMessage: () => void;
+  selectPreviousArtifactInMessage: () => void;
   setViewMode: (mode: ArtifactViewMode) => void;
   toggleArtifactPanel: () => void;
   setArtifactPanelOpen: (open: boolean) => void;
   
-  // Enhanced getters with server fallback
+  // NEW: Multi-artifact UI actions (Phase 4)
+  toggleArtifactTabs: () => void;
+  setShowArtifactTabs: (show: boolean) => void;
+  collapseArtifactTabs: (collapsed: boolean) => void;
+  
+  // Enhanced getters with multi-artifact support
   getArtifactsForConversation: (conversationId: string) => Artifact[];
   getArtifactById: (artifactId: string) => Artifact | null;
-  getArtifactByMessageId: (messageId: string) => Artifact | null;
+  getArtifactByMessageId: (messageId: string) => Artifact | null; // Returns first artifact
+  getArtifactsByMessageId: (messageId: string) => Artifact[]; // NEW: Returns all artifacts
   getVersionsForArtifact: (artifactId: string) => ArtifactVersion[];
+  
+  // NEW: Multi-artifact getters (Phase 4)
+  getMessageArtifacts: (messageId: string) => MessageArtifacts | null;
+  hasMultipleArtifactsInMessage: (messageId: string) => boolean;
+  getSelectedArtifactInMessage: (messageId: string) => Artifact | null;
   
   // Legacy operations (now with deprecation warnings)
   revertToVersion: (artifactId: string, version: number) => void;
@@ -113,7 +158,7 @@ interface ArtifactState {
   recreateArtifact: (artifact: Artifact) => void;
   
   // =====================================
-  // NEW: OFFLINE/SYNC MANAGEMENT
+  // OFFLINE/SYNC MANAGEMENT
   // =====================================
   
   // Offline support
@@ -153,6 +198,8 @@ function serverArtifactToClient(serverArtifact: ArtifactDocument): Artifact {
     conversationId: serverArtifact.conversationId,
     checksum: serverArtifact.checksum,
     metadata: serverArtifact.metadata,
+    order: serverArtifact.order,
+    groupId: serverArtifact.groupId
   };
 }
 
@@ -165,6 +212,8 @@ function clientArtifactToCreateRequest(artifact: Omit<Artifact, 'id' | 'createdA
     type: artifact.type,
     content: artifact.content,
     language: artifact.language,
+    order: artifact.order,
+    groupId: artifact.groupId,
     metadata: {
       detectionStrategy: 'client_create',
       originalContent: artifact.content,
@@ -194,6 +243,24 @@ function serverResponseToDocument(serverArtifact: ArtifactDocument): ArtifactDoc
   };
 }
 
+// NEW: Create MessageArtifacts from artifact list (Phase 4)
+function createMessageArtifacts(messageId: string, artifacts: Artifact[]): MessageArtifacts {
+  // Sort artifacts by order or index
+  const sortedArtifacts = [...artifacts].sort((a, b) => {
+    const orderA = a.order ?? a.metadata?.artifactIndex ?? 0;
+    const orderB = b.order ?? b.metadata?.artifactIndex ?? 0;
+    return orderA - orderB;
+  });
+
+  return {
+    messageId,
+    artifacts: sortedArtifacts,
+    hasMultiple: sortedArtifacts.length > 1,
+    selectedIndex: 0, // Default to first artifact
+    totalCount: sortedArtifacts.length
+  };
+}
+
 // =====================================
 // ZUSTAND STORE IMPLEMENTATION
 // =====================================
@@ -205,11 +272,18 @@ export const useArtifactStore = create<ArtifactState>()(
       // INITIAL STATE
       // =====================================
       artifacts: {},
+      messageArtifacts: {}, // NEW: Phase 4
       serverArtifacts: {},
       selectedArtifact: null,
+      selectedMessageId: null, // NEW: Phase 4
+      selectedArtifactIndex: 0, // NEW: Phase 4
       viewMode: 'preview',
       versions: {},
       isArtifactPanelOpen: false,
+      
+      // NEW: Multi-artifact UI state (Phase 4)
+      showArtifactTabs: true,
+      artifactTabsCollapsed: false,
       
       // Server sync state
       syncStatus: {},
@@ -260,6 +334,23 @@ export const useArtifactStore = create<ArtifactState>()(
           // Convert to client format
           const clientArtifacts = serverArtifacts.map(serverArtifactToClient);
           
+          // NEW: Group artifacts by message (Phase 4)
+          const messageGroups: Record<string, Artifact[]> = {};
+          clientArtifacts.forEach(artifact => {
+            if (artifact.messageId) {
+              if (!messageGroups[artifact.messageId]) {
+                messageGroups[artifact.messageId] = [];
+              }
+              messageGroups[artifact.messageId].push(artifact);
+            }
+          });
+          
+          // Create MessageArtifacts objects
+          const newMessageArtifacts: Record<string, MessageArtifacts> = {};
+          Object.entries(messageGroups).forEach(([messageId, artifacts]) => {
+            newMessageArtifacts[messageId] = createMessageArtifacts(messageId, artifacts);
+          });
+          
           // Update state
           set((state) => ({
             serverArtifacts: {
@@ -269,6 +360,10 @@ export const useArtifactStore = create<ArtifactState>()(
             artifacts: {
               ...state.artifacts,
               [conversationId]: clientArtifacts
+            },
+            messageArtifacts: {
+              ...state.messageArtifacts,
+              ...newMessageArtifacts
             },
             syncStatus: {
               ...state.syncStatus,
@@ -302,6 +397,122 @@ export const useArtifactStore = create<ArtifactState>()(
           throw error;
         } finally {
           set({ isLoadingArtifacts: false });
+        }
+      },
+
+      // =====================================
+      // NEW: MULTI-ARTIFACT OPERATIONS (PHASE 4)
+      // =====================================
+
+      /**
+       * Load artifacts specifically for a message ID
+       */
+      loadArtifactsByMessageId: async (messageId: string): Promise<MessageArtifacts> => {
+        console.log(`📋 [ArtifactStore] Loading artifacts for message: ${messageId}`);
+        
+        try {
+          const artifactsResponse = await api.getArtifactsByMessageId(messageId);
+          
+          if (!artifactsResponse.success || !artifactsResponse.data.artifacts) {
+            throw new Error(artifactsResponse.error || 'Failed to load artifacts for message');
+          }
+          
+          const clientArtifacts = artifactsResponse.data.artifacts.map(serverArtifactToClient);
+          const messageArtifacts = createMessageArtifacts(messageId, clientArtifacts);
+          
+          // Update state
+          set((state) => ({
+            messageArtifacts: {
+              ...state.messageArtifacts,
+              [messageId]: messageArtifacts
+            }
+          }));
+          
+          console.log(`✅ [ArtifactStore] Loaded ${clientArtifacts.length} artifacts for message: ${messageId}`);
+          return messageArtifacts;
+          
+        } catch (error) {
+          console.error(`❌ [ArtifactStore] Failed to load artifacts for message ${messageId}:`, error);
+          throw error;
+        }
+      },
+
+      /**
+       * Create multiple artifacts for a single message
+       */
+      createMultipleArtifacts: async (request: MultiArtifactCreationRequest): Promise<MultiArtifactCreationResponse> => {
+        console.log(`🎨 [ArtifactStore] Creating ${request.artifacts.length} artifacts for message: ${request.messageId}`);
+        
+        try {
+          set({ isCreating: true });
+          
+          const response = await api.createMultipleArtifacts(request);
+          
+          if (!response.success) {
+            throw new Error('Multi-artifact creation failed');
+          }
+          
+          // Convert created artifacts to client format
+          const clientArtifacts = response.artifacts.map(serverArtifactToClient);
+          
+          // Update artifacts state
+          set((state) => {
+            const conversationId = request.conversationId;
+            const currentArtifacts = state.artifacts[conversationId] || [];
+            const updatedArtifacts = [...currentArtifacts, ...clientArtifacts];
+            
+            // Update message artifacts
+            const messageArtifacts = createMessageArtifacts(request.messageId, clientArtifacts);
+            
+            return {
+              artifacts: {
+                ...state.artifacts,
+                [conversationId]: updatedArtifacts
+              },
+              messageArtifacts: {
+                ...state.messageArtifacts,
+                [request.messageId]: messageArtifacts
+              },
+              selectedMessageId: request.messageId,
+              selectedArtifactIndex: 0,
+              selectedArtifact: clientArtifacts[0] || null,
+              isArtifactPanelOpen: clientArtifacts.length > 0,
+              showArtifactTabs: clientArtifacts.length > 1
+            };
+          });
+          
+          console.log(`✅ [ArtifactStore] Successfully created ${response.artifactCount} artifacts`);
+          return response;
+          
+        } catch (error) {
+          console.error(`❌ [ArtifactStore] Failed to create multiple artifacts:`, error);
+          throw error;
+        } finally {
+          set({ isCreating: false });
+        }
+      },
+
+      /**
+       * Reorder artifacts within a message
+       */
+      reorderArtifactsInMessage: async (messageId: string, artifactOrder: Array<{ artifactId: string; order: number }>) => {
+        console.log(`🔄 [ArtifactStore] Reordering ${artifactOrder.length} artifacts in message: ${messageId}`);
+        
+        try {
+          const response = await api.reorderArtifactsInMessage(messageId, { artifactOrder });
+          
+          if (!response.success) {
+            throw new Error('Artifact reordering failed');
+          }
+          
+          // Reload artifacts for the message to get updated order
+          await get().loadArtifactsByMessageId(messageId);
+          
+          console.log(`✅ [ArtifactStore] Successfully reordered artifacts in message: ${messageId}`);
+          
+        } catch (error) {
+          console.error(`❌ [ArtifactStore] Failed to reorder artifacts:`, error);
+          throw error;
         }
       },
       
@@ -380,6 +591,29 @@ export const useArtifactStore = create<ArtifactState>()(
             const currentServerArtifacts = state.serverArtifacts[conversationId] || [];
             const serverDocument = serverResponseToDocument(serverResponse.artifact as ArtifactDocument);
             
+            // NEW: Update message artifacts if messageId exists (Phase 4)
+            let newMessageArtifacts = state.messageArtifacts;
+            if (serverArtifact.messageId) {
+              const messageArtifacts = state.messageArtifacts[serverArtifact.messageId];
+              if (messageArtifacts) {
+                const updatedMessageArtifacts = messageArtifacts.artifacts.map(a =>
+                  a.id === localArtifact.id ? serverArtifact : a
+                );
+                newMessageArtifacts = {
+                  ...state.messageArtifacts,
+                  [serverArtifact.messageId]: {
+                    ...messageArtifacts,
+                    artifacts: updatedMessageArtifacts
+                  }
+                };
+              } else {
+                newMessageArtifacts = {
+                  ...state.messageArtifacts,
+                  [serverArtifact.messageId]: createMessageArtifacts(serverArtifact.messageId, [serverArtifact])
+                };
+              }
+            }
+            
             return {
               artifacts: {
                 ...state.artifacts,
@@ -389,6 +623,7 @@ export const useArtifactStore = create<ArtifactState>()(
                 ...state.serverArtifacts,
                 [conversationId]: [...currentServerArtifacts, serverDocument]
               },
+              messageArtifacts: newMessageArtifacts,
               selectedArtifact: state.selectedArtifact?.id === localArtifact.id ? serverArtifact : state.selectedArtifact,
               versions: {
                 ...state.versions,
@@ -471,11 +706,30 @@ export const useArtifactStore = create<ArtifactState>()(
               a.id === artifactId ? updatedArtifact : a
             );
             
+            // NEW: Update message artifacts if exists (Phase 4)
+            let newMessageArtifacts = state.messageArtifacts;
+            if (artifact.messageId) {
+              const messageArtifacts = state.messageArtifacts[artifact.messageId];
+              if (messageArtifacts) {
+                const updatedMessageArtifacts = messageArtifacts.artifacts.map(a =>
+                  a.id === artifactId ? updatedArtifact : a
+                );
+                newMessageArtifacts = {
+                  ...state.messageArtifacts,
+                  [artifact.messageId]: {
+                    ...messageArtifacts,
+                    artifacts: updatedMessageArtifacts
+                  }
+                };
+              }
+            }
+            
             return {
               artifacts: {
                 ...state.artifacts,
                 [conversationId]: updatedConversationArtifacts,
               },
+              messageArtifacts: newMessageArtifacts,
               selectedArtifact: state.selectedArtifact?.id === artifactId ? updatedArtifact : state.selectedArtifact,
             };
           });
@@ -516,6 +770,24 @@ export const useArtifactStore = create<ArtifactState>()(
                 a.id === artifactId ? serverDocument : a
               );
               
+              // NEW: Update message artifacts (Phase 4)
+              let newMessageArtifacts = state.messageArtifacts;
+              if (serverArtifact.messageId) {
+                const messageArtifacts = state.messageArtifacts[serverArtifact.messageId];
+                if (messageArtifacts) {
+                  const updatedMessageArtifacts = messageArtifacts.artifacts.map(a =>
+                    a.id === artifactId ? serverArtifact : a
+                  );
+                  newMessageArtifacts = {
+                    ...state.messageArtifacts,
+                    [serverArtifact.messageId]: {
+                      ...messageArtifacts,
+                      artifacts: updatedMessageArtifacts
+                    }
+                  };
+                }
+              }
+              
               return {
                 artifacts: {
                   ...state.artifacts,
@@ -525,6 +797,7 @@ export const useArtifactStore = create<ArtifactState>()(
                   ...state.serverArtifacts,
                   [conversationId]: updatedServerArtifacts,
                 },
+                messageArtifacts: newMessageArtifacts,
                 selectedArtifact: state.selectedArtifact?.id === artifactId ? serverArtifact : state.selectedArtifact,
                 versions: {
                   ...state.versions,
@@ -591,11 +864,31 @@ export const useArtifactStore = create<ArtifactState>()(
             const newVersions = { ...state.versions };
             delete newVersions[artifactId];
             
+            // NEW: Update message artifacts (Phase 4)
+            let newMessageArtifacts = state.messageArtifacts;
+            if (artifactToDelete.messageId) {
+              const messageArtifacts = state.messageArtifacts[artifactToDelete.messageId];
+              if (messageArtifacts) {
+                const filteredMessageArtifacts = messageArtifacts.artifacts.filter(a => a.id !== artifactId);
+                if (filteredMessageArtifacts.length > 0) {
+                  newMessageArtifacts = {
+                    ...state.messageArtifacts,
+                    [artifactToDelete.messageId]: createMessageArtifacts(artifactToDelete.messageId, filteredMessageArtifacts)
+                  };
+                } else {
+                  // Remove message artifacts entry if no artifacts left
+                  const { [artifactToDelete.messageId]: _, ...remaining } = state.messageArtifacts;
+                  newMessageArtifacts = remaining;
+                }
+              }
+            }
+            
             return {
               artifacts: {
                 ...state.artifacts,
                 [conversationId]: filteredArtifacts,
               },
+              messageArtifacts: newMessageArtifacts,
               versions: newVersions,
               selectedArtifact: state.selectedArtifact?.id === artifactId ? null : state.selectedArtifact,
             };
@@ -643,7 +936,7 @@ export const useArtifactStore = create<ArtifactState>()(
       },
       
       // =====================================
-      // BULK OPERATIONS
+      // BULK OPERATIONS (existing + simplified)
       // =====================================
       
       bulkCreateArtifacts: async (conversationId: string, artifacts: Array<Omit<Artifact, 'id' | 'createdAt' | 'updatedAt'>>) => {
@@ -766,7 +1059,7 @@ export const useArtifactStore = create<ArtifactState>()(
       },
       
       // =====================================
-      // MIGRATION OPERATIONS
+      // MIGRATION OPERATIONS (existing - unchanged)
       // =====================================
       
       migrateConversationArtifacts: async (conversationId: string): Promise<ArtifactMigrationData> => {
@@ -816,7 +1109,7 @@ export const useArtifactStore = create<ArtifactState>()(
       },
       
       // =====================================
-      // HEALTH AND MONITORING
+      // HEALTH AND MONITORING (existing - unchanged)
       // =====================================
       
       checkArtifactsHealth: async (conversationId?: string) => {
@@ -885,14 +1178,65 @@ export const useArtifactStore = create<ArtifactState>()(
       },
       
       // =====================================
-      // UI ACTIONS (unchanged)
+      // UI ACTIONS (enhanced for multi-artifact - Phase 4)
       // =====================================
       
       selectArtifact: (artifact) => {
         set({ selectedArtifact: artifact });
         if (artifact) {
-          set({ isArtifactPanelOpen: true });
+          set({ 
+            isArtifactPanelOpen: true,
+            selectedMessageId: artifact.messageId || null,
+            selectedArtifactIndex: 0 // Reset to first when selecting directly
+          });
         }
+      },
+
+      // NEW: Multi-artifact navigation (Phase 4)
+      selectArtifactInMessage: (messageId: string, artifactIndex: number) => {
+        const state = get();
+        const messageArtifacts = state.messageArtifacts[messageId];
+        
+        if (!messageArtifacts || artifactIndex >= messageArtifacts.artifacts.length) {
+          console.warn(`⚠️ [ArtifactStore] Invalid artifact index ${artifactIndex} for message ${messageId}`);
+          return;
+        }
+        
+        const selectedArtifact = messageArtifacts.artifacts[artifactIndex];
+        
+        set({
+          selectedMessageId: messageId,
+          selectedArtifactIndex: artifactIndex,
+          selectedArtifact,
+          isArtifactPanelOpen: true,
+          showArtifactTabs: messageArtifacts.hasMultiple
+        });
+        
+        console.log(`🎯 [ArtifactStore] Selected artifact ${artifactIndex + 1}/${messageArtifacts.totalCount} in message: ${messageId}`);
+      },
+
+      selectNextArtifactInMessage: () => {
+        const state = get();
+        if (!state.selectedMessageId) return;
+        
+        const messageArtifacts = state.messageArtifacts[state.selectedMessageId];
+        if (!messageArtifacts || !messageArtifacts.hasMultiple) return;
+        
+        const nextIndex = (state.selectedArtifactIndex + 1) % messageArtifacts.totalCount;
+        get().selectArtifactInMessage(state.selectedMessageId, nextIndex);
+      },
+
+      selectPreviousArtifactInMessage: () => {
+        const state = get();
+        if (!state.selectedMessageId) return;
+        
+        const messageArtifacts = state.messageArtifacts[state.selectedMessageId];
+        if (!messageArtifacts || !messageArtifacts.hasMultiple) return;
+        
+        const prevIndex = state.selectedArtifactIndex === 0 
+          ? messageArtifacts.totalCount - 1 
+          : state.selectedArtifactIndex - 1;
+        get().selectArtifactInMessage(state.selectedMessageId, prevIndex);
       },
       
       setViewMode: (mode) => {
@@ -906,9 +1250,22 @@ export const useArtifactStore = create<ArtifactState>()(
       setArtifactPanelOpen: (open) => {
         set({ isArtifactPanelOpen: open });
       },
+
+      // NEW: Multi-artifact UI actions (Phase 4)
+      toggleArtifactTabs: () => {
+        set((state) => ({ showArtifactTabs: !state.showArtifactTabs }));
+      },
+
+      setShowArtifactTabs: (show: boolean) => {
+        set({ showArtifactTabs: show });
+      },
+
+      collapseArtifactTabs: (collapsed: boolean) => {
+        set({ artifactTabsCollapsed: collapsed });
+      },
       
       // =====================================
-      // ENHANCED GETTERS
+      // ENHANCED GETTERS (Phase 4)
       // =====================================
       
       getArtifactsForConversation: (conversationId) => {
@@ -940,23 +1297,64 @@ export const useArtifactStore = create<ArtifactState>()(
       
       getArtifactByMessageId: (messageId) => {
         const state = get();
-        const allArtifacts = Object.values(state.artifacts).flat();
-        const artifact = allArtifacts.find(a => a.messageId === messageId) || null;
+        const messageArtifacts = state.messageArtifacts[messageId];
         
-        if (!artifact) {
-          console.warn(`🔍 [ArtifactStore] Artifact not found by message ID: ${messageId}`);
+        if (!messageArtifacts || messageArtifacts.artifacts.length === 0) {
+          console.warn(`🔍 [ArtifactStore] No artifacts found for message ID: ${messageId}`);
+          return null;
         }
         
-        return artifact;
+        // Return first artifact for backward compatibility
+        return messageArtifacts.artifacts[0];
+      },
+
+      // NEW: Get all artifacts for a message (Phase 4)
+      getArtifactsByMessageId: (messageId) => {
+        const state = get();
+        const messageArtifacts = state.messageArtifacts[messageId];
+        
+        if (!messageArtifacts) {
+          console.warn(`🔍 [ArtifactStore] No artifacts found for message ID: ${messageId}`);
+          return [];
+        }
+        
+        return messageArtifacts.artifacts;
       },
       
       getVersionsForArtifact: (artifactId) => {
         const state = get();
         return state.versions[artifactId] || [];
       },
+
+      // NEW: Multi-artifact getters (Phase 4)
+      getMessageArtifacts: (messageId: string) => {
+        const state = get();
+        return state.messageArtifacts[messageId] || null;
+      },
+
+      hasMultipleArtifactsInMessage: (messageId: string) => {
+        const state = get();
+        const messageArtifacts = state.messageArtifacts[messageId];
+        return messageArtifacts ? messageArtifacts.hasMultiple : false;
+      },
+
+      getSelectedArtifactInMessage: (messageId: string) => {
+        const state = get();
+        const messageArtifacts = state.messageArtifacts[messageId];
+        
+        if (!messageArtifacts || messageArtifacts.artifacts.length === 0) {
+          return null;
+        }
+        
+        const selectedIndex = state.selectedMessageId === messageId 
+          ? state.selectedArtifactIndex 
+          : 0;
+          
+        return messageArtifacts.artifacts[selectedIndex] || messageArtifacts.artifacts[0];
+      },
       
       // =====================================
-      // LEGACY OPERATIONS (deprecated)
+      // LEGACY OPERATIONS (deprecated but maintained)
       // =====================================
       
       revertToVersion: (artifactId, version) => {
@@ -978,20 +1376,25 @@ export const useArtifactStore = create<ArtifactState>()(
           const newArtifacts = { ...state.artifacts };
           const newServerArtifacts = { ...state.serverArtifacts };
           const newVersions = { ...state.versions };
+          const newMessageArtifacts = { ...state.messageArtifacts };
           
           // Remove local cache
           delete newArtifacts[conversationId];
           delete newServerArtifacts[conversationId];
           
-          // Remove versions for artifacts in this conversation
+          // Remove versions and message artifacts for artifacts in this conversation
           const conversationArtifacts = state.artifacts[conversationId] || [];
           conversationArtifacts.forEach(artifactObj => {
             delete newVersions[artifactObj.id];
+            if (artifactObj.messageId) {
+              delete newMessageArtifacts[artifactObj.messageId];
+            }
           });
           
           return {
             artifacts: newArtifacts,
             serverArtifacts: newServerArtifacts,
+            messageArtifacts: newMessageArtifacts,
             versions: newVersions,
             selectedArtifact: conversationArtifacts.some(a => a.id === state.selectedArtifact?.id) 
               ? null 
@@ -1017,17 +1420,36 @@ export const useArtifactStore = create<ArtifactState>()(
             return state;
           }
           
+          // NEW: Update message artifacts if messageId exists (Phase 4)
+          let newMessageArtifacts = state.messageArtifacts;
+          if (artifact.messageId) {
+            const messageArtifacts = state.messageArtifacts[artifact.messageId];
+            if (messageArtifacts) {
+              const updatedArtifacts = [...messageArtifacts.artifacts, artifact];
+              newMessageArtifacts = {
+                ...state.messageArtifacts,
+                [artifact.messageId]: createMessageArtifacts(artifact.messageId, updatedArtifacts)
+              };
+            } else {
+              newMessageArtifacts = {
+                ...state.messageArtifacts,
+                [artifact.messageId]: createMessageArtifacts(artifact.messageId, [artifact])
+              };
+            }
+          }
+          
           return {
             artifacts: {
               ...state.artifacts,
               [conversationId]: [...currentArtifacts, artifact],
             },
+            messageArtifacts: newMessageArtifacts
           };
         });
       },
       
       // =====================================
-      // OFFLINE/SYNC MANAGEMENT
+      // OFFLINE/SYNC MANAGEMENT (existing - unchanged)
       // =====================================
       
       markOffline: () => {
@@ -1081,7 +1503,7 @@ export const useArtifactStore = create<ArtifactState>()(
       },
       
       // =====================================
-      // CACHE MANAGEMENT
+      // CACHE MANAGEMENT (existing - unchanged)
       // =====================================
       
       clearCache: (conversationId?: string) => {
@@ -1095,7 +1517,12 @@ export const useArtifactStore = create<ArtifactState>()(
             return { serverArtifacts: newServerArtifacts };
           });
         } else {
-          set({ serverArtifacts: {}, artifacts: {}, versions: {} });
+          set({ 
+            serverArtifacts: {}, 
+            artifacts: {}, 
+            messageArtifacts: {}, // NEW: Clear message artifacts too
+            versions: {} 
+          });
         }
       },
       
@@ -1106,16 +1533,21 @@ export const useArtifactStore = create<ArtifactState>()(
     }),
     {
       name: 'olympian-artifact-store-v2',
-      version: 4, // Increment version for server-first implementation
+      version: 5, // Increment version for multi-artifact implementation (Phase 4)
       migrate: (persistedState: any, version: number) => {
-        console.log(`🔄 [ArtifactStore] Migrating artifact store from version ${version} to 4`);
+        console.log(`🔄 [ArtifactStore] Migrating artifact store from version ${version} to 5`);
         
-        if (version < 4) {
-          console.log(`🔄 [ArtifactStore] Migrating to version 4 (server-first implementation)`);
+        if (version < 5) {
+          console.log(`🔄 [ArtifactStore] Migrating to version 5 (multi-artifact implementation)`);
           
-          // Clear old cache to force server reload
+          // Clear old cache to force server reload with new multi-artifact support
           return {
             ...persistedState,
+            messageArtifacts: {}, // NEW: Initialize message artifacts
+            selectedMessageId: null, // NEW: Initialize selected message
+            selectedArtifactIndex: 0, // NEW: Initialize artifact index
+            showArtifactTabs: true, // NEW: Initialize tabs
+            artifactTabsCollapsed: false, // NEW: Initialize tabs state
             serverArtifacts: {},
             syncStatus: {},
             healthCheck: null,
@@ -1129,9 +1561,14 @@ export const useArtifactStore = create<ArtifactState>()(
       // Only persist essential state, not server cache
       partialize: (state) => ({
         artifacts: state.artifacts,
+        messageArtifacts: state.messageArtifacts, // NEW: Persist message artifacts
         selectedArtifact: state.selectedArtifact,
+        selectedMessageId: state.selectedMessageId, // NEW: Persist selected message
+        selectedArtifactIndex: state.selectedArtifactIndex, // NEW: Persist artifact index
         viewMode: state.viewMode,
         isArtifactPanelOpen: state.isArtifactPanelOpen,
+        showArtifactTabs: state.showArtifactTabs, // NEW: Persist tabs state
+        artifactTabsCollapsed: state.artifactTabsCollapsed, // NEW: Persist tabs collapse state
         versions: state.versions,
         migrationResults: state.migrationResults,
       }),
