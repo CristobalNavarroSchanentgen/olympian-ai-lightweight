@@ -163,7 +163,7 @@ export interface ArtifactMessageMetadata {
 // Sync status type for better type safety
 export type ArtifactSyncStatus = 'synced' | 'pending' | 'conflict' | 'error';
 
-// NEW: Enhanced metadata for Phase 3 multi-host optimizations
+// FIXED: Enhanced metadata for Phase 3 multi-host optimizations
 export interface ArtifactMetadata {
   // Synchronization - Required field for consistency
   syncStatus: ArtifactSyncStatus;
@@ -172,6 +172,7 @@ export interface ArtifactMetadata {
   codeBlocksRemoved: boolean;
   detectionStrategy: string; // How artifact was detected
   originalContent: string; // Original content before processing
+  processedContent?: string; // FIXED: Added missing processedContent field
   reconstructionHash: string; // Hash for reconstruction verification
   contentSize: number; // Content size in bytes
   
