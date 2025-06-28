@@ -147,8 +147,9 @@ router.post('/validate', async (req, res, next) => {
     // Apply Phase 6 validation rules
     const validationResult = validateArtifactCreationRules(artifacts);
     
-    // Detect duplicates
-    const duplicates = detectDuplicateArtifacts(artifacts);
+    // Detect duplicates - FIXED: Handle missing titles properly
+    const artifactsWithTitles = artifacts.filter(artifact => artifact.title) as Array<{ content: string; title: string; type: any }>;
+    const duplicates = detectDuplicateArtifacts(artifactsWithTitles);
     
     // Calculate content hashes
     const artifactsWithHashes = artifacts.map((artifact, index) => ({
@@ -236,8 +237,8 @@ router.get('/by-message/:messageId', async (req, res, next) => {
     
     const artifacts = await artifactService.getArtifactsByMessageId(messageId);
     
-    // Sort artifacts based on query parameters
-    const sortedArtifacts = artifacts.sort((a, b) => {
+    // FIXED: Sort artifacts with proper TypeScript types
+    const sortedArtifacts = artifacts.sort((a: any, b: any) => {
       const field = orderBy as keyof typeof a;
       const aVal = a[field] ?? 0;
       const bVal = b[field] ?? 0;
@@ -285,14 +286,20 @@ router.post('/multi-create', async (req, res, next) => {
     
     const { conversationId, messageId, artifacts, originalContent, processedContent, metadata } = validation.data;
     
-    // Phase 6: Validate artifacts before creation
-    const validationResult = validateArtifactCreationRules(artifacts);
+    // Phase 6: Validate artifacts before creation - FIXED: Ensure title is always string
+    const artifactsWithRequiredTitles = artifacts.map(artifact => ({
+      content: artifact.content,
+      type: artifact.type,
+      title: artifact.title // title is required in schema so this is safe
+    }));
+    
+    const validationResult = validateArtifactCreationRules(artifactsWithRequiredTitles);
     if (!validationResult.valid) {
       throw new AppError(400, `Artifact validation failed: ${validationResult.errors.join(', ')}`);
     }
     
     // Phase 6: Check for duplicates
-    const duplicates = detectDuplicateArtifacts(artifacts);
+    const duplicates = detectDuplicateArtifacts(artifactsWithRequiredTitles);
     if (duplicates.length > 0) {
       console.warn(`⚠️ [ArtifactsAPI] Found ${duplicates.length} potential duplicates, proceeding with creation but marking them`);
     }
@@ -615,7 +622,8 @@ router.post('/', async (req, res, next) => {
     // Phase 6: Validate single artifact
     const validationResult = validateArtifactCreationRules([{
       content: artifactData.content,
-      type: artifactData.type
+      type: artifactData.type,
+      title: artifactData.title // title is required in schema
     }]);
     
     if (!validationResult.valid) {
@@ -1090,7 +1098,7 @@ router.get('/debug/stats', async (req, res, next) => {
     
     console.log(`🔧 [ArtifactsAPI] Fetching debug statistics`);
     
-    const db = artifactService['db']; // Access private property for debugging
+    const db = (artifactService as any)['db']; // Access private property for debugging
     
     const stats = await Promise.all([
       db.artifacts.countDocuments(),
