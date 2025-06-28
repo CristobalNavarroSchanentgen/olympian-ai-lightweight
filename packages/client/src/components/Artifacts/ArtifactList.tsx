@@ -10,11 +10,17 @@ import {
   ArrowLeft,
   Calendar,
 } from 'lucide-react';
+import { useMemo } from 'react';
 
 interface ArtifactListProps {
   artifacts: Artifact[];
   onSelectArtifact: (artifact: Artifact) => void;
   onClose: () => void;
+}
+
+// Helper type for artifact with calculated version
+interface ArtifactWithVersion extends Artifact {
+  calculatedVersion: number;
 }
 
 export function ArtifactList({ artifacts, onSelectArtifact, onClose }: ArtifactListProps) {
@@ -72,7 +78,43 @@ export function ArtifactList({ artifacts, onSelectArtifact, onClose }: ArtifactL
     return new Date(date).toLocaleDateString();
   };
 
-  const sortedArtifacts = [...artifacts].sort((a, b) => 
+  // Calculate version numbers based on artifact titles
+  const artifactsWithVersions = useMemo(() => {
+    // Group artifacts by title
+    const titleGroups = new Map<string, Artifact[]>();
+    
+    artifacts.forEach(artifact => {
+      const normalizedTitle = artifact.title.toLowerCase().trim();
+      if (!titleGroups.has(normalizedTitle)) {
+        titleGroups.set(normalizedTitle, []);
+      }
+      titleGroups.get(normalizedTitle)!.push(artifact);
+    });
+
+    // Sort each group by creation date and assign version numbers
+    const versionMap = new Map<string, number>();
+    
+    titleGroups.forEach((group) => {
+      // Sort by createdAt ascending (oldest first)
+      const sortedGroup = [...group].sort((a, b) => 
+        new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+      );
+      
+      // Assign version numbers
+      sortedGroup.forEach((artifact, index) => {
+        versionMap.set(artifact.id, index + 1);
+      });
+    });
+
+    // Create artifacts with calculated versions
+    return artifacts.map(artifact => ({
+      ...artifact,
+      calculatedVersion: versionMap.get(artifact.id) || 1
+    }));
+  }, [artifacts]);
+
+  // Sort by updatedAt descending (newest first)
+  const sortedArtifacts = [...artifactsWithVersions].sort((a, b) => 
     new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
   );
 
@@ -116,7 +158,7 @@ export function ArtifactList({ artifacts, onSelectArtifact, onClose }: ArtifactL
                     {artifact.language && (
                       <span>{artifact.language}</span>
                     )}
-                    <span>v{artifact.version}</span>
+                    <span>v{artifact.calculatedVersion}</span>
                     <div className="flex items-center gap-1">
                       <Calendar className="h-3 w-3" />
                       {formatDate(artifact.updatedAt)}
