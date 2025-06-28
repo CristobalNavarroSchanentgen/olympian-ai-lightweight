@@ -4,7 +4,11 @@ import {
   CreateArtifactRequest, 
   UpdateArtifactRequest, 
   ArtifactOperationResponse,
-  ArtifactHealthCheck 
+  ArtifactHealthCheck,
+  MultiArtifactCreationRequest,
+  MultiArtifactCreationResponse,
+  BatchArtifactOperation,
+  MULTI_ARTIFACT_CONFIG
 } from '@olympian/shared';
 import { ArtifactService } from '../services/ArtifactService';
 import { AppError } from '../middleware/errorHandler';
@@ -27,6 +31,8 @@ const createArtifactSchema = z.object({
   type: z.enum(['text', 'code', 'html', 'react', 'svg', 'mermaid', 'json', 'csv', 'markdown']),
   content: z.string().min(1),
   language: z.string().optional(),
+  order: z.number().min(0).optional(), // NEW: Multi-artifact support
+  groupId: z.string().optional(), // NEW: Multi-artifact support
   metadata: z.object({
     detectionStrategy: z.string().optional(),
     originalContent: z.string().optional(),
@@ -36,7 +42,12 @@ const createArtifactSchema = z.object({
     syncStatus: z.enum(['synced', 'pending', 'conflict', 'error']).optional(),
     contentSize: z.number().optional(),
     compressionType: z.enum(['none', 'gzip', 'lz4']).optional(),
-    cacheKey: z.string().optional()
+    cacheKey: z.string().optional(),
+    // NEW: Multi-artifact metadata
+    partOfMultiArtifact: z.boolean().optional(),
+    artifactIndex: z.number().optional(),
+    totalArtifactsInMessage: z.number().optional(),
+    groupingStrategy: z.string().optional()
   }).optional().default({})
 });
 
@@ -44,16 +55,42 @@ const updateArtifactSchema = z.object({
   content: z.string().optional(),
   title: z.string().min(1).max(200).optional(),
   description: z.string().optional(),
+  order: z.number().min(0).optional(), // NEW: Multi-artifact support
   metadata: z.object({
     detectionStrategy: z.string().optional(),
     originalContent: z.string().optional(),
     processedContent: z.string().optional(),
     codeBlocksRemoved: z.boolean().optional(),
     fallbackData: z.record(z.any()).optional(),
-    syncStatus: z.enum(['synced', 'pending', 'conflict', 'error']).optional()
+    syncStatus: z.enum(['synced', 'pending', 'conflict', 'error']).optional(),
+    // NEW: Multi-artifact metadata updates
+    partOfMultiArtifact: z.boolean().optional(),
+    artifactIndex: z.number().optional(),
+    totalArtifactsInMessage: z.number().optional(),
+    groupingStrategy: z.string().optional()
   }).optional()
-}).refine(data => data.content || data.title || data.metadata, {
-  message: "At least one field (content, title, or metadata) must be provided"
+}).refine(data => data.content || data.title || data.metadata || data.order !== undefined, {
+  message: "At least one field (content, title, order, or metadata) must be provided"
+});
+
+// NEW: Multi-artifact creation schema
+const multiArtifactCreateSchema = z.object({
+  conversationId: z.string().min(1),
+  messageId: z.string().min(1),
+  artifacts: z.array(z.object({
+    title: z.string().min(1).max(200),
+    type: z.enum(['text', 'code', 'html', 'react', 'svg', 'mermaid', 'json', 'csv', 'markdown']),
+    content: z.string().min(1),
+    language: z.string().optional(),
+    order: z.number().min(0)
+  })).min(1).max(MULTI_ARTIFACT_CONFIG.MAX_ARTIFACTS_PER_MESSAGE),
+  originalContent: z.string().min(1),
+  processedContent: z.string().min(1),
+  metadata: z.object({
+    detectionStrategy: z.string().optional(),
+    groupingStrategy: z.string().optional(),
+    fallbackData: z.record(z.any()).optional()
+  }).optional().default({})
 });
 
 const bulkOperationSchema = z.object({
@@ -63,6 +100,215 @@ const bulkOperationSchema = z.object({
     artifact: z.union([createArtifactSchema, updateArtifactSchema]).optional(),
     artifactId: z.string().optional()
   })).min(1).max(50) // Limit bulk operations
+});
+
+// =====================================
+// MULTI-ARTIFACT ENDPOINTS (PHASE 5)
+// =====================================
+
+/**
+ * NEW: GET /api/artifacts/by-message/:messageId
+ * Get all artifacts for a specific message (Phase 5)
+ */
+router.get('/by-message/:messageId', async (req, res, next) => {
+  try {
+    const { messageId } = req.params;
+    const { orderBy = 'order', direction = 'asc' } = req.query;
+    
+    console.log(`📋 [ArtifactsAPI] Fetching artifacts for message: ${messageId}`);
+    
+    const artifacts = await artifactService.getArtifactsByMessageId(messageId);
+    
+    // Sort artifacts based on query parameters
+    const sortedArtifacts = artifacts.sort((a, b) => {
+      const field = orderBy as keyof typeof a;
+      const aVal = a[field] ?? 0;
+      const bVal = b[field] ?? 0;
+      
+      if (direction === 'desc') {
+        return aVal < bVal ? 1 : -1;
+      }
+      return aVal > bVal ? 1 : -1;
+    });
+    
+    res.json({
+      success: true,
+      data: {
+        messageId,
+        artifacts: sortedArtifacts,
+        total: sortedArtifacts.length,
+        hasMultipleArtifacts: sortedArtifacts.length > 1,
+        metadata: {
+          groupingStrategy: sortedArtifacts[0]?.metadata?.groupingStrategy,
+          detectionStrategy: sortedArtifacts[0]?.metadata?.detectionStrategy,
+          partOfMultiArtifact: sortedArtifacts.length > 1
+        }
+      },
+      timestamp: new Date()
+    });
+    
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * NEW: POST /api/artifacts/multi-create
+ * Create multiple artifacts in a single request (Phase 5)
+ */
+router.post('/multi-create', async (req, res, next) => {
+  try {
+    console.log(`🎨 [ArtifactsAPI] Creating multiple artifacts`);
+    
+    // Validate request body
+    const validation = multiArtifactCreateSchema.safeParse(req.body);
+    if (!validation.success) {
+      throw new AppError(400, `Invalid multi-artifact data: ${validation.error.errors.map(e => e.message).join(', ')}`);
+    }
+    
+    const { conversationId, messageId, artifacts, originalContent, processedContent, metadata } = validation.data;
+    
+    // Create artifacts sequentially to maintain order
+    const createdArtifacts = [];
+    const errors = [];
+    
+    for (let i = 0; i < artifacts.length; i++) {
+      const artifactData = artifacts[i];
+      
+      try {
+        const createRequest: CreateArtifactRequest = {
+          conversationId,
+          messageId,
+          title: artifactData.title,
+          type: artifactData.type,
+          content: artifactData.content,
+          language: artifactData.language,
+          order: artifactData.order,
+          metadata: {
+            detectionStrategy: metadata?.detectionStrategy || 'multi-artifact-api',
+            originalContent,
+            processedContent,
+            codeBlocksRemoved: true,
+            reconstructionHash: '', // Will be calculated in service
+            syncStatus: 'synced',
+            contentSize: Buffer.from(artifactData.content, 'utf8').length,
+            partOfMultiArtifact: artifacts.length > 1,
+            artifactIndex: i,
+            totalArtifactsInMessage: artifacts.length,
+            groupingStrategy: metadata?.groupingStrategy || 'api-multi-create',
+            fallbackData: metadata?.fallbackData || {}
+          }
+        };
+        
+        const result = await artifactService.createArtifact(createRequest);
+        
+        if (result.success && result.artifact) {
+          createdArtifacts.push(result.artifact);
+        } else {
+          errors.push({
+            index: i,
+            title: artifactData.title,
+            error: result.error || 'Unknown error'
+          });
+        }
+        
+      } catch (error) {
+        console.error(`❌ [ArtifactsAPI] Error creating artifact ${i + 1}:`, error);
+        errors.push({
+          index: i,
+          title: artifactData.title,
+          error: error instanceof Error ? error.message : 'Unknown error'
+        });
+      }
+    }
+    
+    const response: MultiArtifactCreationResponse = {
+      success: errors.length === 0,
+      artifacts: createdArtifacts,
+      processedContent,
+      artifactCount: createdArtifacts.length,
+      errors: errors.length > 0 ? errors : undefined,
+      operation: 'multi-create',
+      timestamp: new Date()
+    };
+    
+    res.status(errors.length === 0 ? 201 : 207).json(response); // 207 Multi-Status if partial success
+    
+    console.log(`✅ [ArtifactsAPI] Multi-artifact creation completed: ${createdArtifacts.length}/${artifacts.length} successful`);
+    
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * NEW: PUT /api/artifacts/by-message/:messageId/reorder
+ * Reorder artifacts within a message (Phase 5)
+ */
+router.put('/by-message/:messageId/reorder', async (req, res, next) => {
+  try {
+    const { messageId } = req.params;
+    const { artifactOrder } = req.body; // Array of { artifactId, order }
+    
+    if (!Array.isArray(artifactOrder)) {
+      throw new AppError(400, 'artifactOrder must be an array');
+    }
+    
+    console.log(`🔄 [ArtifactsAPI] Reordering artifacts for message: ${messageId}`);
+    
+    const results = [];
+    
+    for (const { artifactId, order } of artifactOrder) {
+      if (!artifactId || typeof order !== 'number') {
+        results.push({
+          artifactId,
+          success: false,
+          error: 'Invalid artifactId or order value'
+        });
+        continue;
+      }
+      
+      try {
+        const updateResult = await artifactService.updateArtifact({
+          artifactId,
+          metadata: { artifactIndex: order }
+        });
+        
+        results.push({
+          artifactId,
+          success: updateResult.success,
+          error: updateResult.error,
+          newOrder: order
+        });
+        
+      } catch (error) {
+        results.push({
+          artifactId,
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error'
+        });
+      }
+    }
+    
+    const successCount = results.filter(r => r.success).length;
+    
+    res.json({
+      success: successCount === results.length,
+      data: {
+        messageId,
+        results,
+        summary: {
+          total: results.length,
+          successful: successCount,
+          failed: results.length - successCount
+        }
+      },
+      timestamp: new Date()
+    });
+    
+  } catch (error) {
+    next(error);
+  }
 });
 
 // =====================================
@@ -76,17 +322,52 @@ const bulkOperationSchema = z.object({
 router.get('/conversations/:conversationId', async (req, res, next) => {
   try {
     const { conversationId } = req.params;
+    const { groupByMessage = 'false', orderBy = 'createdAt', direction = 'asc' } = req.query;
     
     console.log(`📋 [ArtifactsAPI] Fetching artifacts for conversation: ${conversationId}`);
     
     const artifacts = await artifactService.getArtifactsForConversation(conversationId);
     
-    res.json({
-      success: true,
-      data: artifacts,
-      total: artifacts.length,
-      timestamp: new Date()
-    });
+    // NEW: Option to group by message ID
+    if (groupByMessage === 'true') {
+      const groupedArtifacts = artifacts.reduce((groups, artifact) => {
+        const messageId = artifact.messageId || 'unknown';
+        if (!groups[messageId]) {
+          groups[messageId] = [];
+        }
+        groups[messageId].push(artifact);
+        return groups;
+      }, {} as Record<string, typeof artifacts>);
+      
+      // Sort within each group
+      Object.keys(groupedArtifacts).forEach(messageId => {
+        groupedArtifacts[messageId].sort((a, b) => {
+          const orderA = a.order ?? a.metadata?.artifactIndex ?? 0;
+          const orderB = b.order ?? b.metadata?.artifactIndex ?? 0;
+          return orderA - orderB;
+        });
+      });
+      
+      res.json({
+        success: true,
+        data: {
+          conversationId,
+          artifactsByMessage: groupedArtifacts,
+          totalArtifacts: artifacts.length,
+          totalMessages: Object.keys(groupedArtifacts).length,
+          messagesWithMultipleArtifacts: Object.values(groupedArtifacts).filter(arr => arr.length > 1).length
+        },
+        timestamp: new Date()
+      });
+    } else {
+      // Regular flat list
+      res.json({
+        success: true,
+        data: artifacts,
+        total: artifacts.length,
+        timestamp: new Date()
+      });
+    }
     
   } catch (error) {
     next(error);
@@ -200,6 +481,8 @@ router.post('/', async (req, res, next) => {
       type: artifactData.type,
       content: artifactData.content,
       language: artifactData.language,
+      order: artifactData.order,
+      groupId: artifactData.groupId,
       metadata: {
         detectionStrategy: artifactData.metadata?.detectionStrategy || 'api_create',
         originalContent: artifactData.metadata?.originalContent || artifactData.content,
@@ -208,6 +491,11 @@ router.post('/', async (req, res, next) => {
         reconstructionHash: '', // Will be calculated in service
         syncStatus: artifactData.metadata?.syncStatus || 'synced',
         contentSize: Buffer.from(artifactData.content, 'utf8').length,
+        // NEW: Multi-artifact metadata
+        partOfMultiArtifact: artifactData.metadata?.partOfMultiArtifact || false,
+        artifactIndex: artifactData.metadata?.artifactIndex,
+        totalArtifactsInMessage: artifactData.metadata?.totalArtifactsInMessage,
+        groupingStrategy: artifactData.metadata?.groupingStrategy,
         fallbackData: artifactData.metadata?.fallbackData || {}
       }
     };
@@ -258,7 +546,11 @@ router.put('/:artifactId', async (req, res, next) => {
       content: updateData.content,
       title: updateData.title,
       description: updateData.description,
-      metadata: updateData.metadata
+      metadata: {
+        ...updateData.metadata,
+        // Handle order updates through metadata if not directly provided
+        ...(updateData.order !== undefined && { artifactIndex: updateData.order })
+      }
     };
     
     // Update artifact
@@ -631,8 +923,15 @@ router.get('/debug/stats', async (req, res, next) => {
       db.artifacts.countDocuments({ 'metadata.syncStatus': 'synced' }),
       db.artifacts.countDocuments({ 'metadata.syncStatus': 'conflict' }),
       db.artifacts.countDocuments({ 'metadata.syncStatus': 'error' }),
+      // NEW: Multi-artifact statistics
+      db.artifacts.countDocuments({ 'metadata.partOfMultiArtifact': true }),
       db.artifacts.aggregate([
         { $group: { _id: null, avgSize: { $avg: '$metadata.contentSize' } } }
+      ]).toArray(),
+      db.artifacts.aggregate([
+        { $group: { _id: '$messageId', count: { $sum: 1 } } },
+        { $match: { count: { $gt: 1 } } },
+        { $count: 'messagesWithMultipleArtifacts' }
       ]).toArray()
     ]);
     
@@ -644,8 +943,11 @@ router.get('/debug/stats', async (req, res, next) => {
         syncedArtifacts: stats[2],
         conflictedArtifacts: stats[3],
         erroredArtifacts: stats[4],
-        averageContentSize: stats[5][0]?.avgSize || 0,
-        compressionRatio: stats[0] > 0 ? (stats[1] / stats[0] * 100).toFixed(2) + '%' : '0%'
+        multiArtifacts: stats[5], // NEW: Multi-artifact count
+        averageContentSize: stats[6][0]?.avgSize || 0,
+        messagesWithMultipleArtifacts: stats[7][0]?.messagesWithMultipleArtifacts || 0, // NEW
+        compressionRatio: stats[0] > 0 ? (stats[1] / stats[0] * 100).toFixed(2) + '%' : '0%',
+        multiArtifactRatio: stats[0] > 0 ? (stats[5] / stats[0] * 100).toFixed(2) + '%' : '0%' // NEW
       },
       timestamp: new Date()
     });
