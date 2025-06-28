@@ -21,7 +21,15 @@ import {
   Table, 
   ExternalLink,
   AlertTriangle,
+  Layers,
+  ChevronRight,
 } from 'lucide-react';
+import { 
+  getArtifactCount, 
+  hasMultipleArtifacts, 
+  getFirstArtifact,
+  isLegacyArtifactFormat 
+} from '@olympian/shared';
 
 interface MessageItemProps {
   message: Message;
@@ -49,19 +57,33 @@ export function MessageItem({
   const { 
     selectArtifact, 
     setArtifactPanelOpen,
-    getArtifactById 
+    getArtifactById,
+    getArtifactsByMessageId,
+    getMessageArtifacts,
+    selectArtifactInMessage,
+    hasMultipleArtifactsInMessage,
   } = useArtifactStore();
 
-  // Get artifact if this message has one using the utility function
-  const artifact = getArtifactForMessage(message);
+  // NEW: Enhanced artifact detection with multi-artifact support (Phase 4)
+  const artifactCount = getArtifactCount(message.metadata);
+  const hasArtifacts = artifactCount > 0;
+  const hasMultipleInMessage = message._id ? hasMultipleArtifactsInMessage(message._id) : hasMultipleArtifacts(message.metadata);
+  const isLegacyFormat = isLegacyArtifactFormat(message.metadata);
+
+  // Get artifacts for this message
+  const messageArtifacts = message._id ? getArtifactsByMessageId(message._id) : [];
+  const firstArtifact = getFirstArtifact(message.metadata);
+  
+  // Legacy fallback
+  const legacyArtifact = getArtifactForMessage(message);
 
   // Get the proper display content for this message
   const displayContent = getDisplayContentForMessage(message);
 
-  // Additional debugging for artifact issues
+  // Enhanced debugging for multi-artifact scenarios
   const shouldShowArtifact = shouldDisplayArtifact(message);
-  const hasArtifactMetadata = !!message.metadata?.hasArtifact;
-  const artifactId = message.metadata?.artifactId;
+  const hasArtifactMetadata = hasArtifacts;
+  const artifactId = firstArtifact?.artifactId || message.metadata?.artifactId;
 
   // Handle typewriter completion
   const handleTypewriterComplete = () => {
@@ -70,16 +92,19 @@ export function MessageItem({
 
   // Debug artifact issues
   useEffect(() => {
-    if (hasArtifactMetadata && artifactId && !artifact) {
-      console.warn('🔍 [MessageItem] Artifact metadata exists but artifact not found:', {
+    if (hasArtifactMetadata && artifactId && messageArtifacts.length === 0 && !legacyArtifact) {
+      console.warn('🔍 [MessageItem] Artifact metadata exists but no artifacts found:', {
         messageId: message._id,
         artifactId,
+        artifactCount,
         hasMetadata: hasArtifactMetadata,
         shouldShow: shouldShowArtifact,
-        availableArtifacts: useArtifactStore.getState().artifacts
+        isLegacy: isLegacyFormat,
+        messageArtifacts: messageArtifacts.length,
+        legacyArtifact: !!legacyArtifact
       });
     }
-  }, [artifact, hasArtifactMetadata, artifactId, shouldShowArtifact, message._id]);
+  }, [messageArtifacts, hasArtifactMetadata, artifactId, shouldShowArtifact, message._id, artifactCount, isLegacyFormat, legacyArtifact]);
 
   const getArtifactIcon = (type: string) => {
     switch (type) {
@@ -102,14 +127,35 @@ export function MessageItem({
     }
   };
 
-  const handleOpenArtifact = () => {
-    if (artifact) {
-      console.log('🎯 [MessageItem] Opening artifact:', {
+  // NEW: Handle opening artifacts with multi-artifact support (Phase 4)
+  const handleOpenArtifacts = () => {
+    if (hasMultipleInMessage && message._id) {
+      // For multiple artifacts, select the first one and open in message context
+      console.log('🎯 [MessageItem] Opening message with multiple artifacts:', {
+        messageId: message._id,
+        artifactCount,
+        artifacts: messageArtifacts.map(a => ({ id: a.id, title: a.title, type: a.type }))
+      });
+      selectArtifactInMessage(message._id, 0);
+      setArtifactPanelOpen(true);
+    } else if (messageArtifacts.length > 0) {
+      // Single artifact from new format
+      const artifact = messageArtifacts[0];
+      console.log('🎯 [MessageItem] Opening single artifact (new format):', {
         artifactId: artifact.id,
         title: artifact.title,
         type: artifact.type
       });
       selectArtifact(artifact);
+      setArtifactPanelOpen(true);
+    } else if (legacyArtifact) {
+      // Legacy single artifact
+      console.log('🎯 [MessageItem] Opening legacy artifact:', {
+        artifactId: legacyArtifact.id,
+        title: legacyArtifact.title,
+        type: legacyArtifact.type
+      });
+      selectArtifact(legacyArtifact);
       setArtifactPanelOpen(true);
     } else if (artifactId) {
       // Fallback: try to find artifact by ID directly
@@ -124,6 +170,44 @@ export function MessageItem({
       }
     }
   };
+
+  // NEW: Get appropriate artifact info for display (Phase 4)
+  const getArtifactDisplayInfo = () => {
+    if (messageArtifacts.length > 0) {
+      return {
+        artifacts: messageArtifacts,
+        hasArtifacts: true,
+        hasMultiple: hasMultipleInMessage,
+        count: artifactCount,
+        missing: false
+      };
+    } else if (legacyArtifact) {
+      return {
+        artifacts: [legacyArtifact],
+        hasArtifacts: true,
+        hasMultiple: false,
+        count: 1,
+        missing: false
+      };
+    } else if (hasArtifactMetadata) {
+      return {
+        artifacts: [],
+        hasArtifacts: true,
+        hasMultiple: false,
+        count: artifactCount,
+        missing: true
+      };
+    }
+    return {
+      artifacts: [],
+      hasArtifacts: false,
+      hasMultiple: false,
+      count: 0,
+      missing: false
+    };
+  };
+
+  const artifactDisplayInfo = getArtifactDisplayInfo();
 
   return (
     <div className="flex flex-col items-center">
@@ -148,21 +232,27 @@ export function MessageItem({
               • {message.metadata.tokens} tokens
             </span>
           )}
-          {/* Artifact indicator */}
-          {hasArtifactMetadata && (
+          
+          {/* NEW: Enhanced artifact indicator with multi-artifact support (Phase 4) */}
+          {artifactDisplayInfo.hasArtifacts && (
             <Badge 
-              variant={artifact ? "secondary" : "destructive"} 
+              variant={artifactDisplayInfo.missing ? "destructive" : "secondary"} 
               className="text-xs flex items-center gap-1"
             >
-              {artifact ? (
+              {artifactDisplayInfo.missing ? (
                 <>
-                  <FileText className="h-3 w-3" />
-                  Artifact
+                  <AlertTriangle className="h-3 w-3" />
+                  {artifactDisplayInfo.count > 1 ? `${artifactDisplayInfo.count} Artifacts Missing` : 'Artifact Missing'}
+                </>
+              ) : artifactDisplayInfo.hasMultiple ? (
+                <>
+                  <Layers className="h-3 w-3" />
+                  {artifactDisplayInfo.count} Artifacts
                 </>
               ) : (
                 <>
-                  <AlertTriangle className="h-3 w-3" />
-                  Artifact Missing
+                  <FileText className="h-3 w-3" />
+                  Artifact
                 </>
               )}
             </Badge>
@@ -241,70 +331,154 @@ export function MessageItem({
             </>
           )}
           
-          {/* Artifact Display - only show for completed messages */}
-          {hasArtifactMetadata && !shouldShowTypewriter && (
+          {/* NEW: Enhanced Artifact Display with multi-artifact support (Phase 4) */}
+          {artifactDisplayInfo.hasArtifacts && !shouldShowTypewriter && (
             <div className="mt-4 p-3 bg-gray-800/50 border border-gray-700 rounded-lg">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  {artifact ? (
+                  {artifactDisplayInfo.missing ? (
                     <>
-                      {(() => {
-                        const IconComponent = getArtifactIcon(artifact.type);
-                        return <IconComponent className="h-4 w-4 text-gray-400" />;
-                      })()}
+                      <AlertTriangle className="h-4 w-4 text-red-400" />
+                      <div>
+                        <div className="text-sm font-medium text-red-200">
+                          {artifactDisplayInfo.count > 1 ? 'Artifacts Not Found' : 'Artifact Not Found'}
+                        </div>
+                        <div className="text-xs text-red-400">
+                          Expected: {artifactDisplayInfo.count} artifact{artifactDisplayInfo.count !== 1 ? 's' : ''}
+                          {artifactId && ` • ID: ${artifactId}`}
+                          {firstArtifact?.artifactType && ` • Type: ${firstArtifact.artifactType}`}
+                        </div>
+                      </div>
+                    </>
+                  ) : artifactDisplayInfo.hasMultiple ? (
+                    <>
+                      <Layers className="h-4 w-4 text-blue-400" />
                       <div>
                         <div className="text-sm font-medium text-gray-200">
-                          {artifact.title}
+                          {artifactDisplayInfo.count} Artifacts Created
                         </div>
                         <div className="text-xs text-gray-400 flex items-center gap-2">
-                          <span className="capitalize">{artifact.type}</span>
-                          {artifact.language && (
-                            <span>• {artifact.language}</span>
-                          )}
-                          <span>• v{artifact.version}</span>
+                          <span>Multiple content items</span>
+                          <span>•</span>
+                          <span className="flex items-center gap-1">
+                            {artifactDisplayInfo.artifacts.slice(0, 3).map((artifact, idx) => {
+                              const IconComponent = getArtifactIcon(artifact.type);
+                              return (
+                                <span key={artifact.id} className="inline-flex items-center">
+                                  <IconComponent className="h-3 w-3" />
+                                  {idx < 2 && idx < artifactDisplayInfo.artifacts.length - 1 && (
+                                    <span className="mx-1">+</span>
+                                  )}
+                                </span>
+                              );
+                            })}
+                            {artifactDisplayInfo.artifacts.length > 3 && (
+                              <span className="text-muted-foreground">+{artifactDisplayInfo.artifacts.length - 3}</span>
+                            )}
+                          </span>
                         </div>
                       </div>
                     </>
                   ) : (
                     <>
-                      <AlertTriangle className="h-4 w-4 text-red-400" />
+                      {(() => {
+                        const artifact = artifactDisplayInfo.artifacts[0];
+                        const IconComponent = getArtifactIcon(artifact.type);
+                        return <IconComponent className="h-4 w-4 text-gray-400" />;
+                      })()}
                       <div>
-                        <div className="text-sm font-medium text-red-200">
-                          Artifact Not Found
+                        <div className="text-sm font-medium text-gray-200">
+                          {artifactDisplayInfo.artifacts[0].title}
                         </div>
-                        <div className="text-xs text-red-400">
-                          ID: {artifactId} • Type: {message.metadata?.artifactType || 'unknown'}
+                        <div className="text-xs text-gray-400 flex items-center gap-2">
+                          <span className="capitalize">{artifactDisplayInfo.artifacts[0].type}</span>
+                          {artifactDisplayInfo.artifacts[0].language && (
+                            <span>• {artifactDisplayInfo.artifacts[0].language}</span>
+                          )}
+                          <span>• v{artifactDisplayInfo.artifacts[0].version}</span>
                         </div>
                       </div>
                     </>
                   )}
                 </div>
+                
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={handleOpenArtifact}
-                  disabled={!artifact && !artifactId}
+                  onClick={handleOpenArtifacts}
+                  disabled={artifactDisplayInfo.missing}
                   className={cn(
                     "flex items-center gap-1",
-                    artifact 
-                      ? "text-gray-300 hover:text-white hover:bg-gray-700"
-                      : "text-red-300 hover:text-red-200 hover:bg-red-900/20"
+                    artifactDisplayInfo.missing
+                      ? "text-red-300 hover:text-red-200 hover:bg-red-900/20"
+                      : artifactDisplayInfo.hasMultiple
+                        ? "text-blue-300 hover:text-blue-200 hover:bg-blue-900/20"
+                        : "text-gray-300 hover:text-white hover:bg-gray-700"
                   )}
                 >
-                  <ExternalLink className="h-4 w-4" />
-                  {artifact ? "Open" : "Debug"}
+                  {artifactDisplayInfo.missing ? (
+                    <>
+                      <AlertTriangle className="h-4 w-4" />
+                      Debug
+                    </>
+                  ) : artifactDisplayInfo.hasMultiple ? (
+                    <>
+                      <Layers className="h-4 w-4" />
+                      View All
+                      <ChevronRight className="h-3 w-3" />
+                    </>
+                  ) : (
+                    <>
+                      <ExternalLink className="h-4 w-4" />
+                      Open
+                    </>
+                  )}
                 </Button>
               </div>
               
+              {/* NEW: Multi-artifact preview (Phase 4) */}
+              {artifactDisplayInfo.hasMultiple && !artifactDisplayInfo.missing && (
+                <div className="mt-3 pt-3 border-t border-gray-600">
+                  <div className="flex flex-wrap gap-2">
+                    {artifactDisplayInfo.artifacts.slice(0, 4).map((artifact, index) => {
+                      const IconComponent = getArtifactIcon(artifact.type);
+                      return (
+                        <div 
+                          key={artifact.id} 
+                          className="flex items-center gap-1 px-2 py-1 bg-gray-700/50 rounded text-xs"
+                        >
+                          <IconComponent className="h-3 w-3 text-gray-400" />
+                          <span className="text-gray-300 max-w-[100px] truncate">
+                            {artifact.title}
+                          </span>
+                          <span className="text-gray-500">
+                            {artifact.type}
+                          </span>
+                        </div>
+                      );
+                    })}
+                    {artifactDisplayInfo.artifacts.length > 4 && (
+                      <div className="flex items-center gap-1 px-2 py-1 bg-gray-700/30 rounded text-xs text-gray-400">
+                        +{artifactDisplayInfo.artifacts.length - 4} more
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+              
               {/* Debug info for missing artifacts */}
-              {!artifact && artifactId && (
+              {artifactDisplayInfo.missing && (
                 <div className="mt-2 p-2 bg-red-900/20 border border-red-800 rounded text-xs text-red-300">
                   <div className="font-medium">Debug Info:</div>
-                  <div>Expected Artifact ID: {artifactId}</div>
-                  <div>Message ID: {message._id}</div>
+                  <div>Expected Artifact Count: {artifactDisplayInfo.count}</div>
+                  {artifactId && <div>Primary Artifact ID: {artifactId}</div>}
+                  {message._id && <div>Message ID: {message._id}</div>}
                   <div>Conversation ID: {message.conversationId}</div>
                   <div>Has Original Content: {!!message.metadata?.originalContent}</div>
                   <div>Code Blocks Removed: {!!message.metadata?.codeBlocksRemoved}</div>
+                  <div>Legacy Format: {isLegacyFormat ? 'Yes' : 'No'}</div>
+                  <div>Message Artifacts Found: {messageArtifacts.length}</div>
+                  <div>Legacy Artifact Found: {legacyArtifact ? 'Yes' : 'No'}</div>
                 </div>
               )}
             </div>
