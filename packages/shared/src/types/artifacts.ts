@@ -13,6 +13,9 @@ export interface Artifact {
   // Enhanced properties for subproject 3
   checksum?: string; // Content integrity hash
   confidence?: number; // Confidence score (0-1) for artifact detection/creation
+  // NEW: Multi-artifact support (Phase 1)
+  order?: number; // Display order when multiple artifacts exist
+  groupId?: string; // Optional grouping identifier for related artifacts
 }
 
 // NEW: Enhanced document type for database storage
@@ -39,6 +42,7 @@ export type ArtifactType =
 
 export type ArtifactViewMode = 'code' | 'preview' | 'split';
 
+// UPDATED: Enhanced for multi-artifact detection (Phase 2)
 export interface ArtifactDetectionResult {
   shouldCreateArtifact: boolean;
   type?: ArtifactType;
@@ -48,6 +52,69 @@ export interface ArtifactDetectionResult {
   // New fields for subproject 3 - prose-only chat mode
   processedContent?: string; // Content with code blocks removed for chat display
   codeBlocksRemoved?: boolean; // Flag indicating if code blocks were removed
+  // NEW: Multi-artifact detection fields (Phase 2)
+  artifacts?: Array<{
+    type: ArtifactType;
+    title: string;
+    language?: string;
+    content: string;
+    startIndex: number;
+    endIndex: number;
+    confidence: number; // 0-1 confidence score
+  }>;
+  totalArtifacts?: number;
+  detectionStrategy?: string;
+  smartGrouping?: {
+    groupedByLanguage: boolean;
+    groupedByType: boolean;
+    explicitSeparation: boolean;
+  };
+}
+
+// NEW: Multi-artifact creation request (Phase 3)
+export interface MultiArtifactCreationRequest {
+  conversationId: string;
+  messageId: string;
+  artifacts: Array<{
+    title: string;
+    type: ArtifactType;
+    content: string;
+    language?: string;
+    order: number;
+  }>;
+  originalContent: string;
+  processedContent: string;
+  metadata?: Partial<ArtifactMetadata>;
+}
+
+// NEW: Multi-artifact creation response (Phase 3)
+export interface MultiArtifactCreationResponse {
+  success: boolean;
+  artifacts: Artifact[];
+  processedContent: string;
+  artifactCount: number;
+  errors?: Array<{
+    index: number;
+    title: string;
+    error: string;
+  }>;
+  operation: 'multi-create';
+  timestamp: Date;
+}
+
+// NEW: Batch artifact operations (Phase 3)
+export interface BatchArtifactOperation {
+  operation: 'create' | 'update' | 'delete';
+  artifacts: Array<{
+    id?: string; // For update/delete operations
+    title?: string;
+    type?: ArtifactType;
+    content?: string;
+    language?: string;
+    order?: number;
+  }>;
+  conversationId: string;
+  messageId?: string;
 }
 
 export interface ArtifactVersion {
@@ -71,6 +138,13 @@ export interface ArtifactMessageMetadata {
   // New fields for subproject 3
   originalContent?: string; // Original content before code block removal
   codeBlocksRemoved?: boolean; // Whether code blocks were removed for prose-only display
+  // NEW: Multi-artifact metadata (Phase 1)
+  artifacts?: Array<{
+    artifactId: string;
+    artifactType: ArtifactType;
+    order: number;
+  }>;
+  artifactCount?: number;
 }
 
 // Sync status type for better type safety
@@ -87,6 +161,12 @@ export interface ArtifactMetadata {
   originalContent: string; // Original content before processing
   reconstructionHash: string; // Hash for reconstruction verification
   contentSize: number; // Content size in bytes
+  
+  // NEW: Multi-artifact specific metadata (Phase 1)
+  partOfMultiArtifact?: boolean; // Whether this artifact is part of a multi-artifact message
+  artifactIndex?: number; // Index in the multi-artifact array
+  totalArtifactsInMessage?: number; // Total number of artifacts in the same message
+  groupingStrategy?: string; // Strategy used for grouping (language, type, explicit, etc.)
   
   // Performance optimizations
   compressed?: boolean;
@@ -190,6 +270,14 @@ export interface ArtifactStatistics {
     averageRecreationTime: number; // ms
     totalProcessingTime: number; // ms
   };
+  // NEW: Multi-artifact statistics (Phase 1)
+  multiArtifactStats: {
+    messagesWithMultipleArtifacts: number;
+    averageArtifactsPerMessage: number;
+    maxArtifactsInSingleMessage: number;
+    commonGroupingStrategies: string[];
+    groupingSuccessRate: number; // 0-1
+  };
   lastUpdated: Date;
 }
 
@@ -203,6 +291,9 @@ export interface CreateArtifactRequest {
   conversationId: string;
   messageId?: string;
   metadata?: Partial<ArtifactMetadata>;
+  // NEW: Multi-artifact support (Phase 1)
+  order?: number; // Display order for multi-artifact messages
+  groupId?: string; // Optional grouping identifier
 }
 
 export interface UpdateArtifactRequest {
@@ -218,13 +309,21 @@ export interface ArtifactOperationResponse {
   success: boolean;
   artifact?: Artifact;
   error?: string;
-  operation: 'create' | 'update' | 'delete' | 'get' | 'list';
+  operation: 'create' | 'update' | 'delete' | 'get' | 'list' | 'multi-create';
   timestamp: Date;
   // Multi-host specific fields
   version?: number; // Add version field that was being used
   instanceId?: string;
   syncStatus?: ArtifactSyncStatus;
   conflictData?: ArtifactConflictResolution;
+  // NEW: Multi-artifact operation fields (Phase 3)
+  artifacts?: Artifact[]; // For multi-artifact operations
+  artifactCount?: number;
+  batchResults?: Array<{
+    success: boolean;
+    artifact?: Artifact;
+    error?: string;
+  }>;
 }
 
 export interface ArtifactHealthCheck {
@@ -249,6 +348,12 @@ export interface ArtifactHealthCheck {
       artifactCount: number;
       syncLatency: number;
     };
+  };
+  // NEW: Multi-artifact health metrics (Phase 1)
+  multiArtifactHealth?: {
+    orphanedArtifacts: number; // Artifacts without valid message references
+    inconsistentGrouping: number; // Artifacts with incorrect order/grouping
+    duplicateArtifacts: number; // Potential duplicate content
   };
 }
 
@@ -325,4 +430,69 @@ export interface ArtifactMigrationData {
     backupLocation: string;
     canRollback: boolean;
   };
+  // NEW: Multi-artifact migration fields (Phase 1)
+  multiArtifactSupport?: {
+    enabled: boolean;
+    migrationStrategy: 'progressive' | 'batch' | 'lazy';
+    batchSize: number;
+    preserveOrdering: boolean;
+  };
+}
+
+// NEW: Multi-artifact utility constants and functions (Phase 6)
+export const MULTI_ARTIFACT_CONFIG = {
+  MAX_ARTIFACTS_PER_MESSAGE: 10,
+  MIN_CONTENT_SIZE: 20,
+  GROUPING_STRATEGIES: [
+    'language-based',
+    'type-based', 
+    'explicit-separation',
+    'size-based',
+    'sequence-based'
+  ],
+  SEPARATION_MARKERS: [
+    'File 1:', 'File 2:', 'Script A:', 'Script B:',
+    '---', '===', '## ', '### ',
+    'Part 1:', 'Part 2:', 'Section ',
+    '1.', '2.', '3.', '4.', '5.'
+  ]
+} as const;
+
+// Smart grouping logic helpers
+export function shouldGroupArtifacts(
+  artifact1: { type: ArtifactType; language?: string; content: string },
+  artifact2: { type: ArtifactType; language?: string; content: string }
+): boolean {
+  // Same language and type - consider grouping
+  if (artifact1.type === artifact2.type && artifact1.language === artifact2.language) {
+    // But not if content is very different in size (likely separate files)
+    const sizeDiff = Math.abs(artifact1.content.length - artifact2.content.length);
+    const averageSize = (artifact1.content.length + artifact2.content.length) / 2;
+    return sizeDiff / averageSize < 0.5; // Less than 50% size difference
+  }
+  return false;
+}
+
+export function detectSeparationMarkers(content: string): number {
+  const markers = MULTI_ARTIFACT_CONFIG.SEPARATION_MARKERS;
+  return markers.reduce((count, marker) => {
+    const regex = new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+    const matches = content.match(regex);
+    return count + (matches ? matches.length : 0);
+  }, 0);
+}
+
+export function generateArtifactTitle(
+  baseTitle: string, 
+  index: number, 
+  total: number,
+  language?: string
+): string {
+  if (total === 1) return baseTitle;
+  
+  if (language) {
+    return `${language.charAt(0).toUpperCase()}${language.slice(1)} ${baseTitle} (${index + 1} of ${total})`;
+  }
+  
+  return `${baseTitle} (${index + 1} of ${total})`;
 }
