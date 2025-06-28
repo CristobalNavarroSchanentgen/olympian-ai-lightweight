@@ -333,6 +333,40 @@ export class ArtifactService {
   }
 
   /**
+   * FIXED: Get all artifacts for a specific message ID
+   * This method was missing and causing TypeScript compilation errors
+   */
+  public async getArtifactsByMessageId(messageId: string): Promise<Artifact[]> {
+    try {
+      console.log(`📋 [ArtifactService] Fetching artifacts for message: ${messageId}`);
+      
+      const artifacts = await this.db.artifacts
+        .find({ messageId })
+        .sort({ 'metadata.artifactIndex': 1, createdAt: 1 })
+        .toArray();
+
+      // Decompress content and update access time
+      const decompressedArtifacts = artifacts.map(artifact => {
+        const decompressed = this.decompressContent(artifact);
+        
+        // Update last accessed time (async, don't wait)
+        this.updateLastAccessTime(artifact.id).catch(error => {
+          console.warn(`⚠️ [ArtifactService] Failed to update access time for ${artifact.id}:`, error);
+        });
+        
+        return this.convertDocumentToArtifact(decompressed);
+      });
+
+      console.log(`✅ [ArtifactService] Retrieved ${decompressedArtifacts.length} artifacts for message`);
+      return decompressedArtifacts;
+
+    } catch (error) {
+      console.error(`❌ [ArtifactService] Failed to fetch artifacts for message:`, error);
+      return [];
+    }
+  }
+
+  /**
    * Get all artifacts for a conversation with decompression
    */
   public async getArtifactsForConversation(conversationId: string): Promise<Artifact[]> {
