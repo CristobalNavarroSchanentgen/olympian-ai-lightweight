@@ -19,12 +19,13 @@ import {
   MultiArtifactCreationResponse,
   ArtifactDetectionResult,
   MULTI_ARTIFACT_CONFIG,
-  MAX_ARTIFACTS_PER_MESSAGE,
-  MIN_ARTIFACT_CONTENT_SIZE,
   detectSeparationMarkers,
   shouldGroupArtifacts,
   generateArtifactTitle,
-  ArtifactReference
+  ArtifactReference,
+  validateArtifactCreationRules,
+  detectDuplicateArtifacts,
+  calculateContentHash
 } from '@olympian/shared';
 
 const router = Router();
@@ -157,8 +158,8 @@ function detectMultiArtifactContent(content: string): ArtifactDetectionResult {
     const startIndex = match.index || 0;
     const endIndex = startIndex + match[0].length;
 
-    // Skip if content is too small
-    if (code.length < MIN_ARTIFACT_CONTENT_SIZE) {
+    // Phase 6: Skip if content is too small (using correct constant)
+    if (code.length < MULTI_ARTIFACT_CONFIG.MIN_CONTENT_SIZE) {
       console.log(`⏭️ [MultiArtifactDetection] Skipping small code block (${code.length} chars)`);
       continue;
     }
@@ -228,6 +229,39 @@ function detectMultiArtifactContent(content: string): ArtifactDetectionResult {
     }
   }
 
+  // Phase 6: Validate artifact creation rules before processing
+  const validation = validateArtifactCreationRules(detectedArtifacts);
+  if (!validation.valid) {
+    console.warn(`⚠️ [MultiArtifactDetection] Validation errors: ${validation.errors.join(', ')}`);
+    // Filter out artifacts that are too small
+    const validArtifacts = detectedArtifacts.filter(artifact => 
+      artifact.content.length >= MULTI_ARTIFACT_CONFIG.MIN_CONTENT_SIZE
+    );
+    // Limit to maximum allowed
+    const limitedArtifacts = validArtifacts.slice(0, MULTI_ARTIFACT_CONFIG.MAX_ARTIFACTS_PER_MESSAGE);
+    
+    if (limitedArtifacts.length < detectedArtifacts.length) {
+      console.warn(`⚠️ [MultiArtifactDetection] Filtered ${detectedArtifacts.length - limitedArtifacts.length} artifacts due to validation rules`);
+    }
+    
+    // Update detectedArtifacts with filtered results
+    detectedArtifacts.length = 0;
+    detectedArtifacts.push(...limitedArtifacts);
+  }
+
+  // Phase 6: Enhanced duplicate detection
+  const duplicates = detectDuplicateArtifacts(detectedArtifacts);
+  if (duplicates.length > 0) {
+    console.warn(`⚠️ [MultiArtifactDetection] Found ${duplicates.length} potential duplicates`);
+    // Remove duplicates (keep originals)
+    const duplicateIndices = new Set(duplicates.map(d => d.index));
+    const uniqueArtifacts = detectedArtifacts.filter((_, index) => !duplicateIndices.has(index));
+    
+    console.log(`🎯 [MultiArtifactDetection] Removed ${duplicates.length} duplicates, ${uniqueArtifacts.length} unique artifacts remain`);
+    detectedArtifacts.length = 0;
+    detectedArtifacts.push(...uniqueArtifacts);
+  }
+
   // 3. Phase 2: Apply smart grouping rules
   const groupedArtifacts = applySmartGrouping(detectedArtifacts, hasExplicitSeparation);
   console.log(`🎯 [MultiArtifactDetection] After grouping: ${groupedArtifacts.length} artifacts (was ${detectedArtifacts.length})`);
@@ -235,10 +269,10 @@ function detectMultiArtifactContent(content: string): ArtifactDetectionResult {
   // 4. Remove all detected artifacts from content for prose display
   processedContent = removeArtifactsFromContent(content, groupedArtifacts);
 
-  // 5. Limit to maximum allowed artifacts
-  const finalArtifacts = groupedArtifacts.slice(0, MAX_ARTIFACTS_PER_MESSAGE);
-  if (groupedArtifacts.length > MAX_ARTIFACTS_PER_MESSAGE) {
-    console.warn(`⚠️ [MultiArtifactDetection] Limited to ${MAX_ARTIFACTS_PER_MESSAGE} artifacts (found ${groupedArtifacts.length})`);
+  // 5. Phase 6: Final limit to maximum allowed artifacts (using correct constant)
+  const finalArtifacts = groupedArtifacts.slice(0, MULTI_ARTIFACT_CONFIG.MAX_ARTIFACTS_PER_MESSAGE);
+  if (groupedArtifacts.length > MULTI_ARTIFACT_CONFIG.MAX_ARTIFACTS_PER_MESSAGE) {
+    console.warn(`⚠️ [MultiArtifactDetection] Limited to ${MULTI_ARTIFACT_CONFIG.MAX_ARTIFACTS_PER_MESSAGE} artifacts (found ${groupedArtifacts.length})`);
   }
 
   const shouldCreateArtifacts = finalArtifacts.length > 0;
@@ -439,6 +473,9 @@ async function createMultiArtifactsFromResponse(
       const detectedArtifact = detection.artifacts[i];
       
       try {
+        // Phase 6: Enhanced metadata with content hash for duplicate detection
+        const contentHash = calculateContentHash(detectedArtifact.content);
+        
         // Create artifact request
         const createRequest: CreateArtifactRequest = {
           conversationId,
@@ -460,6 +497,9 @@ async function createMultiArtifactsFromResponse(
             artifactIndex: i,
             totalArtifactsInMessage: detection.artifacts!.length,
             groupingStrategy: detection.detectionStrategy,
+            // Phase 6: Enhanced metadata for duplicate detection
+            contentHash,
+            isDuplicate: false,
             fallbackData: {
               detectionMethod: 'multi-artifact-regex-pattern-matching',
               originalLength: content.length,
