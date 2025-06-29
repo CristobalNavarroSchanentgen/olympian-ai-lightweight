@@ -10,7 +10,6 @@ import {
   FileText, 
   ChevronLeft, 
   ChevronRight, 
-  MoreHorizontal,
   ArrowLeft,
   ArrowRight,
   Layers,
@@ -23,14 +22,12 @@ import { cn } from '@/lib/utils';
 
 // NEW: Multi-artifact tab component (Phase 4)
 function ArtifactTabs({ 
-  messageId, 
   artifacts, 
   selectedIndex, 
   onSelectArtifact,
   collapsed,
   onToggleCollapse 
 }: {
-  messageId: string;
   artifacts: any[];
   selectedIndex: number;
   onSelectArtifact: (index: number) => void;
@@ -333,7 +330,6 @@ export function ArtifactPanel() {
       {/* NEW: Multi-artifact tabs for current message (Phase 4) */}
       {currentMessageArtifacts && showArtifactTabs && hasMultipleInCurrentMessage && (
         <ArtifactTabs
-          messageId={selectedMessageId!}
           artifacts={currentMessageArtifacts.artifacts}
           selectedIndex={selectedArtifactIndex}
           onSelectArtifact={(index) => selectArtifactInMessage(selectedMessageId!, index)}
