@@ -10,11 +10,7 @@ import {
   ArtifactHealthCheck,
   ArtifactMigrationData,
   MultiArtifactCreationRequest,
-  MultiArtifactCreationResponse,
-  ArtifactReference,
-  getArtifactCount,
-  hasMultipleArtifacts,
-  getFirstArtifact
+  MultiArtifactCreationResponse
 } from '@olympian/shared';
 import { api } from '@/services/api';
 
@@ -413,8 +409,8 @@ export const useArtifactStore = create<ArtifactState>()(
         try {
           const artifactsResponse = await api.getArtifactsByMessageId(messageId);
           
-          if (!artifactsResponse.success || !artifactsResponse.data.artifacts) {
-            throw new Error(artifactsResponse.error || 'Failed to load artifacts for message');
+          if (!artifactsResponse.success) {
+            throw new Error('Failed to load artifacts for message');
           }
           
           const clientArtifacts = artifactsResponse.data.artifacts.map(serverArtifactToClient);
