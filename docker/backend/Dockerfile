@@ -57,10 +57,13 @@ LABEL description="Olympian AI Lightweight Backend"
 # Install curl for debugging (keeping for manual health checks if needed)
 RUN apk add --no-cache curl
 
-# Install production dependencies only
+# Copy package files - including shared package.json for proper workspace setup
 COPY package*.json ./
+COPY packages/shared/package*.json ./packages/shared/
 COPY packages/server/package*.json ./packages/server/
-RUN npm install --production --workspace=packages/server
+
+# Install production dependencies for both workspaces
+RUN npm install --production --workspace=packages/shared --workspace=packages/server
 
 # Copy built files from build stage
 COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
@@ -79,6 +82,9 @@ RUN echo "=== Final Backend Verification ===" && \
     echo "" && \
     echo "Built files:" && \
     ls -la packages/server/dist/ packages/shared/dist/ && \
+    echo "" && \
+    echo "Node modules structure:" && \
+    ls -la node_modules/@olympian/ || echo "No @olympian scope found" && \
     echo "" && \
     echo "Build info:" && \
     cat /app/build_info.txt && \
