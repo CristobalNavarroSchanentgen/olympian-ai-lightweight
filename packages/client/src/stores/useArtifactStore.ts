@@ -179,8 +179,16 @@ function generateArtifactId(): string {
   return `artifact_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 }
 
-// Convert server ArtifactDocument to client Artifact
-function serverArtifactToClient(serverArtifact: ArtifactDocument): Artifact {
+// FIXED: Convert server ArtifactDocument OR client Artifact to client Artifact
+// This function now handles both types to fix the TypeScript error
+function serverArtifactToClient(source: ArtifactDocument | Artifact): Artifact {
+  // If it's already a client Artifact, return it as-is (with proper type assertion)
+  if ('createdAt' in source && source.createdAt instanceof Date) {
+    return source as Artifact;
+  }
+  
+  // Otherwise, convert from server format (ArtifactDocument)
+  const serverArtifact = source as ArtifactDocument;
   return {
     id: serverArtifact.id,
     title: serverArtifact.title,
