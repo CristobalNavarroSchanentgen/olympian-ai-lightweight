@@ -59,7 +59,6 @@ export function MessageItem({
     setArtifactPanelOpen,
     getArtifactById,
     getArtifactsByMessageId,
-    getMessageArtifacts,
     selectArtifactInMessage,
     hasMultipleArtifactsInMessage,
   } = useArtifactStore();
@@ -268,11 +267,11 @@ export function MessageItem({
           {/* Images */}
           {message.images && message.images.length > 0 && (
             <div className="grid grid-cols-2 gap-2 mb-2">
-              {message.images.map((image, index) => (
+              {message.images.map((image, imageIndex) => (
                 <img
-                  key={index}
+                  key={imageIndex}
                   src={`data:image/jpeg;base64,${image}`}
-                  alt={`Message image ${index + 1}`}
+                  alt={`Message image ${imageIndex + 1}`}
                   className="rounded-lg w-full h-32 object-cover"
                 />
               ))}
@@ -361,12 +360,12 @@ export function MessageItem({
                           <span>Multiple content items</span>
                           <span>•</span>
                           <span className="flex items-center gap-1">
-                            {artifactDisplayInfo.artifacts.slice(0, 3).map((artifact, idx) => {
+                            {artifactDisplayInfo.artifacts.slice(0, 3).map((artifact, artifactIdx) => {
                               const IconComponent = getArtifactIcon(artifact.type);
                               return (
                                 <span key={artifact.id} className="inline-flex items-center">
                                   <IconComponent className="h-3 w-3" />
-                                  {idx < 2 && idx < artifactDisplayInfo.artifacts.length - 1 && (
+                                  {artifactIdx < 2 && artifactIdx < artifactDisplayInfo.artifacts.length - 1 && (
                                     <span className="mx-1">+</span>
                                   )}
                                 </span>
@@ -440,7 +439,7 @@ export function MessageItem({
               {artifactDisplayInfo.hasMultiple && !artifactDisplayInfo.missing && (
                 <div className="mt-3 pt-3 border-t border-gray-600">
                   <div className="flex flex-wrap gap-2">
-                    {artifactDisplayInfo.artifacts.slice(0, 4).map((artifact, index) => {
+                    {artifactDisplayInfo.artifacts.slice(0, 4).map((artifact) => {
                       const IconComponent = getArtifactIcon(artifact.type);
                       return (
                         <div 
