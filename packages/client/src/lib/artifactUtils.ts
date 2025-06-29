@@ -220,7 +220,7 @@ export function getArtifactTypesForMessage(message: Message): {
   const artifacts = getArtifactsForMessage(message);
   
   const types = [...new Set(artifacts.map(a => a.type))];
-  const languages = [...new Set(artifacts.map(a => a.language).filter(Boolean))];
+  const languages = [...new Set(artifacts.map(a => a.language).filter((lang): lang is string => lang !== undefined))];
   
   let displayText = '';
   if (types.length === 1) {
