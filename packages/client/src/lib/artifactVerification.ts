@@ -631,6 +631,14 @@ export function verifyConversationArtifacts(artifacts: Artifact[]): ArtifactStat
       averageRecreationTime: 0,
       totalProcessingTime: 0
     },
+    // NEW: Multi-artifact statistics (Phase 1) - Added missing property
+    multiArtifactStats: {
+      messagesWithMultipleArtifacts: 0,
+      averageArtifactsPerMessage: 0,
+      maxArtifactsInSingleMessage: 0,
+      commonGroupingStrategies: [],
+      groupingSuccessRate: 0
+    },
     lastUpdated: new Date()
   };
 
@@ -642,6 +650,9 @@ export function verifyConversationArtifacts(artifacts: Artifact[]): ArtifactStat
 
   let totalIntegrityScore = 0;
   const allIssues: string[] = [];
+
+  // Group artifacts by message for multi-artifact analysis
+  const artifactsByMessage = new Map<string, Artifact[]>();
 
   // Analyze each artifact
   for (const artifact of artifacts) {
@@ -661,6 +672,35 @@ export function verifyConversationArtifacts(artifacts: Artifact[]): ArtifactStat
     if (artifact.confidence !== undefined) {
       stats.recreationStats.averageConfidence += artifact.confidence;
     }
+
+    // Group by message for multi-artifact analysis
+    if (artifact.messageId) {
+      if (!artifactsByMessage.has(artifact.messageId)) {
+        artifactsByMessage.set(artifact.messageId, []);
+      }
+      artifactsByMessage.get(artifact.messageId)!.push(artifact);
+    }
+  }
+
+  // Calculate multi-artifact statistics
+  let totalMessagesWithMultiple = 0;
+  let totalArtifactsInMessages = 0;
+  let maxArtifactsInMessage = 0;
+
+  for (const [, messageArtifacts] of artifactsByMessage) {
+    if (messageArtifacts.length > 1) {
+      totalMessagesWithMultiple++;
+    }
+    totalArtifactsInMessages += messageArtifacts.length;
+    maxArtifactsInMessage = Math.max(maxArtifactsInMessage, messageArtifacts.length);
+  }
+
+  stats.multiArtifactStats.messagesWithMultipleArtifacts = totalMessagesWithMultiple;
+  stats.multiArtifactStats.maxArtifactsInSingleMessage = maxArtifactsInMessage;
+  
+  if (artifactsByMessage.size > 0) {
+    stats.multiArtifactStats.averageArtifactsPerMessage = totalArtifactsInMessages / artifactsByMessage.size;
+    stats.multiArtifactStats.groupingSuccessRate = totalMessagesWithMultiple / artifactsByMessage.size;
   }
 
   // Calculate averages
