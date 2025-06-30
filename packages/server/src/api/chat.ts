@@ -112,60 +112,6 @@ async function getModelCapabilitiesWithFallback(modelName: string): Promise<Mode
   }
 }
 
-// NEW: Enhanced thinking data processing helper
-function processAndValidateThinkingData(content: string): {
-  originalContent: string;
-  processedContent: string;
-  thinkingData: ThinkingData | null;
-  hasThinking: boolean;
-} {
-  console.log(`🧠 [ChatAPI] processAndValidateThinkingData called with content length: ${content.length}`);
-  
-  const thinkingResult = parseThinkingFromContent(content);
-  
-  if (thinkingResult.hasThinking) {
-    console.log(`✅ [ChatAPI] Thinking content found:`, {
-      originalLength: content.length,
-      processedLength: thinkingResult.processedContent.length,
-      thinkingLength: thinkingResult.thinkingContent.length,
-      hasThinkingData: !!thinkingResult.thinkingData
-    });
-
-    // Validate thinking data structure
-    const thinkingData = thinkingResult.thinkingData;
-    if (thinkingData && thinkingData.hasThinking && thinkingData.content) {
-      console.log(`✅ [ChatAPI] Thinking data validation passed:`, {
-        hasThinking: thinkingData.hasThinking,
-        contentLength: thinkingData.content.length,
-        processedAt: thinkingData.processedAt
-      });
-      
-      return {
-        originalContent: content,
-        processedContent: thinkingResult.processedContent,
-        thinkingData: thinkingData,
-        hasThinking: true
-      };
-    } else {
-      console.warn(`⚠️ [ChatAPI] Thinking data validation failed:`, {
-        thinkingData,
-        hasField: !!thinkingData,
-        hasThinkingField: thinkingData?.hasThinking,
-        hasContent: !!thinkingData?.content
-      });
-    }
-  } else {
-    console.log(`ℹ️ [ChatAPI] No thinking content found in message`);
-  }
-
-  return {
-    originalContent: content,
-    processedContent: content,
-    thinkingData: null,
-    hasThinking: false
-  };
-}
-
 // =====================================================
 // PHASE 2: ENHANCED MULTI-ARTIFACT DETECTION LOGIC
 // =====================================================
@@ -189,13 +135,13 @@ function detectMultiArtifactContent(content: string): ArtifactDetectionResult {
   let processedContent = content;
   
   // Enhanced regex patterns for different artifact types
-  const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g;
+  const codeBlockRegex = /```(\\w+)?\\n([\\s\\S]*?)```/g;
   const htmlRegex = /<!DOCTYPE html|<html|<div|<p>|<span>|<h[1-6]>/i;
-  const svgRegex = /<svg[\s\S]*?<\/svg>/gi;
-  const jsonRegex = /```json\n([\s\S]*?)```/g;
-  const csvRegex = /```csv\n([\s\S]*?)```/g;
-  const reactRegex = /```(jsx?|tsx?)\n([\s\S]*?)```/g;
-  const mermaidRegex = /```mermaid\n([\s\S]*?)```/g;
+  const svgRegex = /<svg[\\s\\S]*?<\\/svg>/gi;
+  const jsonRegex = /```json\\n([\\s\\S]*?)```/g;
+  const csvRegex = /```csv\\n([\\s\\S]*?)```/g;
+  const reactRegex = /```(jsx?|tsx?)\\n([\\s\\S]*?)```/g;
+  const mermaidRegex = /```mermaid\\n([\\s\\S]*?)```/g;
 
   // Phase 2: Detect separation markers for explicit artifact separation
   const separationMarkerCount = detectSeparationMarkers(content);
@@ -409,7 +355,7 @@ function applySmartGrouping(
       grouped.push(current);
     } else {
       // Multiple artifacts to group
-      const combinedContent = candidates.map(c => c.content).join('\n\n');
+      const combinedContent = candidates.map(c => c.content).join('\\n\\n');
       const groupedArtifact = {
         ...current,
         title: generateArtifactTitle(`${current.language || current.type} Collection`, 0, 1, current.language),
@@ -651,7 +597,7 @@ async function createArtifactFromResponse(
 // ENHANCED STREAMING ENDPOINT WITH THINKING
 // =====================================
 
-// NEW: Streaming endpoint for basic models with typewriter effect + multi-artifact creation + thinking processing
+// ENHANCED: Streaming endpoint for basic models with typewriter effect + multi-artifact creation + thinking processing
 router.post('/stream', async (req, res, next) => {
   try {
     // Validate input
@@ -678,7 +624,7 @@ router.post('/stream', async (req, res, next) => {
     });
 
     // Send initial event to confirm connection
-    res.write(`data: ${JSON.stringify({ type: 'connected' })}\n\n`);
+    res.write(`data: ${JSON.stringify({ type: 'connected' })}\\n\\n`);
 
     try {
       // Get or create conversation
@@ -717,7 +663,7 @@ router.post('/stream', async (req, res, next) => {
         type: 'conversation', 
         conversation,
         conversationId: convId 
-      })}\n\n`);
+      })}\\n\\n`);
 
       // Process the request WITHOUT saving the user message first
       // This prevents duplicate messages in the conversation history
@@ -730,16 +676,16 @@ router.post('/stream', async (req, res, next) => {
       });
 
       // Send thinking state
-      res.write(`data: ${JSON.stringify({ type: 'thinking', isThinking: true })}\n\n`);
+      res.write(`data: ${JSON.stringify({ type: 'thinking', isThinking: true })}\\n\\n`);
 
       // Start streaming response
       let assistantContent = '';
       const startTime = Date.now();
       let tokenCount = 0;
 
-      res.write(`data: ${JSON.stringify({ type: 'streaming_start' })}\n\n`);
+      res.write(`data: ${JSON.stringify({ type: 'streaming_start' })}\\n\\n`);
 
-      // NEW: Enhanced streamChat with thinking processing
+      // ENHANCED: Enhanced streamChat with thinking processing
       await streamliner.streamChat(
         processedRequest, 
         (token: string) => {
@@ -751,27 +697,27 @@ router.post('/stream', async (req, res, next) => {
             type: 'token', 
             token,
             content: assistantContent 
-          })}\n\n`);
+          })}\\n\\n`);
         },
-        // NEW: onComplete callback for thinking processing
+        // ENHANCED: onComplete callback for thinking processing
         (result) => {
           console.log('🧠 [ChatAPI] Stream completed, processing thinking content...');
           
-          // Process thinking if present
+          // FIXED: Process thinking if present and send event to frontend
           if (result.thinking?.hasThinking) {
             console.log(`✅ [ChatAPI] Thinking content detected (${result.thinking.thinkingContent.length} chars)`);
             
-            // Send thinking content to client - FIXED: Ensure proper data structure
+            // FIXED: Send thinking_detected event to frontend
             res.write(`data: ${JSON.stringify({ 
               type: 'thinking_detected',
               thinking: result.thinking.thinkingData
-            })}\n\n`);
+            })}\\n\\n`);
           }
         }
       );
 
       // Send streaming end
-      res.write(`data: ${JSON.stringify({ type: 'streaming_end' })}\n\n`);
+      res.write(`data: ${JSON.stringify({ type: 'streaming_end' })}\\n\\n`);
 
       // NOW save both messages AFTER the response is generated
       // This ensures the conversation history is correct for the next request
@@ -785,29 +731,30 @@ router.post('/stream', async (req, res, next) => {
       const userResult = await db.messages.insertOne(userMessage as any);
       const userMessageId = userResult.insertedId.toString();
 
-      // NEW: Enhanced thinking processing with validation
-      const thinkingData = processAndValidateThinkingData(assistantContent);
+      // ENHANCED: Process thinking content before saving assistant message
+      const thinkingResult = parseThinkingFromContent(assistantContent);
+      let finalAssistantContent = assistantContent;
+      let thinkingData: ThinkingData | undefined = undefined;
       
-      console.log(`🧠 [ChatAPI] Streaming thinking processing result:`, {
-        hasThinking: thinkingData.hasThinking,
-        originalLength: thinkingData.originalContent.length,
-        processedLength: thinkingData.processedContent.length,
-        thinkingDataExists: !!thinkingData.thinkingData
-      });
+      if (thinkingResult.hasThinking) {
+        console.log(`🧠 [ChatAPI] Processing thinking content for database storage`);
+        finalAssistantContent = thinkingResult.processedContent;
+        thinkingData = thinkingResult.thinkingData;
+      }
 
       // Save assistant message and create artifacts
       const assistantMessageDoc: MessageDoc = {
         conversationId: convId,
         role: 'assistant' as const,
-        content: thinkingData.processedContent, // Will be updated after artifact processing
+        content: finalAssistantContent, // Will be updated after artifact processing
         metadata: {
           model,
           visionModel,
           tokens: tokenCount,
           generationTime: Date.now() - startTime,
-          // NEW: Enhanced thinking metadata with validation
-          thinking: thinkingData.thinkingData,
-          originalContentWithThinking: thinkingData.hasThinking ? thinkingData.originalContent : undefined,
+          // ENHANCED: Add thinking metadata
+          thinking: thinkingData,
+          originalContentWithThinking: thinkingResult.hasThinking ? assistantContent : undefined,
         },
         createdAt: new Date(),
       };
@@ -818,7 +765,7 @@ router.post('/stream', async (req, res, next) => {
       // NEW: Create multi-artifacts and update message content
       console.log(`🎨 [ChatAPI] Processing assistant response for multi-artifacts...`);
       const artifactResult = await createMultiArtifactsFromResponse(
-        thinkingData.processedContent, // Use content without thinking tags
+        finalAssistantContent, // Use content without thinking tags
         convId,
         assistantMessageId
       );
@@ -835,7 +782,7 @@ router.post('/stream', async (req, res, next) => {
               'metadata.artifactCount': artifactResult.artifactCount,
               'metadata.artifactCreationStrategy': artifactResult.creationStrategy,
               'metadata.multipleCodeBlocks': artifactResult.artifactCount > 1,
-              'metadata.originalContent': thinkingData.processedContent,
+              'metadata.originalContent': finalAssistantContent,
               'metadata.codeBlocksRemoved': true,
               // Legacy compatibility
               'metadata.artifactId': artifactResult.artifacts[0]?.artifactId,
@@ -855,7 +802,7 @@ router.post('/stream', async (req, res, next) => {
             artifactType: artifact.artifactType,
             title: artifact.title,
             order: artifact.order
-          })}\n\n`);
+          })}\\n\\n`);
         }
       }
 
@@ -868,43 +815,35 @@ router.post('/stream', async (req, res, next) => {
         }
       );
 
-      // Send final completion event with thinking data - FIXED: Include thinking data properly
-      const finalMetadata = {
-        ...assistantMessageDoc.metadata,
-        artifacts: artifactResult.artifacts,
-        hasArtifact: artifactResult.hasArtifact,
-        artifactCount: artifactResult.artifactCount,
-        artifactCreationStrategy: artifactResult.creationStrategy,
-        multipleCodeBlocks: artifactResult.artifactCount > 1,
-        originalContent: artifactResult.hasArtifact ? thinkingData.processedContent : undefined,
-        codeBlocksRemoved: artifactResult.hasArtifact,
-        // Legacy compatibility
-        artifactId: artifactResult.artifacts[0]?.artifactId,
-        artifactType: artifactResult.artifacts[0]?.artifactType,
-        // NEW: Enhanced thinking data inclusion
-        thinking: thinkingData.thinkingData,
-        originalContentWithThinking: thinkingData.hasThinking ? thinkingData.originalContent : undefined
-      };
-
-      console.log(`🧠 [ChatAPI] Final response metadata thinking data:`, {
-        hasThinking: !!finalMetadata.thinking,
-        thinkingHasThinking: finalMetadata.thinking?.hasThinking,
-        thinkingContentLength: finalMetadata.thinking?.content?.length || 0
-      });
-
+      // ENHANCED: Send final completion event with thinking data
       res.write(`data: ${JSON.stringify({ 
         type: 'complete',
-        message: artifactResult.processedContent || thinkingData.processedContent,
-        metadata: finalMetadata,
+        message: artifactResult.processedContent || finalAssistantContent,
+        metadata: {
+          ...assistantMessageDoc.metadata,
+          artifacts: artifactResult.artifacts,
+          hasArtifact: artifactResult.hasArtifact,
+          artifactCount: artifactResult.artifactCount,
+          artifactCreationStrategy: artifactResult.creationStrategy,
+          multipleCodeBlocks: artifactResult.artifactCount > 1,
+          originalContent: artifactResult.hasArtifact ? finalAssistantContent : undefined,
+          codeBlocksRemoved: artifactResult.hasArtifact,
+          // Legacy compatibility
+          artifactId: artifactResult.artifacts[0]?.artifactId,
+          artifactType: artifactResult.artifacts[0]?.artifactType,
+          // ENHANCED: Include thinking data in response
+          thinking: thinkingData,
+          originalContentWithThinking: thinkingResult.hasThinking ? assistantContent : undefined
+        },
         conversationId: convId 
-      })}\n\n`);
+      })}\\n\\n`);
 
     } catch (streamError) {
       console.error('Streaming error:', streamError);
       res.write(`data: ${JSON.stringify({ 
         type: 'error', 
         error: streamError instanceof Error ? streamError.message : 'Unknown error' 
-      })}\n\n`);
+      })}\\n\\n`);
     }
 
     res.end();
@@ -917,7 +856,7 @@ router.post('/stream', async (req, res, next) => {
 // ENHANCED SEND MESSAGE ENDPOINT WITH THINKING
 // =====================================
 
-// Send a chat message (HTTP fallback for WebSocket) + multi-artifact creation + thinking processing
+// ENHANCED: Send a chat message (HTTP fallback for WebSocket) + multi-artifact creation + thinking processing
 router.post('/send', async (req, res, next) => {
   try {
     // Validate input
@@ -972,33 +911,35 @@ router.post('/send', async (req, res, next) => {
     let assistantContent = '';
     const startTime = Date.now();
     let tokenCount = 0;
+    let thinkingData: ThinkingData | undefined = undefined;
 
-    // NEW: Enhanced streamChat with thinking processing for non-streaming endpoint
+    // ENHANCED: Enhanced streamChat with thinking processing for non-streaming endpoint
     await streamliner.streamChat(
       processedRequest, 
       (token: string) => {
         assistantContent += token;
         tokenCount++;
       },
-      // NEW: onComplete callback for thinking processing
+      // ENHANCED: onComplete callback for thinking processing
       (result) => {
         console.log('🧠 [ChatAPI] Non-streaming request completed, processing thinking content...');
         
         if (result.thinking?.hasThinking) {
           console.log(`✅ [ChatAPI] Thinking content detected (${result.thinking.thinkingContent.length} chars)`);
+          thinkingData = result.thinking.thinkingData;
         }
       }
     );
 
-    // NEW: Enhanced thinking processing with validation
-    const thinkingData = processAndValidateThinkingData(assistantContent);
+    // ENHANCED: Process thinking content
+    const thinkingResult = parseThinkingFromContent(assistantContent);
+    let finalAssistantContent = assistantContent;
     
-    console.log(`🧠 [ChatAPI] Non-streaming thinking processing result:`, {
-      hasThinking: thinkingData.hasThinking,
-      originalLength: thinkingData.originalContent.length,
-      processedLength: thinkingData.processedContent.length,
-      thinkingDataExists: !!thinkingData.thinkingData
-    });
+    if (thinkingResult.hasThinking) {
+      console.log(`🧠 [ChatAPI] Processing thinking content for database storage`);
+      finalAssistantContent = thinkingResult.processedContent;
+      thinkingData = thinkingResult.thinkingData;
+    }
 
     // Save both messages AFTER generating the response
     const userMessage: MessageDoc = {
@@ -1014,15 +955,15 @@ router.post('/send', async (req, res, next) => {
     const assistantMessageDoc: MessageDoc = {
       conversationId: convId,
       role: 'assistant' as const,
-      content: thinkingData.processedContent,
+      content: finalAssistantContent,
       metadata: {
         model,
         visionModel,
         tokens: tokenCount,
         generationTime: Date.now() - startTime,
-        // NEW: Enhanced thinking metadata with validation
-        thinking: thinkingData.thinkingData,
-        originalContentWithThinking: thinkingData.hasThinking ? thinkingData.originalContent : undefined,
+        // ENHANCED: Add thinking metadata
+        thinking: thinkingData,
+        originalContentWithThinking: thinkingResult.hasThinking ? assistantContent : undefined,
       },
       createdAt: new Date(),
     };
@@ -1033,13 +974,13 @@ router.post('/send', async (req, res, next) => {
     // NEW: Create multi-artifacts and update message content
     console.log(`🎨 [ChatAPI] Processing assistant response for multi-artifacts...`);
     const artifactResult = await createMultiArtifactsFromResponse(
-      thinkingData.processedContent, // Use content without thinking tags
+      finalAssistantContent, // Use content without thinking tags
       convId,
       assistantMessageId
     );
 
     // Update assistant message with multi-artifact metadata if artifacts were created
-    let finalContent = thinkingData.processedContent;
+    let finalContent = finalAssistantContent;
     let finalMetadata = assistantMessageDoc.metadata;
     
     if (artifactResult.hasArtifact) {
@@ -1051,7 +992,7 @@ router.post('/send', async (req, res, next) => {
         artifactCount: artifactResult.artifactCount,
         artifactCreationStrategy: artifactResult.creationStrategy,
         multipleCodeBlocks: artifactResult.artifactCount > 1,
-        originalContent: thinkingData.processedContent,
+        originalContent: finalAssistantContent,
         codeBlocksRemoved: true,
         // Legacy compatibility
         artifactId: artifactResult.artifacts[0]?.artifactId,
@@ -1081,36 +1022,26 @@ router.post('/send', async (req, res, next) => {
       }
     );
 
-    // Prepare final response data with enhanced thinking information
-    const responseData = {
-      conversation,
-      conversationId: convId,
-      message: finalContent,
-      metadata: finalMetadata,
-      // NEW: Include multi-artifact information in response
-      artifacts: artifactResult.hasArtifact ? artifactResult.artifacts : undefined,
-      artifactCount: artifactResult.artifactCount,
-      // Legacy artifact information for backward compatibility
-      artifact: artifactResult.hasArtifact ? {
-        id: artifactResult.artifacts[0]?.artifactId,
-        type: artifactResult.artifacts[0]?.artifactType
-      } : undefined,
-      // NEW: Enhanced thinking data inclusion
-      thinking: thinkingData.thinkingData,
-      originalContentWithThinking: thinkingData.hasThinking ? thinkingData.originalContent : undefined
-    };
-
-    console.log(`🧠 [ChatAPI] Final response thinking data:`, {
-      hasThinking: !!responseData.thinking,
-      thinkingHasThinking: responseData.thinking?.hasThinking,
-      thinkingContentLength: responseData.thinking?.content?.length || 0,
-      metadataThinking: !!responseData.metadata.thinking
-    });
-
-    // Return response with proper conversation object and thinking data
+    // ENHANCED: Return response with proper conversation object and thinking data
     res.json({
       success: true,
-      data: responseData,
+      data: {
+        conversation,
+        conversationId: convId,
+        message: finalContent,
+        metadata: finalMetadata,
+        // NEW: Include multi-artifact information in response
+        artifacts: artifactResult.hasArtifact ? artifactResult.artifacts : undefined,
+        artifactCount: artifactResult.artifactCount,
+        // Legacy artifact information for backward compatibility
+        artifact: artifactResult.hasArtifact ? {
+          id: artifactResult.artifacts[0]?.artifactId,
+          type: artifactResult.artifacts[0]?.artifactType
+        } : undefined,
+        // ENHANCED: Include thinking data in response
+        thinking: thinkingData,
+        originalContentWithThinking: thinkingResult.hasThinking ? assistantContent : undefined
+      },
       timestamp: new Date(),
     });
   } catch (error) {
@@ -1201,25 +1132,10 @@ router.get('/conversations/:id/messages', async (req, res, next) => {
       // Continue without artifacts rather than failing the entire request
     }
 
-    // NEW: Enhanced message formatting with thinking data validation
-    const formattedMessages = messages.map(message => {
-      const formatted = formatMessage(message);
-      
-      // Validate thinking data structure in response
-      if (formatted.metadata?.thinking) {
-        console.log(`🧠 [ChatAPI] Message ${formatted._id} has thinking data:`, {
-          hasThinking: formatted.metadata.thinking.hasThinking,
-          contentLength: formatted.metadata.thinking.content?.length || 0
-        });
-      }
-      
-      return formatted;
-    });
-
     res.json({
       success: true,
       data: {
-        messages: formattedMessages,
+        messages: messages.map(formatMessage),
         artifacts: artifacts // NEW: Include artifacts in response
       },
       page: Number(page),
