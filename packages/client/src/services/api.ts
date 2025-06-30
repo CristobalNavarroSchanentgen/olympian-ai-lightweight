@@ -39,9 +39,9 @@ interface ProgressiveUpdate {
   error?: string;
 }
 
-// Streaming event types for basic models - ENHANCED with artifact events and thinking
+// ENHANCED: Streaming event types for basic models with thinking support
 interface StreamingEvent {
-  type: 'connected' | 'conversation' | 'thinking' | 'thinking_detected' | 'streaming_start' | 'token' | 'streaming_end' | 'complete' | 'error' | 'artifact_created';
+  type: 'connected' | 'conversation' | 'thinking' | 'streaming_start' | 'token' | 'streaming_end' | 'complete' | 'error' | 'artifact_created' | 'thinking_detected';
   conversation?: Conversation;
   conversationId?: string;
   isThinking?: boolean;
@@ -473,7 +473,7 @@ class ApiService {
   // ENHANCED STREAMING WITH MULTI-ARTIFACTS AND THINKING
   // =====================================
 
-  // NEW: Streaming API for basic models with enhanced artifact and thinking support
+  // ENHANCED: Streaming API for basic models with thinking support
   async sendMessageStreaming(
     params: {
       message: string;
@@ -501,6 +501,7 @@ class ApiService {
     });
   }
 
+  // ENHANCED: Stream handling with thinking support
   private async streamWithFetch(
     params: {
       message: string;
@@ -511,6 +512,8 @@ class ApiService {
     },
     onEvent: (event: StreamingEvent) => void
   ): Promise<void> {
+    console.log('🌊 [API] Starting enhanced streaming with thinking support...');
+    
     const response = await fetch('/api/chat/stream', {
       method: 'POST',
       headers: {
@@ -535,29 +538,28 @@ class ApiService {
         const { done, value } = await reader.read();
         
         if (done) {
+          console.log('🌊 [API] Stream completed');
           break;
         }
 
         const chunk = decoder.decode(value);
-        const lines = chunk.split('\n');
+        const lines = chunk.split('\\n');
 
         for (const line of lines) {
           if (line.startsWith('data: ')) {
             try {
-              const eventData = JSON.parse(line.slice(6));
+              const eventData = JSON.parse(line.slice(6)) as StreamingEvent;
               
-              // NEW: Enhanced event handling with thinking support
-              if (eventData.type === 'thinking_detected' && eventData.thinking) {
-                console.log(`🧠 [API] Received thinking data from stream:`, {
-                  hasThinking: eventData.thinking.hasThinking,
-                  contentLength: eventData.thinking.content?.length || 0,
-                  processedAt: eventData.thinking.processedAt
+              // ENHANCED: Enhanced thinking event handling
+              if (eventData.type === 'thinking_detected') {
+                console.log('🧠 [API] Thinking content detected during streaming:', {
+                  hasThinking: eventData.thinking?.hasThinking,
+                  contentLength: eventData.thinking?.content?.length,
+                  processedAt: eventData.thinking?.processedAt
                 });
               }
               
-              onEvent(eventData);
-              
-              // NEW: Enhanced artifact creation event handling (Phase 5)
+              // Enhanced artifact creation event handling (Phase 5)
               if (eventData.type === 'artifact_created') {
                 console.log(`🎨 [API] Artifact created during streaming:`, {
                   id: eventData.artifactId,
@@ -566,14 +568,24 @@ class ApiService {
                   order: eventData.order
                 });
               }
+
+              // Enhanced thinking state event handling
+              if (eventData.type === 'thinking') {
+                console.log(`🧠 [API] Thinking state change:`, {
+                  isThinking: eventData.isThinking
+                });
+              }
+
+              onEvent(eventData);
             } catch (error) {
-              console.warn('Failed to parse streaming event:', error);
+              console.warn('⚠️ [API] Failed to parse streaming event:', error);
             }
           }
         }
       }
     } finally {
       reader.releaseLock();
+      console.log('🌊 [API] Stream reader released');
     }
   }
 
@@ -581,7 +593,7 @@ class ApiService {
   // ENHANCED CHAT API WITH MULTI-ARTIFACTS AND THINKING
   // =====================================
 
-  // Chat API - ENHANCED with multi-artifact and thinking support
+  // ENHANCED: Chat API with thinking support
   async sendMessage(params: {
     message: string;
     model: string;
@@ -637,7 +649,7 @@ class ApiService {
       } : undefined,
     });
 
-    // NEW: Enhanced artifact and thinking logging
+    // ENHANCED: Enhanced artifact and thinking logging
     if (data.data!.artifacts && data.data!.artifacts.length > 0) {
       console.log(`🎨 [API] ${data.data!.artifacts.length} artifacts created:`, 
         data.data!.artifacts.map(a => `${a.artifactId} (${a.artifactType})`));
@@ -645,12 +657,11 @@ class ApiService {
       console.log(`🎨 [API] Artifact created: ${data.data!.artifact.id} (${data.data!.artifact.type})`);
     }
 
-    // NEW: Thinking data logging
-    if (data.data!.thinking) {
-      console.log(`🧠 [API] Thinking data received:`, {
-        hasThinking: data.data!.thinking.hasThinking,
-        contentLength: data.data!.thinking.content?.length || 0,
-        processedAt: data.data!.thinking.processedAt
+    if (data.data!.thinking?.hasThinking) {
+      console.log(`🧠 [API] Thinking content received:`, {
+        contentLength: data.data!.thinking.content?.length,
+        processedAt: data.data!.thinking.processedAt,
+        hasOriginalContent: !!data.data!.originalContentWithThinking
       });
     }
 
@@ -736,7 +747,7 @@ class ApiService {
     return data.data!;
   }
 
-  // ENHANCED: Get messages with artifacts and thinking data
+  // ENHANCED: Get messages with artifacts
   async getMessages(conversationId: string, page = 1, limit = 50): Promise<{ messages: Message[]; artifacts: ArtifactDocument[]; total: number }> {
     console.log(`📋 [API] Getting messages with artifacts for conversation: ${conversationId}`);
     
@@ -757,18 +768,6 @@ class ApiService {
       // New format - messages and artifacts
       const response = data.data as MessagesWithArtifactsResponse;
       console.log(`✅ [API] Received enhanced response with ${response.messages?.length || 0} messages and ${response.artifacts?.length || 0} artifacts`);
-      
-      // NEW: Enhanced message thinking data logging
-      response.messages?.forEach((message, index) => {
-        if (message.metadata?.thinking) {
-          console.log(`🧠 [API] Message ${index} has thinking data:`, {
-            messageId: message._id,
-            hasThinking: message.metadata.thinking.hasThinking,
-            contentLength: message.metadata.thinking.content?.length || 0
-          });
-        }
-      });
-      
       return { 
         messages: response.messages || [], 
         artifacts: response.artifacts || [], 
