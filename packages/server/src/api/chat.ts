@@ -112,6 +112,60 @@ async function getModelCapabilitiesWithFallback(modelName: string): Promise<Mode
   }
 }
 
+// NEW: Enhanced thinking data processing helper
+function processAndValidateThinkingData(content: string): {
+  originalContent: string;
+  processedContent: string;
+  thinkingData: ThinkingData | null;
+  hasThinking: boolean;
+} {
+  console.log(`🧠 [ChatAPI] processAndValidateThinkingData called with content length: ${content.length}`);
+  
+  const thinkingResult = parseThinkingFromContent(content);
+  
+  if (thinkingResult.hasThinking) {
+    console.log(`✅ [ChatAPI] Thinking content found:`, {
+      originalLength: content.length,
+      processedLength: thinkingResult.processedContent.length,
+      thinkingLength: thinkingResult.thinkingContent.length,
+      hasThinkingData: !!thinkingResult.thinkingData
+    });
+
+    // Validate thinking data structure
+    const thinkingData = thinkingResult.thinkingData;
+    if (thinkingData && thinkingData.hasThinking && thinkingData.content) {
+      console.log(`✅ [ChatAPI] Thinking data validation passed:`, {
+        hasThinking: thinkingData.hasThinking,
+        contentLength: thinkingData.content.length,
+        processedAt: thinkingData.processedAt
+      });
+      
+      return {
+        originalContent: content,
+        processedContent: thinkingResult.processedContent,
+        thinkingData: thinkingData,
+        hasThinking: true
+      };
+    } else {
+      console.warn(`⚠️ [ChatAPI] Thinking data validation failed:`, {
+        thinkingData,
+        hasField: !!thinkingData,
+        hasThinkingField: thinkingData?.hasThinking,
+        hasContent: !!thinkingData?.content
+      });
+    }
+  } else {
+    console.log(`ℹ️ [ChatAPI] No thinking content found in message`);
+  }
+
+  return {
+    originalContent: content,
+    processedContent: content,
+    thinkingData: null,
+    hasThinking: false
+  };
+}
+
 // =====================================================
 // PHASE 2: ENHANCED MULTI-ARTIFACT DETECTION LOGIC
 // =====================================================
@@ -707,7 +761,7 @@ router.post('/stream', async (req, res, next) => {
           if (result.thinking?.hasThinking) {
             console.log(`✅ [ChatAPI] Thinking content detected (${result.thinking.thinkingContent.length} chars)`);
             
-            // Send thinking content to client
+            // Send thinking content to client - FIXED: Ensure proper data structure
             res.write(`data: ${JSON.stringify({ 
               type: 'thinking_detected',
               thinking: result.thinking.thinkingData
@@ -731,30 +785,29 @@ router.post('/stream', async (req, res, next) => {
       const userResult = await db.messages.insertOne(userMessage as any);
       const userMessageId = userResult.insertedId.toString();
 
-      // NEW: Process thinking content before saving assistant message
-      const thinkingResult = parseThinkingFromContent(assistantContent);
-      let finalAssistantContent = assistantContent;
-      let thinkingData: ThinkingData | undefined = undefined;
+      // NEW: Enhanced thinking processing with validation
+      const thinkingData = processAndValidateThinkingData(assistantContent);
       
-      if (thinkingResult.hasThinking) {
-        console.log(`🧠 [ChatAPI] Processing thinking content for database storage`);
-        finalAssistantContent = thinkingResult.processedContent;
-        thinkingData = thinkingResult.thinkingData;
-      }
+      console.log(`🧠 [ChatAPI] Streaming thinking processing result:`, {
+        hasThinking: thinkingData.hasThinking,
+        originalLength: thinkingData.originalContent.length,
+        processedLength: thinkingData.processedContent.length,
+        thinkingDataExists: !!thinkingData.thinkingData
+      });
 
       // Save assistant message and create artifacts
       const assistantMessageDoc: MessageDoc = {
         conversationId: convId,
         role: 'assistant' as const,
-        content: finalAssistantContent, // Will be updated after artifact processing
+        content: thinkingData.processedContent, // Will be updated after artifact processing
         metadata: {
           model,
           visionModel,
           tokens: tokenCount,
           generationTime: Date.now() - startTime,
-          // NEW: Add thinking metadata
-          thinking: thinkingData,
-          originalContentWithThinking: thinkingResult.hasThinking ? assistantContent : undefined,
+          // NEW: Enhanced thinking metadata with validation
+          thinking: thinkingData.thinkingData,
+          originalContentWithThinking: thinkingData.hasThinking ? thinkingData.originalContent : undefined,
         },
         createdAt: new Date(),
       };
@@ -765,7 +818,7 @@ router.post('/stream', async (req, res, next) => {
       // NEW: Create multi-artifacts and update message content
       console.log(`🎨 [ChatAPI] Processing assistant response for multi-artifacts...`);
       const artifactResult = await createMultiArtifactsFromResponse(
-        finalAssistantContent, // Use content without thinking tags
+        thinkingData.processedContent, // Use content without thinking tags
         convId,
         assistantMessageId
       );
@@ -782,7 +835,7 @@ router.post('/stream', async (req, res, next) => {
               'metadata.artifactCount': artifactResult.artifactCount,
               'metadata.artifactCreationStrategy': artifactResult.creationStrategy,
               'metadata.multipleCodeBlocks': artifactResult.artifactCount > 1,
-              'metadata.originalContent': finalAssistantContent,
+              'metadata.originalContent': thinkingData.processedContent,
               'metadata.codeBlocksRemoved': true,
               // Legacy compatibility
               'metadata.artifactId': artifactResult.artifacts[0]?.artifactId,
@@ -815,26 +868,34 @@ router.post('/stream', async (req, res, next) => {
         }
       );
 
-      // Send final completion event with thinking data
+      // Send final completion event with thinking data - FIXED: Include thinking data properly
+      const finalMetadata = {
+        ...assistantMessageDoc.metadata,
+        artifacts: artifactResult.artifacts,
+        hasArtifact: artifactResult.hasArtifact,
+        artifactCount: artifactResult.artifactCount,
+        artifactCreationStrategy: artifactResult.creationStrategy,
+        multipleCodeBlocks: artifactResult.artifactCount > 1,
+        originalContent: artifactResult.hasArtifact ? thinkingData.processedContent : undefined,
+        codeBlocksRemoved: artifactResult.hasArtifact,
+        // Legacy compatibility
+        artifactId: artifactResult.artifacts[0]?.artifactId,
+        artifactType: artifactResult.artifacts[0]?.artifactType,
+        // NEW: Enhanced thinking data inclusion
+        thinking: thinkingData.thinkingData,
+        originalContentWithThinking: thinkingData.hasThinking ? thinkingData.originalContent : undefined
+      };
+
+      console.log(`🧠 [ChatAPI] Final response metadata thinking data:`, {
+        hasThinking: !!finalMetadata.thinking,
+        thinkingHasThinking: finalMetadata.thinking?.hasThinking,
+        thinkingContentLength: finalMetadata.thinking?.content?.length || 0
+      });
+
       res.write(`data: ${JSON.stringify({ 
         type: 'complete',
-        message: artifactResult.processedContent || finalAssistantContent,
-        metadata: {
-          ...assistantMessageDoc.metadata,
-          artifacts: artifactResult.artifacts,
-          hasArtifact: artifactResult.hasArtifact,
-          artifactCount: artifactResult.artifactCount,
-          artifactCreationStrategy: artifactResult.creationStrategy,
-          multipleCodeBlocks: artifactResult.artifactCount > 1,
-          originalContent: artifactResult.hasArtifact ? finalAssistantContent : undefined,
-          codeBlocksRemoved: artifactResult.hasArtifact,
-          // Legacy compatibility
-          artifactId: artifactResult.artifacts[0]?.artifactId,
-          artifactType: artifactResult.artifacts[0]?.artifactType,
-          // NEW: Include thinking data in response
-          thinking: thinkingData,
-          originalContentWithThinking: thinkingResult.hasThinking ? assistantContent : undefined
-        },
+        message: artifactResult.processedContent || thinkingData.processedContent,
+        metadata: finalMetadata,
         conversationId: convId 
       })}\n\n`);
 
@@ -911,7 +972,6 @@ router.post('/send', async (req, res, next) => {
     let assistantContent = '';
     const startTime = Date.now();
     let tokenCount = 0;
-    let thinkingData: ThinkingData | undefined = undefined;
 
     // NEW: Enhanced streamChat with thinking processing for non-streaming endpoint
     await streamliner.streamChat(
@@ -926,20 +986,19 @@ router.post('/send', async (req, res, next) => {
         
         if (result.thinking?.hasThinking) {
           console.log(`✅ [ChatAPI] Thinking content detected (${result.thinking.thinkingContent.length} chars)`);
-          thinkingData = result.thinking.thinkingData;
         }
       }
     );
 
-    // NEW: Process thinking content
-    const thinkingResult = parseThinkingFromContent(assistantContent);
-    let finalAssistantContent = assistantContent;
+    // NEW: Enhanced thinking processing with validation
+    const thinkingData = processAndValidateThinkingData(assistantContent);
     
-    if (thinkingResult.hasThinking) {
-      console.log(`🧠 [ChatAPI] Processing thinking content for database storage`);
-      finalAssistantContent = thinkingResult.processedContent;
-      thinkingData = thinkingResult.thinkingData;
-    }
+    console.log(`🧠 [ChatAPI] Non-streaming thinking processing result:`, {
+      hasThinking: thinkingData.hasThinking,
+      originalLength: thinkingData.originalContent.length,
+      processedLength: thinkingData.processedContent.length,
+      thinkingDataExists: !!thinkingData.thinkingData
+    });
 
     // Save both messages AFTER generating the response
     const userMessage: MessageDoc = {
@@ -955,15 +1014,15 @@ router.post('/send', async (req, res, next) => {
     const assistantMessageDoc: MessageDoc = {
       conversationId: convId,
       role: 'assistant' as const,
-      content: finalAssistantContent,
+      content: thinkingData.processedContent,
       metadata: {
         model,
         visionModel,
         tokens: tokenCount,
         generationTime: Date.now() - startTime,
-        // NEW: Add thinking metadata
-        thinking: thinkingData,
-        originalContentWithThinking: thinkingResult.hasThinking ? assistantContent : undefined,
+        // NEW: Enhanced thinking metadata with validation
+        thinking: thinkingData.thinkingData,
+        originalContentWithThinking: thinkingData.hasThinking ? thinkingData.originalContent : undefined,
       },
       createdAt: new Date(),
     };
@@ -974,13 +1033,13 @@ router.post('/send', async (req, res, next) => {
     // NEW: Create multi-artifacts and update message content
     console.log(`🎨 [ChatAPI] Processing assistant response for multi-artifacts...`);
     const artifactResult = await createMultiArtifactsFromResponse(
-      finalAssistantContent, // Use content without thinking tags
+      thinkingData.processedContent, // Use content without thinking tags
       convId,
       assistantMessageId
     );
 
     // Update assistant message with multi-artifact metadata if artifacts were created
-    let finalContent = finalAssistantContent;
+    let finalContent = thinkingData.processedContent;
     let finalMetadata = assistantMessageDoc.metadata;
     
     if (artifactResult.hasArtifact) {
@@ -992,7 +1051,7 @@ router.post('/send', async (req, res, next) => {
         artifactCount: artifactResult.artifactCount,
         artifactCreationStrategy: artifactResult.creationStrategy,
         multipleCodeBlocks: artifactResult.artifactCount > 1,
-        originalContent: finalAssistantContent,
+        originalContent: thinkingData.processedContent,
         codeBlocksRemoved: true,
         // Legacy compatibility
         artifactId: artifactResult.artifacts[0]?.artifactId,
@@ -1022,26 +1081,36 @@ router.post('/send', async (req, res, next) => {
       }
     );
 
+    // Prepare final response data with enhanced thinking information
+    const responseData = {
+      conversation,
+      conversationId: convId,
+      message: finalContent,
+      metadata: finalMetadata,
+      // NEW: Include multi-artifact information in response
+      artifacts: artifactResult.hasArtifact ? artifactResult.artifacts : undefined,
+      artifactCount: artifactResult.artifactCount,
+      // Legacy artifact information for backward compatibility
+      artifact: artifactResult.hasArtifact ? {
+        id: artifactResult.artifacts[0]?.artifactId,
+        type: artifactResult.artifacts[0]?.artifactType
+      } : undefined,
+      // NEW: Enhanced thinking data inclusion
+      thinking: thinkingData.thinkingData,
+      originalContentWithThinking: thinkingData.hasThinking ? thinkingData.originalContent : undefined
+    };
+
+    console.log(`🧠 [ChatAPI] Final response thinking data:`, {
+      hasThinking: !!responseData.thinking,
+      thinkingHasThinking: responseData.thinking?.hasThinking,
+      thinkingContentLength: responseData.thinking?.content?.length || 0,
+      metadataThinking: !!responseData.metadata.thinking
+    });
+
     // Return response with proper conversation object and thinking data
     res.json({
       success: true,
-      data: {
-        conversation,
-        conversationId: convId,
-        message: finalContent,
-        metadata: finalMetadata,
-        // NEW: Include multi-artifact information in response
-        artifacts: artifactResult.hasArtifact ? artifactResult.artifacts : undefined,
-        artifactCount: artifactResult.artifactCount,
-        // Legacy artifact information for backward compatibility
-        artifact: artifactResult.hasArtifact ? {
-          id: artifactResult.artifacts[0]?.artifactId,
-          type: artifactResult.artifacts[0]?.artifactType
-        } : undefined,
-        // NEW: Include thinking data in response
-        thinking: thinkingData,
-        originalContentWithThinking: thinkingResult.hasThinking ? assistantContent : undefined
-      },
+      data: responseData,
       timestamp: new Date(),
     });
   } catch (error) {
@@ -1132,10 +1201,25 @@ router.get('/conversations/:id/messages', async (req, res, next) => {
       // Continue without artifacts rather than failing the entire request
     }
 
+    // NEW: Enhanced message formatting with thinking data validation
+    const formattedMessages = messages.map(message => {
+      const formatted = formatMessage(message);
+      
+      // Validate thinking data structure in response
+      if (formatted.metadata?.thinking) {
+        console.log(`🧠 [ChatAPI] Message ${formatted._id} has thinking data:`, {
+          hasThinking: formatted.metadata.thinking.hasThinking,
+          contentLength: formatted.metadata.thinking.content?.length || 0
+        });
+      }
+      
+      return formatted;
+    });
+
     res.json({
       success: true,
       data: {
-        messages: messages.map(formatMessage),
+        messages: formattedMessages,
         artifacts: artifacts // NEW: Include artifacts in response
       },
       page: Number(page),
