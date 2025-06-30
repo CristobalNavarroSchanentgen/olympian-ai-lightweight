@@ -20,12 +20,23 @@ export interface Message {
   createdAt: Date;
 }
 
+// NEW: Thinking models support
+export interface ThinkingData {
+  content: string; // Raw thinking content from <think> tags
+  hasThinking: boolean; // Whether this message contains thinking
+  processedAt: Date; // When thinking was extracted
+}
+
 export interface MessageMetadata {
   tokens?: number;
   generationTime?: number;
   model?: string;
   error?: string;
   visionModel?: string; // Vision model used for image processing
+  
+  // NEW: Thinking models support
+  thinking?: ThinkingData; // Thinking/reasoning content
+  originalContentWithThinking?: string; // Original content before thinking extraction
   
   // NEW: Multi-artifact support (Phase 1)
   artifacts?: ArtifactReference[]; // Array of artifacts for multi-artifact support
@@ -105,6 +116,14 @@ export interface MultiArtifactDetectionResult {
   detectionStrategy: string;
 }
 
+// NEW: Thinking processing utilities
+export interface ThinkingProcessingResult {
+  hasThinking: boolean;
+  thinkingContent: string;
+  processedContent: string; // Content with <think> tags removed
+  thinkingData?: ThinkingData;
+}
+
 // Helper functions for backward compatibility
 export function hasMultipleArtifacts(metadata?: MessageMetadata): boolean {
   return !!(metadata?.artifacts && metadata.artifacts.length > 1);
@@ -134,4 +153,62 @@ export function getFirstArtifact(metadata?: MessageMetadata): ArtifactReference 
 
 export function isLegacyArtifactFormat(metadata?: MessageMetadata): boolean {
   return !!(metadata?.artifactId && !metadata?.artifacts);
+}
+
+// NEW: Thinking utility functions
+export function hasThinking(metadata?: MessageMetadata): boolean {
+  return !!(metadata?.thinking?.hasThinking);
+}
+
+export function getThinkingContent(metadata?: MessageMetadata): string {
+  return metadata?.thinking?.content || '';
+}
+
+export function parseThinkingFromContent(content: string): ThinkingProcessingResult {
+  // Match <think>...</think> tags (case insensitive, multiline)
+  const thinkingRegex = /<think>([\s\S]*?)<\/think>/gi;
+  const matches = Array.from(content.matchAll(thinkingRegex));
+  
+  if (matches.length === 0) {
+    return {
+      hasThinking: false,
+      thinkingContent: '',
+      processedContent: content
+    };
+  }
+  
+  // Extract all thinking content
+  const thinkingContent = matches
+    .map(match => match[1].trim())
+    .join('\n\n---\n\n'); // Separate multiple thinking blocks
+  
+  // Remove thinking tags from content
+  const processedContent = content.replace(thinkingRegex, '').trim();
+  
+  const thinkingData: ThinkingData = {
+    content: thinkingContent,
+    hasThinking: true,
+    processedAt: new Date()
+  };
+  
+  return {
+    hasThinking: true,
+    thinkingContent,
+    processedContent,
+    thinkingData
+  };
+}
+
+export function getDisplayContentForMessage(message: Message): string {
+  // If thinking was processed, return the processed content (without <think> tags)
+  if (message.metadata?.thinking?.hasThinking) {
+    return message.content; // Content should already be processed at this point
+  }
+  
+  // For backward compatibility, check for artifacts
+  if (message.metadata?.originalContent) {
+    return message.metadata.originalContent;
+  }
+  
+  return message.content;
 }
