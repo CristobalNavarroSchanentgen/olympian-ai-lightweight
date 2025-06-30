@@ -1,3 +1,135 @@
+import { Router } from 'express';
+import { ObjectId, WithId } from 'mongodb';
+import { DatabaseService } from '../services/DatabaseService';
+import { OllamaStreamliner } from '../services/OllamaStreamliner';
+import { ChatMemoryService } from '../services/ChatMemoryService';
+import { ArtifactService } from '../services/ArtifactService';
+import { modelProgressiveLoader } from '../services/ModelProgressiveLoader';
+import { AppError } from '../middleware/errorHandler';
+import { chatRateLimiter } from '../middleware/rateLimiter';
+import { z } from 'zod';
+import { 
+  Message, 
+  Conversation, 
+  ModelCapability, 
+  CreateArtifactRequest, 
+  ArtifactType, 
+  Artifact,
+  MultiArtifactCreationRequest,
+  MultiArtifactCreationResponse,
+  ArtifactDetectionResult,
+  MULTI_ARTIFACT_CONFIG,
+  detectSeparationMarkers,
+  shouldGroupArtifacts,
+  generateArtifactTitle,
+  ArtifactReference,
+  validateArtifactCreationRules,
+  detectDuplicateArtifacts,
+  calculateContentHash,
+  parseThinkingFromContent,
+  ThinkingData
+} from '@olympian/shared';
+
+const router = Router();
+const db = DatabaseService.getInstance();
+const streamliner = new OllamaStreamliner();
+const memoryService = ChatMemoryService.getInstance();
+const artifactService = ArtifactService.getInstance();
+
+// Apply rate limiting to chat endpoints
+router.use(chatRateLimiter);
+
+// Input validation schemas
+const sendMessageSchema = z.object({
+  message: z.string().min(1).max(10000),
+  conversationId: z.string().optional(),
+  model: z.string().min(1),
+  visionModel: z.string().optional(),
+  images: z.array(z.string()).optional(),
+});
+
+// Database document types (with ObjectId)
+type ConversationDoc = Omit<Conversation, '_id'> & { _id?: ObjectId };
+type MessageDoc = Omit<Message, '_id'> & { _id?: ObjectId };
+
+// Helper function to convert MongoDB document to proper format
+function formatConversation(doc: any): Conversation {
+  return {
+    ...doc,
+    _id: doc._id?.toString ? doc._id.toString() : doc._id,
+    createdAt: doc.createdAt instanceof Date ? doc.createdAt : new Date(doc.createdAt),
+    updatedAt: doc.updatedAt instanceof Date ? doc.updatedAt : new Date(doc.updatedAt),
+  };
+}
+
+// Helper function to convert string ID to ObjectId if needed
+function toObjectId(id: string | ObjectId): ObjectId {
+  if (typeof id === 'string') {
+    return new ObjectId(id);
+  }
+  return id;
+}
+
+// Helper function to check if a model is basic (no capabilities)
+function isBasicModel(capabilities: ModelCapability | null): boolean {
+  if (!capabilities) return false;
+  return !capabilities.vision && !capabilities.tools && !capabilities.reasoning;
+}
+
+// Helper function to get model capabilities with fallback
+async function getModelCapabilitiesWithFallback(modelName: string): Promise<ModelCapability | null> {
+  try {
+    // First check if we have this model in progressive loader cache
+    const cachedCapabilities = modelProgressiveLoader.getCapabilities();
+    const cachedCapability = cachedCapabilities.find(cap => cap.name === modelName);
+    
+    if (cachedCapability) {
+      console.log(`✅ Using cached capability for model '${modelName}' from progressive loader`);
+      return cachedCapability;
+    }
+    
+    // Fallback to direct detection
+    console.log(`🔍 No cached data for '${modelName}', detecting capabilities directly...`);
+    return await streamliner.detectCapabilities(modelName);
+  } catch (error) {
+    console.warn(`⚠️ Failed to get capabilities for model '${modelName}':`, error);
+    return null;
+  }
+}
+
+// Create multi-artifacts from response (simplified version for enhanced endpoints)
+async function createMultiArtifactsFromResponse(
+  content: string,
+  conversationId: string,
+  messageId: string
+): Promise<{
+  processedContent: string;
+  artifacts: ArtifactReference[];
+  hasArtifact: boolean;
+  artifactCount: number;
+  creationStrategy: string;
+}> {
+  try {
+    // For now, return a simple response - this can be enhanced later
+    return {
+      processedContent: content,
+      artifacts: [],
+      hasArtifact: false,
+      artifactCount: 0,
+      creationStrategy: 'none'
+    };
+  } catch (error) {
+    console.error(`❌ [ChatAPI] Error in multi-artifact creation:`, error);
+    return {
+      processedContent: content,
+      artifacts: [],
+      hasArtifact: false,
+      artifactCount: 0,
+      creationStrategy: 'error'
+    };
+  }
+}
+
 // NEW: Enhanced streaming endpoint with thinking processing
 router.post('/stream', async (req, res, next) => {
   try {
@@ -25,7 +157,7 @@ router.post('/stream', async (req, res, next) => {
     });
 
     // Send initial event to confirm connection
-    res.write(`data: ${JSON.stringify({ type: 'connected' })}\\n\\n`);
+    res.write(`data: ${JSON.stringify({ type: 'connected' })}\n\n`);
 
     try {
       // Get or create conversation
@@ -64,7 +196,7 @@ router.post('/stream', async (req, res, next) => {
         type: 'conversation', 
         conversation,
         conversationId: convId 
-      })}\\n\\n`);
+      })}\n\n`);
 
       // Process the request WITHOUT saving the user message first
       // This prevents duplicate messages in the conversation history
@@ -77,14 +209,14 @@ router.post('/stream', async (req, res, next) => {
       });
 
       // Send thinking state
-      res.write(`data: ${JSON.stringify({ type: 'thinking', isThinking: true })}\\n\\n`);
+      res.write(`data: ${JSON.stringify({ type: 'thinking', isThinking: true })}\n\n`);
 
       // Start streaming response
       let assistantContent = '';
       const startTime = Date.now();
       let tokenCount = 0;
 
-      res.write(`data: ${JSON.stringify({ type: 'streaming_start' })}\\n\\n`);
+      res.write(`data: ${JSON.stringify({ type: 'streaming_start' })}\n\n`);
 
       // ENHANCED: streamChat with thinking processing
       await streamliner.streamChat(
@@ -98,7 +230,7 @@ router.post('/stream', async (req, res, next) => {
             type: 'token', 
             token,
             content: assistantContent 
-          })}\\n\\n`);
+          })}\n\n`);
         },
         // ENHANCED: onComplete callback for thinking processing
         (result) => {
@@ -120,7 +252,7 @@ router.post('/stream', async (req, res, next) => {
             res.write(`data: ${JSON.stringify({ 
               type: 'thinking_detected',
               thinking: result.thinking.thinkingData
-            })}\\n\\n`);
+            })}\n\n`);
           } else {
             console.log('🧠 [ChatAPI] No thinking content detected in response');
           }
@@ -128,7 +260,7 @@ router.post('/stream', async (req, res, next) => {
       );
 
       // Send streaming end
-      res.write(`data: ${JSON.stringify({ type: 'streaming_end' })}\\n\\n`);
+      res.write(`data: ${JSON.stringify({ type: 'streaming_end' })}\n\n`);
 
       // NOW save both messages AFTER the response is generated
       // This ensures the conversation history is correct for the next request
@@ -233,7 +365,7 @@ router.post('/stream', async (req, res, next) => {
             artifactType: artifact.artifactType,
             title: artifact.title,
             order: artifact.order
-          })}\\n\\n`);
+          })}\n\n`);
         }
       }
 
@@ -269,7 +401,7 @@ router.post('/stream', async (req, res, next) => {
         message: artifactResult.processedContent || finalAssistantContent,
         metadata: completionMetadata,
         conversationId: convId 
-      })}\\n\\n`);
+      })}\n\n`);
 
       console.log(`✅ [ChatAPI] Stream completed successfully with thinking processing`, {
         hasThinking: !!thinkingData,
@@ -283,7 +415,7 @@ router.post('/stream', async (req, res, next) => {
       res.write(`data: ${JSON.stringify({ 
         type: 'error', 
         error: streamError instanceof Error ? streamError.message : 'Unknown error' 
-      })}\\n\\n`);
+      })}\n\n`);
     }
 
     res.end();
@@ -519,3 +651,5 @@ router.post('/send', async (req, res, next) => {
     next(error);
   }
 });
+
+export { router as chatEnhancedRouter };
