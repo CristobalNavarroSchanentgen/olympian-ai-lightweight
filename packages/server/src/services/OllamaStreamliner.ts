@@ -48,6 +48,10 @@ interface OllamaStreamResponse {
   message?: {
     content?: string;
   };
+  done?: boolean;
+  done_reason?: string;
+  // Additional fields for error handling
+  error?: string;
 }
 
 interface OllamaGenerateResponse {
@@ -1228,7 +1232,7 @@ export class OllamaStreamliner {
     };
   }
 
-  // ENHANCED: streamChat method with improved thinking processing
+  // ENHANCED: streamChat method with improved thinking processing and better error handling
   async streamChat(
     processedRequest: ProcessedRequest,
     onToken: (token: string) => void,
@@ -1280,6 +1284,7 @@ export class OllamaStreamliner {
       const decoder = new TextDecoder();
       let buffer = '';
       let tokenCount = 0;
+      let incompleteJsonBuffer = ''; // Buffer for handling incomplete JSON objects
 
       try {
         logger.info('Starting to stream response tokens...');
@@ -1296,33 +1301,101 @@ export class OllamaStreamliner {
           
           if (done) break;
 
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\\n');
+          // Decode the chunk and add to buffer
+          const chunk = decoder.decode(value, { stream: true });
+          buffer += chunk;
+          
+          // Split by newlines to process complete lines
+          const lines = buffer.split('\n');
+          
+          // Keep the last line in buffer if it's incomplete
           buffer = lines.pop() || '';
 
-          for (const line of lines) {
-            if (line.trim()) {
-              try {
-                const json = JSON.parse(line) as OllamaStreamResponse;
-                if (json.message?.content) {
-                  const token = json.message.content;
-                  tokenCount++;
-                  
-                  // Accumulate full content for thinking processing
-                  fullResponseContent += token;
-                  
-                  onToken(token);
-                  
-                  if (tokenCount === 1) {
-                    logger.info('First token received and sent to client');
-                  }
-                  if (tokenCount % 50 === 0) {
-                    logger.debug(`Streamed ${tokenCount} tokens so far`);
-                  }
-                }
-              } catch (error) {
-                logger.error('Failed to parse Ollama response line:', { line, error });
+          for (let line of lines) {
+            line = line.trim();
+            if (!line) continue;
+
+            // Handle incomplete JSON from previous iterations
+            if (incompleteJsonBuffer) {
+              line = incompleteJsonBuffer + line;
+              incompleteJsonBuffer = '';
+            }
+
+            try {
+              const json = JSON.parse(line) as OllamaStreamResponse;
+              
+              // Check for errors in the response
+              if (json.error) {
+                logger.error(`Ollama returned error in stream: ${json.error}`);
+                throw new Error(`Ollama stream error: ${json.error}`);
               }
+              
+              // Process content if available
+              if (json.message?.content) {
+                const token = json.message.content;
+                tokenCount++;
+                
+                // Accumulate full content for thinking processing
+                fullResponseContent += token;
+                
+                // Send token to client
+                onToken(token);
+                
+                // Log progress
+                if (tokenCount === 1) {
+                  logger.info('First token received and sent to client');
+                }
+                if (tokenCount % 50 === 0) {
+                  logger.debug(`Streamed ${tokenCount} tokens so far`);
+                }
+              }
+              
+              // Check if stream is complete
+              if (json.done) {
+                logger.info(`Stream marked as done. Total tokens: ${tokenCount}`);
+                if (json.done_reason) {
+                  logger.debug(`Stream done reason: ${json.done_reason}`);
+                }
+              }
+            } catch (parseError) {
+              // If JSON parsing fails, it might be an incomplete object
+              // Save it for the next iteration
+              if (parseError instanceof SyntaxError) {
+                // Check if it looks like the start of a JSON object
+                if (line.startsWith('{')) {
+                  incompleteJsonBuffer = line;
+                  logger.debug('Buffering incomplete JSON object for next iteration');
+                } else {
+                  logger.error('Failed to parse Ollama response line:', { 
+                    line: line.substring(0, 200), // Truncate for logging
+                    error: parseError.message,
+                    lineLength: line.length
+                  });
+                }
+              } else {
+                throw parseError;
+              }
+            }
+          }
+        }
+        
+        // Process any remaining buffered content
+        if (buffer.trim() || incompleteJsonBuffer.trim()) {
+          const remainingLine = (incompleteJsonBuffer + buffer).trim();
+          if (remainingLine) {
+            try {
+              const json = JSON.parse(remainingLine) as OllamaStreamResponse;
+              if (json.message?.content) {
+                const token = json.message.content;
+                tokenCount++;
+                fullResponseContent += token;
+                onToken(token);
+              }
+            } catch (error) {
+              logger.debug('Failed to parse final buffered content:', { 
+                content: remainingLine.substring(0, 200),
+                error: error instanceof Error ? error.message : 'Unknown error'
+              });
             }
           }
         }
