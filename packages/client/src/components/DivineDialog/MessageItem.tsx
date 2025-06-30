@@ -288,6 +288,14 @@ export function MessageItem({
             isUser ? 'bg-gray-800 rounded-2xl px-4 py-3' : ''
           )}
         >
+          {/* MOVED: Thinking Section - now positioned BEFORE content */}
+          {messageHasThinking && message.metadata?.thinking && !shouldShowTypewriter && (
+            <ThinkingSection 
+              thinking={message.metadata.thinking}
+              className="mb-4"
+            />
+          )}
+          
           {/* Images */}
           {message.images && message.images.length > 0 && (
             <div className="grid grid-cols-2 gap-2 mb-2">
@@ -352,14 +360,6 @@ export function MessageItem({
                 </ReactMarkdown>
               )}
             </>
-          )}
-          
-          {/* ENHANCED: Thinking Section - positioned after content but before artifacts */}
-          {messageHasThinking && message.metadata?.thinking && !shouldShowTypewriter && (
-            <ThinkingSection 
-              thinking={message.metadata.thinking}
-              className="mt-4"
-            />
           )}
           
           {/* NEW: Enhanced Artifact Display with multi-artifact support (Phase 4) */}
