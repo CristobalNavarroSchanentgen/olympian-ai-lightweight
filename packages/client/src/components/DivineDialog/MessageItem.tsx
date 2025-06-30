@@ -288,8 +288,8 @@ export function MessageItem({
             isUser ? 'bg-gray-800 rounded-2xl px-4 py-3' : ''
           )}
         >
-          {/* MOVED: Thinking Section - now positioned BEFORE content */}
-          {messageHasThinking && message.metadata?.thinking && !shouldShowTypewriter && (
+          {/* FIXED: Thinking Section - now shows immediately regardless of typewriter state */}
+          {messageHasThinking && message.metadata?.thinking && (
             <ThinkingSection 
               thinking={message.metadata.thinking}
               className="mb-4"
