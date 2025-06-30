@@ -111,11 +111,17 @@ export function ThinkingSection({ thinking, className }: ThinkingSectionProps) {
   const readingTime = Math.max(1, Math.ceil(wordCount / 200));
 
   return (
-    <div className={cn("mt-4 rounded-lg border border-gray-700 bg-gray-800/30 backdrop-blur-sm", className)}>
+    <div className={cn(
+      "mt-4 rounded-lg border border-gray-700 bg-gray-800/30 backdrop-blur-sm transition-all duration-200",
+      isExpanded && "shadow-lg", 
+      className
+    )}>
       {/* Header */}
       <div className="flex items-center justify-between p-3">
         <div className="flex items-center gap-2">
-          <Brain className="h-4 w-4 text-blue-400" />
+          <div className="animate-pulse">
+            <Brain className="h-4 w-4 text-blue-400" />
+          </div>
           <Badge variant="secondary" className="bg-blue-900/30 text-blue-300 border-blue-600/30">
             Reasoning
           </Badge>
@@ -128,44 +134,50 @@ export function ThinkingSection({ thinking, className }: ThinkingSectionProps) {
           variant="ghost"
           size="sm"
           onClick={toggleExpanded}
-          className="flex items-center gap-1 text-gray-400 hover:text-gray-200 hover:bg-gray-700/50"
+          className="flex items-center gap-1 text-gray-400 hover:text-gray-200 hover:bg-gray-700/50 transition-all"
         >
           {isExpanded ? (
             <>
               <EyeOff className="h-4 w-4" />
               Hide reasoning
-              <ChevronDown className="h-3 w-3" />
+              <ChevronDown className="h-3 w-3 transition-transform duration-200" />
             </>
           ) : (
             <>
               <Eye className="h-4 w-4" />
               View reasoning
-              <ChevronRight className="h-3 w-3" />
+              <ChevronRight className="h-3 w-3 transition-transform duration-200" />
             </>
           )}
         </Button>
       </div>
 
-      {/* Expanded Content */}
-      {isExpanded && (
+      {/* Expanded Content with smooth transition */}
+      <div className={cn(
+        "overflow-hidden transition-all duration-300 ease-in-out",
+        isExpanded ? "max-h-[2000px] opacity-100" : "max-h-0 opacity-0"
+      )}>
         <div className="border-t border-gray-700">
           {/* Milestones View */}
           {!showFullThinking && milestones.length > 0 && (
-            <div className="p-4 space-y-2">
+            <div className="p-4 space-y-2 animate-fadeIn">
               <div className="text-xs text-gray-500 mb-3">Key reasoning milestones:</div>
               
               {milestones.map((milestone, index) => (
                 <div 
                   key={index}
                   className={cn(
-                    "flex items-start gap-3 p-2 rounded-md transition-colors",
+                    "flex items-start gap-3 p-2 rounded-md transition-all duration-200 animate-slideIn",
                     milestone.isKey 
-                      ? "bg-gray-700/30 hover:bg-gray-700/50" 
+                      ? "bg-gray-700/30 hover:bg-gray-700/50 hover:scale-[1.02]" 
                       : "hover:bg-gray-800/50"
                   )}
+                  style={{
+                    animationDelay: `${index * 50}ms`
+                  }}
                 >
                   <div className={cn(
-                    "mt-0.5 p-1 rounded",
+                    "mt-0.5 p-1 rounded transition-colors duration-200",
                     milestone.isKey ? "bg-blue-900/30 text-blue-400" : "text-gray-500"
                   )}>
                     {milestone.icon}
@@ -192,7 +204,7 @@ export function ThinkingSection({ thinking, className }: ThinkingSectionProps) {
                   variant="ghost"
                   size="sm"
                   onClick={() => setShowFullThinking(true)}
-                  className="w-full justify-center text-gray-400 hover:text-gray-200 hover:bg-gray-700/50"
+                  className="w-full justify-center text-gray-400 hover:text-gray-200 hover:bg-gray-700/50 transition-all duration-200 hover:scale-[1.02]"
                 >
                   <Eye className="h-4 w-4 mr-2" />
                   View complete reasoning ({wordCount} words)
@@ -203,16 +215,16 @@ export function ThinkingSection({ thinking, className }: ThinkingSectionProps) {
 
           {/* Full Thinking View */}
           {(showFullThinking || milestones.length === 0) && (
-            <div className="p-4">
+            <div className="p-4 animate-fadeIn">
               {milestones.length > 0 && (
                 <div className="mb-3">
                   <Button
                     variant="ghost"
                     size="sm"
                     onClick={() => setShowFullThinking(false)}
-                    className="text-gray-400 hover:text-gray-200 hover:bg-gray-700/50"
+                    className="text-gray-400 hover:text-gray-200 hover:bg-gray-700/50 transition-all duration-200"
                   >
-                    <ChevronRight className="h-3 w-3 mr-1" />
+                    <ChevronRight className="h-3 w-3 mr-1 transition-transform duration-200 hover:translate-x-[-2px]" />
                     Back to milestones
                   </Button>
                 </div>
@@ -320,7 +332,41 @@ export function ThinkingSection({ thinking, className }: ThinkingSectionProps) {
             </span>
           </div>
         </div>
-      )}
+      </div>
+
+      {/* CSS for animations */}
+      <style jsx>{`
+        @keyframes fadeIn {
+          from {
+            opacity: 0;
+            transform: translateY(-10px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        @keyframes slideIn {
+          from {
+            opacity: 0;
+            transform: translateX(-20px);
+          }
+          to {
+            opacity: 1;
+            transform: translateX(0);
+          }
+        }
+
+        .animate-fadeIn {
+          animation: fadeIn 0.3s ease-out forwards;
+        }
+
+        .animate-slideIn {
+          animation: slideIn 0.3s ease-out forwards;
+          opacity: 0;
+        }
+      `}</style>
     </div>
   );
 }
