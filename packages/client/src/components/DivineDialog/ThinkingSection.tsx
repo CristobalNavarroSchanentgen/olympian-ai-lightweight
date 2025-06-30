@@ -334,8 +334,8 @@ export function ThinkingSection({ thinking, className }: ThinkingSectionProps) {
         </div>
       </div>
 
-      {/* CSS for animations */}
-      <style jsx>{`
+      {/* CSS for animations - Fixed: removed jsx prop */}
+      <style>{`
         @keyframes fadeIn {
           from {
             opacity: 0;
