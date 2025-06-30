@@ -1,4 +1,4 @@
-import { ChatRequest, ProcessedRequest, ModelCapability, VisionError } from '@olympian/shared';
+import { ChatRequest, ProcessedRequest, ModelCapability, VisionError, parseThinkingFromContent, ThinkingProcessingResult } from '@olympian/shared';
 import { logger } from '../utils/logger';
 import { AppError } from '../middleware/errorHandler';
 import { getDeploymentConfig, OllamaLoadBalancer } from '../config/deployment';
@@ -79,6 +79,12 @@ interface OllamaChatResponse {
     }>;
   };
   error?: string;
+}
+
+// NEW: Interface for streaming results with thinking data
+interface StreamResult {
+  fullContent: string;
+  thinking?: ThinkingProcessingResult;
 }
 
 export class OllamaStreamliner {
@@ -1222,9 +1228,11 @@ export class OllamaStreamliner {
     };
   }
 
+  // NEW: Enhanced streamChat method with thinking processing
   async streamChat(
     processedRequest: ProcessedRequest,
     onToken: (token: string) => void,
+    onComplete?: (result: StreamResult) => void,
     clientIp?: string
   ): Promise<void> {
     const ollamaHost = this.getOllamaHost(clientIp);
@@ -1243,6 +1251,9 @@ export class OllamaStreamliner {
       logger.warn(`Stream timeout reached for model ${processedRequest.model}, aborting...`);
       controller.abort();
     }, 120000); // 2 minutes timeout for streaming
+    
+    // Buffer to accumulate full response content
+    let fullResponseContent = '';
     
     try {
       const response = await fetch(`${ollamaHost}/api/chat`, {
@@ -1294,8 +1305,13 @@ export class OllamaStreamliner {
               try {
                 const json = JSON.parse(line) as OllamaStreamResponse;
                 if (json.message?.content) {
+                  const token = json.message.content;
                   tokenCount++;
-                  onToken(json.message.content);
+                  
+                  // Accumulate full content for thinking processing
+                  fullResponseContent += token;
+                  
+                  onToken(token);
                   
                   if (tokenCount === 1) {
                     logger.info('First token received and sent to client');
@@ -1312,6 +1328,33 @@ export class OllamaStreamliner {
         }
         
         logger.info(`Stream completed successfully with ${tokenCount} tokens from ${ollamaHost}`);
+        
+        // NEW: Process thinking content after stream completion
+        if (fullResponseContent && onComplete) {
+          logger.debug('🧠 Processing thinking content from completed response...');
+          
+          try {
+            const thinkingResult = parseThinkingFromContent(fullResponseContent);
+            
+            if (thinkingResult.hasThinking) {
+              logger.info(`✅ Thinking content detected and parsed (${thinkingResult.thinkingContent.length} chars)`);
+              logger.debug(`Thinking preview: ${thinkingResult.thinkingContent.substring(0, 100)}...`);
+            }
+            
+            const streamResult: StreamResult = {
+              fullContent: fullResponseContent,
+              thinking: thinkingResult.hasThinking ? thinkingResult : undefined
+            };
+            
+            onComplete(streamResult);
+          } catch (error) {
+            logger.error('Error processing thinking content:', error);
+            // Still call onComplete with basic result
+            onComplete({
+              fullContent: fullResponseContent
+            });
+          }
+        }
         
         // Report success to load balancer
         if (this.loadBalancer) {
