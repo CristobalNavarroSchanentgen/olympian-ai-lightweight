@@ -29,7 +29,7 @@ export class ArtifactNamingService {
   private readonly NAMING_TIMEOUT = 3000; // 3 seconds max
 
   private constructor() {
-    this.ollamaStreamliner = OllamaStreamliner.getInstance();
+    this.ollamaStreamliner = new OllamaStreamliner();
   }
 
   public static getInstance(): ArtifactNamingService {
@@ -80,19 +80,52 @@ export class ArtifactNamingService {
     const prompt = this.buildNamingPrompt(context);
     
     try {
-      const response = await this.ollamaStreamliner.generateResponse({
-        prompt,
-        model: 'llama3.2:3b', // Use fast, lightweight model
-        stream: false,
-        options: {
-          temperature: 0.3, // Low temperature for consistent naming
-          top_p: 0.8,
-          top_k: 20,
-          num_predict: 20 // Short responses only
-        }
+      // Get available models first
+      const models = await this.ollamaStreamliner.listModels();
+      if (models.length === 0) {
+        console.warn(`🏷️ [ArtifactNaming] No models available for naming`);
+        return null;
+      }
+
+      // Use the first available model (preferably a small/fast one)
+      const preferredModels = ['llama3.2:3b', 'llama3.2:1b', 'llama3.1:8b'];
+      const selectedModel = preferredModels.find(model => models.includes(model)) || models[0];
+
+      // Create a processed request for the naming task
+      const processedRequest = {
+        model: selectedModel,
+        messages: [
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        stream: false // We want a complete response, not streaming
+      };
+
+      // Use streamChat but collect the full response
+      let fullResponse = '';
+      return new Promise<string | null>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          resolve(null);
+        }, this.NAMING_TIMEOUT);
+
+        this.ollamaStreamliner.streamChat(
+          processedRequest,
+          (token: string) => {
+            fullResponse += token;
+          }
+        ).then(() => {
+          clearTimeout(timeout);
+          const extractedName = this.extractNameFromResponse(fullResponse);
+          resolve(extractedName);
+        }).catch((error) => {
+          clearTimeout(timeout);
+          console.warn(`🏷️ [ArtifactNaming] Stream chat failed:`, error);
+          resolve(null);
+        });
       });
 
-      return this.extractNameFromResponse(response);
     } catch (error) {
       console.warn(`🏷️ [ArtifactNaming] AI generation failed:`, error);
       return null;
