@@ -176,6 +176,9 @@ export interface ArtifactMetadata {
   reconstructionHash: string; // Hash for reconstruction verification
   contentSize: number; // Content size in bytes
   
+  // NEW: AI naming metadata
+  aiNamed?: boolean; // Whether the artifact was named using AI
+  
   // NEW: Multi-artifact specific metadata (Phase 1)
   partOfMultiArtifact?: boolean; // Whether this artifact is part of a multi-artifact message
   artifactIndex?: number; // Index in the multi-artifact array
