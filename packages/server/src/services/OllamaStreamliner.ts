@@ -81,7 +81,7 @@ interface OllamaChatResponse {
   error?: string;
 }
 
-// NEW: Interface for streaming results with thinking data
+// ENHANCED: Interface for streaming results with thinking data
 interface StreamResult {
   fullContent: string;
   thinking?: ThinkingProcessingResult;
@@ -862,7 +862,7 @@ export class OllamaStreamliner {
     
     // Fallback to modelfile parsing
     const modelfile = modelInfo.modelfile || '';
-    const match = modelfile.match(/num_predict\s+(\d+)/);
+    const match = modelfile.match(/num_predict\\s+(\\d+)/);
     return match ? parseInt(match[1], 10) : null;
   }
 
@@ -874,7 +874,7 @@ export class OllamaStreamliner {
     
     // Fallback to modelfile parsing
     const modelfile = modelInfo.modelfile || '';
-    const match = modelfile.match(/num_ctx\s+(\d+)/);
+    const match = modelfile.match(/num_ctx\\s+(\\d+)/);
     return match ? parseInt(match[1], 10) : null;
   }
 
@@ -1164,7 +1164,7 @@ export class OllamaStreamliner {
       logger.info(`Vision processing complete, description length: ${imageDescription.length}`);
 
       // Add the processed content to history
-      const enhancedContent = `${request.content}\n\n[Image Analysis: ${imageDescription}]`;
+      const enhancedContent = `${request.content}\\n\\n[Image Analysis: ${imageDescription}]`;
       const messages = [
         ...history,
         {
@@ -1228,7 +1228,7 @@ export class OllamaStreamliner {
     };
   }
 
-  // NEW: Enhanced streamChat method with thinking processing
+  // ENHANCED: streamChat method with improved thinking processing
   async streamChat(
     processedRequest: ProcessedRequest,
     onToken: (token: string) => void,
@@ -1297,7 +1297,7 @@ export class OllamaStreamliner {
           if (done) break;
 
           buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n');
+          const lines = buffer.split('\\n');
           buffer = lines.pop() || '';
 
           for (const line of lines) {
@@ -1329,7 +1329,7 @@ export class OllamaStreamliner {
         
         logger.info(`Stream completed successfully with ${tokenCount} tokens from ${ollamaHost}`);
         
-        // NEW: Process thinking content after stream completion
+        // ENHANCED: Process thinking content after stream completion
         if (fullResponseContent && onComplete) {
           logger.debug('🧠 Processing thinking content from completed response...');
           
@@ -1339,6 +1339,22 @@ export class OllamaStreamliner {
             if (thinkingResult.hasThinking) {
               logger.info(`✅ Thinking content detected and parsed (${thinkingResult.thinkingContent.length} chars)`);
               logger.debug(`Thinking preview: ${thinkingResult.thinkingContent.substring(0, 100)}...`);
+              
+              // ENHANCED: Ensure thinking data has correct structure
+              if (thinkingResult.thinkingData) {
+                // Validate and ensure correct structure
+                thinkingResult.thinkingData.hasThinking = true;
+                thinkingResult.thinkingData.content = thinkingResult.thinkingContent;
+                thinkingResult.thinkingData.processedAt = new Date();
+                
+                logger.debug('🧠 Enhanced thinking data structure:', {
+                  hasThinking: thinkingResult.thinkingData.hasThinking,
+                  contentLength: thinkingResult.thinkingData.content.length,
+                  processedAt: thinkingResult.thinkingData.processedAt
+                });
+              }
+            } else {
+              logger.debug('🧠 No thinking content detected in response');
             }
             
             const streamResult: StreamResult = {
