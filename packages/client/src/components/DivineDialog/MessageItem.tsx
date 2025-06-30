@@ -30,7 +30,9 @@ import {
   hasMultipleArtifacts, 
   getFirstArtifact,
   isLegacyArtifactFormat,
-  hasThinking
+  hasThinking,
+  debugThinkingData,
+  getThinkingContent
 } from '@olympian/shared';
 
 interface MessageItemProps {
@@ -56,23 +58,16 @@ export function MessageItem({
   // that hasn't completed yet AND hasn't been finalized (prevents re-typewriting existing messages)
   const shouldShowTypewriter = !isUser && isLatest && !hasCompletedTypewriter && !isMessageFinalized;
   
-  // FIXED: Enhanced thinking validation with better error handling
+  // ENHANCED: Check if message has thinking content with debug logging
   const messageHasThinking = hasThinking(message.metadata);
-  const thinkingData = message.metadata?.thinking;
   
-  // DEBUG: Add console logging for thinking detection
-  if (message.role === 'assistant') {
-    console.log(`🧠 [MessageItem] Thinking validation for message ${messageIndex}:`, {
-      messageHasThinking,
-      hasMetadata: !!message.metadata,
-      hasThinkingField: !!message.metadata?.thinking,
-      hasThinkingFlag: message.metadata?.thinking?.hasThinking,
-      thinkingContent: message.metadata?.thinking?.content?.substring(0, 100) + '...',
-      shouldShowTypewriter,
-      messageId: message._id
-    });
-  }
-  
+  // Debug thinking data in development
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'development' && message.role === 'assistant' && message.metadata) {
+      debugThinkingData(message.metadata);
+    }
+  }, [message.metadata, message.role]);
+
   const { 
     selectArtifact, 
     setArtifactPanelOpen,
@@ -251,6 +246,16 @@ export function MessageItem({
             </span>
           )}
           
+          {/* ENHANCED: Thinking indicator badge */}
+          {messageHasThinking && (
+            <Badge 
+              variant="secondary" 
+              className="text-xs flex items-center gap-1 bg-blue-900/30 text-blue-300 border-blue-600/30"
+            >
+              🧠 Reasoning
+            </Badge>
+          )}
+          
           {/* NEW: Enhanced artifact indicator with multi-artifact support (Phase 4) */}
           {artifactDisplayInfo.hasArtifacts && (
             <Badge 
@@ -273,19 +278,6 @@ export function MessageItem({
                   Artifact
                 </>
               )}
-            </Badge>
-          )}
-
-          {/* FIXED: Enhanced thinking indicator - shows when thinking data is available */}
-          {messageHasThinking && thinkingData && !shouldShowTypewriter && (
-            <Badge 
-              variant="secondary" 
-              className="text-xs flex items-center gap-1 bg-blue-900/30 text-blue-300 border-blue-600/30"
-            >
-              <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 3.94-3.04Z"/>
-              </svg>
-              Reasoning
             </Badge>
           )}
         </div>
@@ -362,14 +354,12 @@ export function MessageItem({
             </>
           )}
           
-          {/* FIXED: Enhanced Thinking Section - positioned after content but before artifacts */}
-          {messageHasThinking && thinkingData && !shouldShowTypewriter && (
-            <div className="mt-4">
-              <ThinkingSection 
-                thinking={thinkingData}
-                className="w-full"
-              />
-            </div>
+          {/* ENHANCED: Thinking Section - positioned after content but before artifacts */}
+          {messageHasThinking && message.metadata?.thinking && !shouldShowTypewriter && (
+            <ThinkingSection 
+              thinking={message.metadata.thinking}
+              className="mt-4"
+            />
           )}
           
           {/* NEW: Enhanced Artifact Display with multi-artifact support (Phase 4) */}
@@ -520,6 +510,8 @@ export function MessageItem({
                   <div>Legacy Format: {isLegacyFormat ? 'Yes' : 'No'}</div>
                   <div>Message Artifacts Found: {messageArtifacts.length}</div>
                   <div>Legacy Artifact Found: {legacyArtifact ? 'Yes' : 'No'}</div>
+                  <div>Has Thinking: {messageHasThinking ? 'Yes' : 'No'}</div>
+                  <div>Thinking Content Length: {getThinkingContent(message.metadata).length}</div>
                 </div>
               )}
             </div>
