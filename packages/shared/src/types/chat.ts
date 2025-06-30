@@ -155,21 +155,89 @@ export function isLegacyArtifactFormat(metadata?: MessageMetadata): boolean {
   return !!(metadata?.artifactId && !metadata?.artifacts);
 }
 
-// NEW: Thinking utility functions
+// ENHANCED: Thinking utility functions with improved validation
 export function hasThinking(metadata?: MessageMetadata): boolean {
-  return !!(metadata?.thinking?.hasThinking);
+  if (!metadata?.thinking) {
+    return false;
+  }
+  
+  // Primary check: explicit hasThinking flag
+  if (metadata.thinking.hasThinking === true) {
+    return true;
+  }
+  
+  // Fallback check: if thinking content exists and is non-empty
+  if (metadata.thinking.content && metadata.thinking.content.trim().length > 0) {
+    console.log('🧠 [hasThinking] Found thinking content via fallback check:', {
+      hasThinkingFlag: metadata.thinking.hasThinking,
+      contentLength: metadata.thinking.content.length,
+      contentPreview: metadata.thinking.content.substring(0, 100) + '...'
+    });
+    return true;
+  }
+  
+  // Additional fallback: check originalContentWithThinking for <think> tags
+  if (metadata.originalContentWithThinking) {
+    const hasThinkTags = /<think>[\s\S]*?<\/think>/i.test(metadata.originalContentWithThinking);
+    if (hasThinkTags) {
+      console.log('🧠 [hasThinking] Found thinking via originalContentWithThinking:', {
+        hasThinkTags,
+        originalContentLength: metadata.originalContentWithThinking.length
+      });
+      return true;
+    }
+  }
+  
+  return false;
 }
 
 export function getThinkingContent(metadata?: MessageMetadata): string {
-  return metadata?.thinking?.content || '';
+  if (!metadata?.thinking) {
+    return '';
+  }
+  
+  // Primary source: processed thinking content
+  if (metadata.thinking.content && metadata.thinking.content.trim()) {
+    return metadata.thinking.content;
+  }
+  
+  // Fallback: extract from originalContentWithThinking
+  if (metadata.originalContentWithThinking) {
+    const result = parseThinkingFromContent(metadata.originalContentWithThinking);
+    if (result.hasThinking) {
+      return result.thinkingContent;
+    }
+  }
+  
+  return '';
 }
 
+// ENHANCED: More robust thinking parsing with better debugging
 export function parseThinkingFromContent(content: string): ThinkingProcessingResult {
-  // Match <think>...</think> tags (case insensitive, multiline)
-  const thinkingRegex = /<think>([\s\S]*?)<\/think>/gi;
-  const matches = Array.from(content.matchAll(thinkingRegex));
+  if (!content || typeof content !== 'string') {
+    return {
+      hasThinking: false,
+      thinkingContent: '',
+      processedContent: content || ''
+    };
+  }
   
-  if (matches.length === 0) {
+  // Match <think>...</think> tags (case insensitive, multiline, support multiple variants)
+  const thinkingRegexes = [
+    /<think>([\s\S]*?)<\/think>/gi,           // Standard <think> tags
+    /<think>([\s\S]*?)<\/antml:think>/gi, // Anthropic thinking tags
+    /<thinking>([\s\S]*?)<\/thinking>/gi      // Alternative thinking tags
+  ];
+  
+  let allMatches: RegExpMatchArray[] = [];
+  
+  // Collect all matches from all regex patterns
+  for (const regex of thinkingRegexes) {
+    const matches = Array.from(content.matchAll(regex));
+    allMatches = allMatches.concat(matches);
+  }
+  
+  if (allMatches.length === 0) {
     return {
       hasThinking: false,
       thinkingContent: '',
@@ -177,19 +245,43 @@ export function parseThinkingFromContent(content: string): ThinkingProcessingRes
     };
   }
   
+  console.log('🧠 [parseThinkingFromContent] Found thinking content:', {
+    matchCount: allMatches.length,
+    contentLength: content.length,
+    contentPreview: content.substring(0, 200) + '...'
+  });
+  
   // Extract all thinking content
-  const thinkingContent = matches
+  const thinkingContent = allMatches
     .map(match => match[1].trim())
+    .filter(content => content.length > 0) // Filter out empty matches
     .join('\n\n---\n\n'); // Separate multiple thinking blocks
   
-  // Remove thinking tags from content
-  const processedContent = content.replace(thinkingRegex, '').trim();
+  // Remove all thinking tags from content
+  let processedContent = content;
+  for (const regex of thinkingRegexes) {
+    processedContent = processedContent.replace(regex, '');
+  }
+  processedContent = processedContent.trim();
+  
+  // Ensure processedContent is not empty
+  if (!processedContent) {
+    processedContent = 'I was thinking about this...'; // Fallback message
+  }
   
   const thinkingData: ThinkingData = {
     content: thinkingContent,
     hasThinking: true,
     processedAt: new Date()
   };
+  
+  console.log('🧠 [parseThinkingFromContent] Parsed result:', {
+    hasThinking: true,
+    thinkingContentLength: thinkingContent.length,
+    processedContentLength: processedContent.length,
+    thinkingPreview: thinkingContent.substring(0, 100) + '...',
+    processedPreview: processedContent.substring(0, 100) + '...'
+  });
   
   return {
     hasThinking: true,
@@ -199,10 +291,20 @@ export function parseThinkingFromContent(content: string): ThinkingProcessingRes
   };
 }
 
+// ENHANCED: Get display content with thinking fallback
 export function getDisplayContentForMessage(message: Message): string {
   // If thinking was processed, return the processed content (without <think> tags)
   if (message.metadata?.thinking?.hasThinking) {
-    return message.content; // Content should already be processed at this point
+    // Use processed content if available, otherwise fall back to message content
+    if (message.content && message.content.trim()) {
+      return message.content; // Content should already be processed at this point
+    }
+    
+    // Emergency fallback: re-parse from originalContentWithThinking
+    if (message.metadata.originalContentWithThinking) {
+      const result = parseThinkingFromContent(message.metadata.originalContentWithThinking);
+      return result.processedContent;
+    }
   }
   
   // For backward compatibility, check for artifacts
@@ -211,4 +313,20 @@ export function getDisplayContentForMessage(message: Message): string {
   }
   
   return message.content;
+}
+
+// NEW: Debug utility to validate thinking data structure
+export function debugThinkingData(metadata?: MessageMetadata): void {
+  if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+    console.group('🧠 [debugThinkingData] Thinking data analysis');
+    console.log('Metadata:', metadata);
+    console.log('Has thinking object:', !!metadata?.thinking);
+    console.log('Thinking hasThinking flag:', metadata?.thinking?.hasThinking);
+    console.log('Thinking content length:', metadata?.thinking?.content?.length || 0);
+    console.log('Thinking content preview:', metadata?.thinking?.content?.substring(0, 100) + '...');
+    console.log('Original content with thinking:', !!metadata?.originalContentWithThinking);
+    console.log('hasThinking() result:', hasThinking(metadata));
+    console.log('getThinkingContent() result length:', getThinkingContent(metadata).length);
+    console.groupEnd();
+  }
 }
