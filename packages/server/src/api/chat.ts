@@ -135,13 +135,13 @@ function detectMultiArtifactContent(content: string): ArtifactDetectionResult {
   let processedContent = content;
   
   // Enhanced regex patterns for different artifact types
-  const codeBlockRegex = /```(\\w+)?\\n([\\s\\S]*?)```/g;
+  const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g;
   const htmlRegex = /<!DOCTYPE html|<html|<div|<p>|<span>|<h[1-6]>/i;
-  const svgRegex = /<svg[\\s\\S]*?<\\/svg>/gi;
-  const jsonRegex = /```json\\n([\\s\\S]*?)```/g;
-  const csvRegex = /```csv\\n([\\s\\S]*?)```/g;
-  const reactRegex = /```(jsx?|tsx?)\\n([\\s\\S]*?)```/g;
-  const mermaidRegex = /```mermaid\\n([\\s\\S]*?)```/g;
+  const svgRegex = /<svg[\s\S]*?<\/svg>/gi;
+  const jsonRegex = /```json\n([\s\S]*?)```/g;
+  const csvRegex = /```csv\n([\s\S]*?)```/g;
+  const reactRegex = /```(jsx?|tsx?)\n([\s\S]*?)```/g;
+  const mermaidRegex = /```mermaid\n([\s\S]*?)```/g;
 
   // Phase 2: Detect separation markers for explicit artifact separation
   const separationMarkerCount = detectSeparationMarkers(content);
@@ -355,7 +355,7 @@ function applySmartGrouping(
       grouped.push(current);
     } else {
       // Multiple artifacts to group
-      const combinedContent = candidates.map(c => c.content).join('\\n\\n');
+      const combinedContent = candidates.map(c => c.content).join('\n\n');
       const groupedArtifact = {
         ...current,
         title: generateArtifactTitle(`${current.language || current.type} Collection`, 0, 1, current.language),
@@ -624,7 +624,7 @@ router.post('/stream', async (req, res, next) => {
     });
 
     // Send initial event to confirm connection
-    res.write(`data: ${JSON.stringify({ type: 'connected' })}\\n\\n`);
+    res.write(`data: ${JSON.stringify({ type: 'connected' })}\n\n`);
 
     try {
       // Get or create conversation
@@ -663,7 +663,7 @@ router.post('/stream', async (req, res, next) => {
         type: 'conversation', 
         conversation,
         conversationId: convId 
-      })}\\n\\n`);
+      })}\n\n`);
 
       // Process the request WITHOUT saving the user message first
       // This prevents duplicate messages in the conversation history
@@ -676,14 +676,14 @@ router.post('/stream', async (req, res, next) => {
       });
 
       // Send thinking state
-      res.write(`data: ${JSON.stringify({ type: 'thinking', isThinking: true })}\\n\\n`);
+      res.write(`data: ${JSON.stringify({ type: 'thinking', isThinking: true })}\n\n`);
 
       // Start streaming response
       let assistantContent = '';
       const startTime = Date.now();
       let tokenCount = 0;
 
-      res.write(`data: ${JSON.stringify({ type: 'streaming_start' })}\\n\\n`);
+      res.write(`data: ${JSON.stringify({ type: 'streaming_start' })}\n\n`);
 
       // ENHANCED: Enhanced streamChat with thinking processing
       await streamliner.streamChat(
@@ -697,7 +697,7 @@ router.post('/stream', async (req, res, next) => {
             type: 'token', 
             token,
             content: assistantContent 
-          })}\\n\\n`);
+          })}\n\n`);
         },
         // ENHANCED: onComplete callback for thinking processing
         (result) => {
@@ -711,13 +711,13 @@ router.post('/stream', async (req, res, next) => {
             res.write(`data: ${JSON.stringify({ 
               type: 'thinking_detected',
               thinking: result.thinking.thinkingData
-            })}\\n\\n`);
+            })}\n\n`);
           }
         }
       );
 
       // Send streaming end
-      res.write(`data: ${JSON.stringify({ type: 'streaming_end' })}\\n\\n`);
+      res.write(`data: ${JSON.stringify({ type: 'streaming_end' })}\n\n`);
 
       // NOW save both messages AFTER the response is generated
       // This ensures the conversation history is correct for the next request
@@ -802,7 +802,7 @@ router.post('/stream', async (req, res, next) => {
             artifactType: artifact.artifactType,
             title: artifact.title,
             order: artifact.order
-          })}\\n\\n`);
+          })}\n\n`);
         }
       }
 
@@ -836,14 +836,14 @@ router.post('/stream', async (req, res, next) => {
           originalContentWithThinking: thinkingResult.hasThinking ? assistantContent : undefined
         },
         conversationId: convId 
-      })}\\n\\n`);
+      })}\n\n`);
 
     } catch (streamError) {
       console.error('Streaming error:', streamError);
       res.write(`data: ${JSON.stringify({ 
         type: 'error', 
         error: streamError instanceof Error ? streamError.message : 'Unknown error' 
-      })}\\n\\n`);
+      })}\n\n`);
     }
 
     res.end();
