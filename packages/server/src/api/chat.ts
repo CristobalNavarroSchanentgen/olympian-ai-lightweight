@@ -25,7 +25,9 @@ import {
   ArtifactReference,
   validateArtifactCreationRules,
   detectDuplicateArtifacts,
-  calculateContentHash
+  calculateContentHash,
+  parseThinkingFromContent,
+  ThinkingData
 } from '@olympian/shared';
 
 const router = Router();
@@ -592,10 +594,10 @@ async function createArtifactFromResponse(
 }
 
 // =====================================
-// ENHANCED STREAMING ENDPOINT
+// ENHANCED STREAMING ENDPOINT WITH THINKING
 // =====================================
 
-// NEW: Streaming endpoint for basic models with typewriter effect + multi-artifact creation
+// NEW: Streaming endpoint for basic models with typewriter effect + multi-artifact creation + thinking processing
 router.post('/stream', async (req, res, next) => {
   try {
     // Validate input
@@ -683,17 +685,36 @@ router.post('/stream', async (req, res, next) => {
 
       res.write(`data: ${JSON.stringify({ type: 'streaming_start' })}\n\n`);
 
-      await streamliner.streamChat(processedRequest, (token: string) => {
-        assistantContent += token;
-        tokenCount++;
-        
-        // Send each token as it comes
-        res.write(`data: ${JSON.stringify({ 
-          type: 'token', 
-          token,
-          content: assistantContent 
-        })}\n\n`);
-      });
+      // NEW: Enhanced streamChat with thinking processing
+      await streamliner.streamChat(
+        processedRequest, 
+        (token: string) => {
+          assistantContent += token;
+          tokenCount++;
+          
+          // Send each token as it comes
+          res.write(`data: ${JSON.stringify({ 
+            type: 'token', 
+            token,
+            content: assistantContent 
+          })}\n\n`);
+        },
+        // NEW: onComplete callback for thinking processing
+        (result) => {
+          console.log('🧠 [ChatAPI] Stream completed, processing thinking content...');
+          
+          // Process thinking if present
+          if (result.thinking?.hasThinking) {
+            console.log(`✅ [ChatAPI] Thinking content detected (${result.thinking.thinkingContent.length} chars)`);
+            
+            // Send thinking content to client
+            res.write(`data: ${JSON.stringify({ 
+              type: 'thinking_detected',
+              thinking: result.thinking.thinkingData
+            })}\n\n`);
+          }
+        }
+      );
 
       // Send streaming end
       res.write(`data: ${JSON.stringify({ type: 'streaming_end' })}\n\n`);
@@ -710,16 +731,30 @@ router.post('/stream', async (req, res, next) => {
       const userResult = await db.messages.insertOne(userMessage as any);
       const userMessageId = userResult.insertedId.toString();
 
+      // NEW: Process thinking content before saving assistant message
+      const thinkingResult = parseThinkingFromContent(assistantContent);
+      let finalAssistantContent = assistantContent;
+      let thinkingData: ThinkingData | undefined = undefined;
+      
+      if (thinkingResult.hasThinking) {
+        console.log(`🧠 [ChatAPI] Processing thinking content for database storage`);
+        finalAssistantContent = thinkingResult.processedContent;
+        thinkingData = thinkingResult.thinkingData;
+      }
+
       // Save assistant message and create artifacts
       const assistantMessageDoc: MessageDoc = {
         conversationId: convId,
         role: 'assistant' as const,
-        content: assistantContent, // Will be updated after artifact processing
+        content: finalAssistantContent, // Will be updated after artifact processing
         metadata: {
           model,
           visionModel,
           tokens: tokenCount,
           generationTime: Date.now() - startTime,
+          // NEW: Add thinking metadata
+          thinking: thinkingData,
+          originalContentWithThinking: thinkingResult.hasThinking ? assistantContent : undefined,
         },
         createdAt: new Date(),
       };
@@ -730,7 +765,7 @@ router.post('/stream', async (req, res, next) => {
       // NEW: Create multi-artifacts and update message content
       console.log(`🎨 [ChatAPI] Processing assistant response for multi-artifacts...`);
       const artifactResult = await createMultiArtifactsFromResponse(
-        assistantContent,
+        finalAssistantContent, // Use content without thinking tags
         convId,
         assistantMessageId
       );
@@ -747,7 +782,7 @@ router.post('/stream', async (req, res, next) => {
               'metadata.artifactCount': artifactResult.artifactCount,
               'metadata.artifactCreationStrategy': artifactResult.creationStrategy,
               'metadata.multipleCodeBlocks': artifactResult.artifactCount > 1,
-              'metadata.originalContent': assistantContent,
+              'metadata.originalContent': finalAssistantContent,
               'metadata.codeBlocksRemoved': true,
               // Legacy compatibility
               'metadata.artifactId': artifactResult.artifacts[0]?.artifactId,
@@ -780,10 +815,10 @@ router.post('/stream', async (req, res, next) => {
         }
       );
 
-      // Send final completion event
+      // Send final completion event with thinking data
       res.write(`data: ${JSON.stringify({ 
         type: 'complete',
-        message: artifactResult.processedContent,
+        message: artifactResult.processedContent || finalAssistantContent,
         metadata: {
           ...assistantMessageDoc.metadata,
           artifacts: artifactResult.artifacts,
@@ -791,11 +826,14 @@ router.post('/stream', async (req, res, next) => {
           artifactCount: artifactResult.artifactCount,
           artifactCreationStrategy: artifactResult.creationStrategy,
           multipleCodeBlocks: artifactResult.artifactCount > 1,
-          originalContent: artifactResult.hasArtifact ? assistantContent : undefined,
+          originalContent: artifactResult.hasArtifact ? finalAssistantContent : undefined,
           codeBlocksRemoved: artifactResult.hasArtifact,
           // Legacy compatibility
           artifactId: artifactResult.artifacts[0]?.artifactId,
-          artifactType: artifactResult.artifacts[0]?.artifactType
+          artifactType: artifactResult.artifacts[0]?.artifactType,
+          // NEW: Include thinking data in response
+          thinking: thinkingData,
+          originalContentWithThinking: thinkingResult.hasThinking ? assistantContent : undefined
         },
         conversationId: convId 
       })}\n\n`);
@@ -815,10 +853,10 @@ router.post('/stream', async (req, res, next) => {
 });
 
 // =====================================
-// ENHANCED SEND MESSAGE ENDPOINT
+// ENHANCED SEND MESSAGE ENDPOINT WITH THINKING
 // =====================================
 
-// Send a chat message (HTTP fallback for WebSocket) + multi-artifact creation
+// Send a chat message (HTTP fallback for WebSocket) + multi-artifact creation + thinking processing
 router.post('/send', async (req, res, next) => {
   try {
     // Validate input
@@ -873,11 +911,35 @@ router.post('/send', async (req, res, next) => {
     let assistantContent = '';
     const startTime = Date.now();
     let tokenCount = 0;
+    let thinkingData: ThinkingData | undefined = undefined;
 
-    await streamliner.streamChat(processedRequest, (token: string) => {
-      assistantContent += token;
-      tokenCount++;
-    });
+    // NEW: Enhanced streamChat with thinking processing for non-streaming endpoint
+    await streamliner.streamChat(
+      processedRequest, 
+      (token: string) => {
+        assistantContent += token;
+        tokenCount++;
+      },
+      // NEW: onComplete callback for thinking processing
+      (result) => {
+        console.log('🧠 [ChatAPI] Non-streaming request completed, processing thinking content...');
+        
+        if (result.thinking?.hasThinking) {
+          console.log(`✅ [ChatAPI] Thinking content detected (${result.thinking.thinkingContent.length} chars)`);
+          thinkingData = result.thinking.thinkingData;
+        }
+      }
+    );
+
+    // NEW: Process thinking content
+    const thinkingResult = parseThinkingFromContent(assistantContent);
+    let finalAssistantContent = assistantContent;
+    
+    if (thinkingResult.hasThinking) {
+      console.log(`🧠 [ChatAPI] Processing thinking content for database storage`);
+      finalAssistantContent = thinkingResult.processedContent;
+      thinkingData = thinkingResult.thinkingData;
+    }
 
     // Save both messages AFTER generating the response
     const userMessage: MessageDoc = {
@@ -893,12 +955,15 @@ router.post('/send', async (req, res, next) => {
     const assistantMessageDoc: MessageDoc = {
       conversationId: convId,
       role: 'assistant' as const,
-      content: assistantContent,
+      content: finalAssistantContent,
       metadata: {
         model,
         visionModel,
         tokens: tokenCount,
         generationTime: Date.now() - startTime,
+        // NEW: Add thinking metadata
+        thinking: thinkingData,
+        originalContentWithThinking: thinkingResult.hasThinking ? assistantContent : undefined,
       },
       createdAt: new Date(),
     };
@@ -909,13 +974,13 @@ router.post('/send', async (req, res, next) => {
     // NEW: Create multi-artifacts and update message content
     console.log(`🎨 [ChatAPI] Processing assistant response for multi-artifacts...`);
     const artifactResult = await createMultiArtifactsFromResponse(
-      assistantContent,
+      finalAssistantContent, // Use content without thinking tags
       convId,
       assistantMessageId
     );
 
     // Update assistant message with multi-artifact metadata if artifacts were created
-    let finalContent = assistantContent;
+    let finalContent = finalAssistantContent;
     let finalMetadata = assistantMessageDoc.metadata;
     
     if (artifactResult.hasArtifact) {
@@ -927,7 +992,7 @@ router.post('/send', async (req, res, next) => {
         artifactCount: artifactResult.artifactCount,
         artifactCreationStrategy: artifactResult.creationStrategy,
         multipleCodeBlocks: artifactResult.artifactCount > 1,
-        originalContent: assistantContent,
+        originalContent: finalAssistantContent,
         codeBlocksRemoved: true,
         // Legacy compatibility
         artifactId: artifactResult.artifacts[0]?.artifactId,
@@ -957,7 +1022,7 @@ router.post('/send', async (req, res, next) => {
       }
     );
 
-    // Return response with proper conversation object
+    // Return response with proper conversation object and thinking data
     res.json({
       success: true,
       data: {
@@ -972,7 +1037,10 @@ router.post('/send', async (req, res, next) => {
         artifact: artifactResult.hasArtifact ? {
           id: artifactResult.artifacts[0]?.artifactId,
           type: artifactResult.artifacts[0]?.artifactType
-        } : undefined
+        } : undefined,
+        // NEW: Include thinking data in response
+        thinking: thinkingData,
+        originalContentWithThinking: thinkingResult.hasThinking ? assistantContent : undefined
       },
       timestamp: new Date(),
     });
