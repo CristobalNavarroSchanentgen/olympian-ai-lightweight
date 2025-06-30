@@ -95,12 +95,12 @@ router.get('/servers/:id', (req, res, next) => {
     const toolCache = MCPToolCache.getInstance();
     
     const healthStatus = healthChecker.getServerHealth(req.params.id);
-    const serverTools = toolCache.getCachedTools ? toolCache.getCachedTools(req.params.id) : [];
+    const serverTools = toolCache.getCachedTools(req.params.id) || [];
 
     const enhancedServer = {
       ...server,
       healthStatus,
-      toolCount: serverTools?.length || 0,
+      toolCount: serverTools.length,
       lastHealthCheck: healthStatus?.timestamp,
       isHealthy: healthStatus?.status === 'healthy'
     };
