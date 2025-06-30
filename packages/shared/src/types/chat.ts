@@ -315,9 +315,16 @@ export function getDisplayContentForMessage(message: Message): string {
   return message.content;
 }
 
+// Helper function to detect if we're in a browser environment
+function isBrowserEnvironment(): boolean {
+  return typeof globalThis !== 'undefined' && 
+         typeof globalThis.window !== 'undefined' && 
+         globalThis.window === globalThis;
+}
+
 // NEW: Debug utility to validate thinking data structure
 export function debugThinkingData(metadata?: MessageMetadata): void {
-  if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+  if (isBrowserEnvironment() && process.env.NODE_ENV === 'development') {
     console.group('🧠 [debugThinkingData] Thinking data analysis');
     console.log('Metadata:', metadata);
     console.log('Has thinking object:', !!metadata?.thinking);
