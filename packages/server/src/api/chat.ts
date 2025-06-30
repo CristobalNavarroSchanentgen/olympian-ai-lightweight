@@ -440,11 +440,13 @@ function determineDetectionStrategy(
 
 /**
  * Phase 3: Create multiple artifacts from detected content and update message metadata
+ * FIXED: Now properly handles artifacts within thinking tags
  */
 async function createMultiArtifactsFromResponse(
   content: string,
   conversationId: string,
-  messageId: string
+  messageId: string,
+  originalContentWithThinking?: string
 ): Promise<{
   processedContent: string;
   artifacts: ArtifactReference[];
@@ -453,7 +455,11 @@ async function createMultiArtifactsFromResponse(
   creationStrategy: string;
 }> {
   try {
-    const detection = detectMultiArtifactContent(content);
+    // FIXED: Use original content (with thinking tags) for artifact detection if available
+    const contentForArtifactDetection = originalContentWithThinking || content;
+    console.log(`🎨 [ChatAPI] Using ${originalContentWithThinking ? 'original content with thinking' : 'processed content'} for artifact detection`);
+    
+    const detection = detectMultiArtifactContent(contentForArtifactDetection);
     
     if (!detection.shouldCreateArtifact || !detection.artifacts || detection.artifacts.length === 0) {
       return {
@@ -489,7 +495,7 @@ async function createMultiArtifactsFromResponse(
           order: i,
           metadata: {
             detectionStrategy: detection.detectionStrategy || 'multi-artifact-analysis',
-            originalContent: content,
+            originalContent: originalContentWithThinking || content,
             processedContent: detection.processedContent,
             codeBlocksRemoved: true,
             reconstructionHash: '', // Will be calculated in service
@@ -504,7 +510,7 @@ async function createMultiArtifactsFromResponse(
             isDuplicate: false,
             fallbackData: {
               detectionMethod: 'multi-artifact-regex-pattern-matching',
-              originalLength: content.length,
+              originalLength: contentForArtifactDetection.length,
               extractedLength: detectedArtifact.content.length,
               confidence: detectedArtifact.confidence
             }
@@ -512,7 +518,7 @@ async function createMultiArtifactsFromResponse(
         };
         
         // Create individual artifact
-        const result = await artifactService.createArtifact(createRequest, content);
+        const result = await artifactService.createArtifact(createRequest, originalContentWithThinking || content);
         
         if (result.success && result.artifact) {
           console.log(`✅ [ChatAPI] Artifact ${i + 1}/${detection.artifacts.length} created: ${result.artifact.id}`);
@@ -548,8 +554,17 @@ async function createMultiArtifactsFromResponse(
       console.warn(`⚠️ [ChatAPI] ${creationErrors.length}/${detection.artifacts.length} artifacts failed to create`);
     }
     
+    // FIXED: If we used original content for detection, apply artifact removal to the processed content
+    let finalProcessedContent = content;
+    if (originalContentWithThinking && createdArtifacts.length > 0) {
+      // Map artifact positions from original content to processed content
+      finalProcessedContent = removeArtifactsFromProcessedContent(content, createdArtifacts);
+    } else {
+      finalProcessedContent = detection.processedContent || content;
+    }
+    
     return {
-      processedContent: detection.processedContent || content,
+      processedContent: finalProcessedContent,
       artifacts: createdArtifacts,
       hasArtifact: createdArtifacts.length > 0,
       artifactCount: createdArtifacts.length,
@@ -566,6 +581,40 @@ async function createMultiArtifactsFromResponse(
       creationStrategy: 'error'
     };
   }
+}
+
+/**
+ * FIXED: Helper function to remove artifacts from processed content after thinking removal
+ */
+function removeArtifactsFromProcessedContent(
+  processedContent: string,
+  artifacts: ArtifactReference[]
+): string {
+  let result = processedContent;
+  
+  // Create placeholders for each artifact
+  for (const artifact of artifacts) {
+    const placeholder = `[Created ${artifact.title || artifact.artifactType} artifact]`;
+    
+    // Try to find and remove any remaining code blocks in the processed content
+    const codeBlockPattern = new RegExp(`\`\`\`[\\s\\S]*?\`\`\``, 'g');
+    let hasReplaced = false;
+    
+    result = result.replace(codeBlockPattern, (match) => {
+      if (!hasReplaced) {
+        hasReplaced = true;
+        return placeholder;
+      }
+      return match;
+    });
+    
+    // If no code block was found, append the placeholder at the end
+    if (!hasReplaced && result.trim()) {
+      result = result.trim() + '\n\n' + placeholder;
+    }
+  }
+  
+  return result.trim() || 'Generated artifact content';
 }
 
 /**
@@ -762,12 +811,13 @@ router.post('/stream', async (req, res, next) => {
       const assistantResult = await db.messages.insertOne(assistantMessageDoc as any);
       const assistantMessageId = assistantResult.insertedId.toString();
 
-      // NEW: Create multi-artifacts and update message content
+      // FIXED: Process artifacts with original content (including thinking tags)
       console.log(`🎨 [ChatAPI] Processing assistant response for multi-artifacts...`);
       const artifactResult = await createMultiArtifactsFromResponse(
-        finalAssistantContent, // Use content without thinking tags
+        finalAssistantContent, // Processed content without thinking tags
         convId,
-        assistantMessageId
+        assistantMessageId,
+        thinkingResult.hasThinking ? assistantContent : undefined // Original content with thinking tags
       );
 
       // Update assistant message with multi-artifact metadata and processed content
@@ -971,12 +1021,13 @@ router.post('/send', async (req, res, next) => {
     const assistantResult = await db.messages.insertOne(assistantMessageDoc as any);
     const assistantMessageId = assistantResult.insertedId.toString();
 
-    // NEW: Create multi-artifacts and update message content
+    // FIXED: Process artifacts with original content (including thinking tags)
     console.log(`🎨 [ChatAPI] Processing assistant response for multi-artifacts...`);
     const artifactResult = await createMultiArtifactsFromResponse(
-      finalAssistantContent, // Use content without thinking tags
+      finalAssistantContent, // Processed content without thinking tags
       convId,
-      assistantMessageId
+      assistantMessageId,
+      thinkingResult.hasThinking ? assistantContent : undefined // Original content with thinking tags
     );
 
     // Update assistant message with multi-artifact metadata if artifacts were created
