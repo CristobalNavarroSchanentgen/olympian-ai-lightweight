@@ -13,16 +13,25 @@ import {
 } from '@olympian/shared';
 import { DatabaseService } from './DatabaseService';
 import { ArtifactVersionService, ArtifactVersion } from './ArtifactVersionService';
+import { ArtifactNamingService } from './ArtifactNamingService';
 import { ObjectId, ClientSession, WithId } from 'mongodb';
 import { createHash } from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { gzipSync, gunzipSync } from 'zlib';
+
+interface CreateArtifactWithNamingRequest extends CreateArtifactRequest {
+  userPrompt?: string;
+  isPartOfFamily?: boolean;
+  familyIndex?: number;
+  totalInFamily?: number;
+}
 
 /**
  * Atomic Artifact Persistence Service for Multi-host Deployments
  * 
  * Handles all artifact persistence operations with:
  * - Atomic transactions with message linking
+ * - AI-powered semantic naming
  * - Multi-host coordination and conflict resolution
  * - Content integrity verification
  * - Performance optimization with caching
@@ -32,11 +41,13 @@ export class ArtifactService {
   private static instance: ArtifactService;
   private db: DatabaseService;
   private versionService: ArtifactVersionService;
+  private namingService: ArtifactNamingService;
   private serverInstance: string;
 
   private constructor() {
     this.db = DatabaseService.getInstance();
     this.versionService = ArtifactVersionService.getInstance();
+    this.namingService = ArtifactNamingService.getInstance();
     this.serverInstance = process.env.SERVER_INSTANCE_ID || `server-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     console.log(`🎨 [ArtifactService] Initialized with server instance: ${this.serverInstance}`);
   }
@@ -49,10 +60,271 @@ export class ArtifactService {
   }
 
   /**
-   * Create artifact with atomic message linking
-   * Ensures artifacts and messages are always consistent
+   * Create artifact with AI-powered naming and atomic message linking
    */
   public async createArtifact(
+    request: CreateArtifactRequest, 
+    messageContent?: string
+  ): Promise<ArtifactOperationResponse> {
+    // Use enhanced naming if user prompt available
+    if (messageContent) {
+      return this.createArtifactWithNaming({
+        ...request,
+        userPrompt: messageContent
+      }, messageContent);
+    }
+    
+    return this.createArtifactLegacy(request, messageContent);
+  }
+
+  /**
+   * Create artifact with AI-powered naming
+   */
+  public async createArtifactWithNaming(
+    request: CreateArtifactWithNamingRequest, 
+    messageContent?: string
+  ): Promise<ArtifactOperationResponse> {
+    const session = this.db.getClient().startSession();
+    
+    try {
+      let result: ArtifactOperationResponse = { 
+        success: false, 
+        operation: 'create', 
+        timestamp: new Date() 
+      };
+      
+      await session.withTransaction(async () => {
+        console.log(`🎨 [ArtifactService] Creating artifact with AI naming for conversation: ${request.conversationId}`);
+        
+        // Generate unique artifact ID
+        const artifactId = uuidv4();
+        const now = new Date();
+        
+        // Calculate content metrics
+        const contentBuffer = Buffer.from(request.content, 'utf8');
+        const contentSize = contentBuffer.length;
+        const checksum = this.calculateChecksum(request.content);
+        const reconstructionHash = this.calculateReconstructionHash(request.metadata?.originalContent || request.content);
+        
+        // Generate AI-powered name
+        let finalTitle = request.title;
+        if (request.userPrompt) {
+          try {
+            const namingResult = await this.namingService.generateName({
+              content: request.content,
+              type: request.type,
+              language: request.language,
+              userPrompt: request.userPrompt,
+              isPartOfFamily: request.isPartOfFamily,
+              familyIndex: request.familyIndex,
+              totalInFamily: request.totalInFamily
+            });
+            
+            finalTitle = namingResult.title;
+            console.log(`🏷️ [ArtifactService] Generated name: "${finalTitle}" (source: ${namingResult.source}${namingResult.cached ? ', cached' : ''})`);
+          } catch (namingError) {
+            console.warn(`🏷️ [ArtifactService] Naming failed, using original title:`, namingError);
+          }
+        }
+        
+        // Prepare artifact document
+        const artifactDoc: ArtifactDocument = {
+          id: artifactId,
+          conversationId: request.conversationId,
+          messageId: request.messageId,
+          title: finalTitle,
+          type: request.type,
+          content: request.content,
+          language: request.language,
+          version: 1,
+          checksum,
+          serverInstance: this.serverInstance,
+          createdAt: now,
+          updatedAt: now,
+          lastAccessedAt: now,
+          metadata: {
+            detectionStrategy: request.metadata?.detectionStrategy || 'automatic',
+            originalContent: request.metadata?.originalContent || request.content,
+            processedContent: request.metadata?.processedContent,
+            codeBlocksRemoved: request.metadata?.codeBlocksRemoved || false,
+            reconstructionHash,
+            syncStatus: 'synced',
+            lastSyncedAt: now,
+            contentSize,
+            compressionType: contentSize > 10000 ? 'gzip' : 'none',
+            cacheKey: `artifact:${artifactId}:${checksum}`,
+            // Add naming metadata
+            aiNamed: request.userPrompt ? true : false,
+            partOfMultiArtifact: request.isPartOfFamily || false,
+            artifactIndex: request.familyIndex,
+            totalArtifactsInMessage: request.totalInFamily,
+            ...request.metadata
+          }
+        };
+
+        // Compress large content
+        if (contentSize > 10000) {
+          try {
+            const compressed = gzipSync(Buffer.from(request.content, 'utf8'));
+            if (compressed.length < contentSize * 0.8) {
+              artifactDoc.content = compressed.toString('base64');
+              artifactDoc.metadata.compressionType = 'gzip';
+              console.log(`🗜️ [ArtifactService] Compressed artifact content: ${contentSize} -> ${compressed.length} bytes`);
+            }
+          } catch (compressionError) {
+            console.warn(`⚠️ [ArtifactService] Compression failed, using original content:`, compressionError);
+          }
+        }
+
+        // Insert artifact
+        await this.db.artifacts.insertOne(artifactDoc, { session });
+        console.log(`✅ [ArtifactService] Artifact created with ID: ${artifactId}`);
+
+        // Save initial version
+        await this.versionService.saveVersion(artifactId, 1, request.content, checksum);
+
+        // Update message metadata if messageId provided
+        if (request.messageId && messageContent) {
+          const enhancedMetadata: MessageMetadata = {
+            artifactId,
+            artifactType: request.type,
+            hasArtifact: true,
+            originalContent: request.metadata?.originalContent || messageContent,
+            codeBlocksRemoved: request.metadata?.codeBlocksRemoved || false,
+          };
+
+          // Add multi-artifact metadata if part of family
+          if (request.isPartOfFamily) {
+            enhancedMetadata.artifacts = enhancedMetadata.artifacts || [];
+            enhancedMetadata.artifacts.push({
+              artifactId,
+              artifactType: request.type,
+              title: finalTitle,
+              language: request.language,
+              order: request.familyIndex || 0
+            });
+            enhancedMetadata.artifactCount = request.totalInFamily || 1;
+          }
+
+          const messageQuery = ObjectId.isValid(request.messageId) 
+            ? { _id: request.messageId } 
+            : { id: request.messageId };
+
+          await this.db.messages.updateOne(
+            messageQuery,
+            { 
+              $set: { 
+                'metadata.artifactId': artifactId,
+                'metadata.artifactType': request.type,
+                'metadata.hasArtifact': true,
+                'metadata.originalContent': enhancedMetadata.originalContent,
+                'metadata.codeBlocksRemoved': enhancedMetadata.codeBlocksRemoved,
+                ...(request.isPartOfFamily && {
+                  'metadata.artifacts': enhancedMetadata.artifacts,
+                  'metadata.artifactCount': enhancedMetadata.artifactCount
+                }),
+                updatedAt: now
+              } 
+            },
+            { session }
+          );
+          
+          console.log(`🔗 [ArtifactService] Updated message metadata for message: ${request.messageId}`);
+        }
+
+        result = {
+          success: true,
+          artifact: this.convertDocumentToArtifact(artifactDoc),
+          operation: 'create',
+          timestamp: now,
+          version: 1,
+          syncStatus: 'synced'
+        };
+
+      }, {
+        readConcern: { level: 'majority' },
+        writeConcern: { w: 'majority', j: true },
+        readPreference: 'primary'
+      });
+
+      return result;
+
+    } catch (error) {
+      console.error(`❌ [ArtifactService] Failed to create artifact with naming:`, error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to create artifact',
+        operation: 'create',
+        timestamp: new Date(),
+        syncStatus: 'error'
+      };
+    } finally {
+      await session.endSession();
+    }
+  }
+
+  /**
+   * Create multiple artifacts with family-aware naming
+   */
+  public async createMultipleArtifacts(
+    artifacts: Array<Omit<CreateArtifactRequest, 'title'>>,
+    userPrompt: string,
+    conversationId: string,
+    messageId?: string,
+    messageContent?: string
+  ): Promise<{
+    success: boolean;
+    artifacts: Artifact[];
+    errors: Array<{ index: number; error: string }>;
+  }> {
+    const results: Artifact[] = [];
+    const errors: Array<{ index: number; error: string }> = [];
+    const totalArtifacts = artifacts.length;
+
+    console.log(`🎨 [ArtifactService] Creating ${totalArtifacts} artifacts with family naming`);
+
+    for (let i = 0; i < artifacts.length; i++) {
+      try {
+        const artifact = artifacts[i];
+        
+        const result = await this.createArtifactWithNaming({
+          ...artifact,
+          title: `${artifact.type} (${i + 1} of ${totalArtifacts})`, // Temporary title
+          conversationId,
+          messageId,
+          userPrompt,
+          isPartOfFamily: totalArtifacts > 1,
+          familyIndex: i,
+          totalInFamily: totalArtifacts
+        }, messageContent);
+
+        if (result.success && result.artifact) {
+          results.push(result.artifact);
+        } else {
+          errors.push({
+            index: i,
+            error: result.error || 'Unknown error'
+          });
+        }
+      } catch (error) {
+        errors.push({
+          index: i,
+          error: error instanceof Error ? error.message : 'Unknown error'
+        });
+      }
+    }
+
+    return {
+      success: errors.length === 0,
+      artifacts: results,
+      errors
+    };
+  }
+
+  /**
+   * Legacy create artifact method (without AI naming)
+   */
+  private async createArtifactLegacy(
     request: CreateArtifactRequest, 
     messageContent?: string
   ): Promise<ArtifactOperationResponse> {
