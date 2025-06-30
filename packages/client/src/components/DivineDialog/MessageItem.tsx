@@ -4,6 +4,7 @@ import { format } from 'date-fns';
 import ReactMarkdown from 'react-markdown';
 import { cn } from '@/lib/utils';
 import { TypewriterText } from './TypewriterText';
+import { ThinkingSection } from './ThinkingSection';
 import { CodeBlock } from '../ui/codeblock';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -28,7 +29,8 @@ import {
   getArtifactCount, 
   hasMultipleArtifacts, 
   getFirstArtifact,
-  isLegacyArtifactFormat 
+  isLegacyArtifactFormat,
+  hasThinking
 } from '@olympian/shared';
 
 interface MessageItemProps {
@@ -53,6 +55,9 @@ export function MessageItem({
   // Enhanced logic: show typewriter only if it's the latest assistant message 
   // that hasn't completed yet AND hasn't been finalized (prevents re-typewriting existing messages)
   const shouldShowTypewriter = !isUser && isLatest && !hasCompletedTypewriter && !isMessageFinalized;
+  
+  // Check if message has thinking content
+  const messageHasThinking = hasThinking(message.metadata);
   
   const { 
     selectArtifact, 
@@ -328,6 +333,14 @@ export function MessageItem({
                 </ReactMarkdown>
               )}
             </>
+          )}
+          
+          {/* NEW: Thinking Section - positioned after content but before artifacts */}
+          {messageHasThinking && message.metadata?.thinking && !shouldShowTypewriter && (
+            <ThinkingSection 
+              thinking={message.metadata.thinking}
+              className="mt-4"
+            />
           )}
           
           {/* NEW: Enhanced Artifact Display with multi-artifact support (Phase 4) */}
