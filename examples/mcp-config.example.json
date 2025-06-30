@@ -1,0 +1,36 @@
+{
+  "mcpServers": {
+    "filesystem": {
+      "url": "stdio://node filesystem-server.js",
+      "type": "server",
+      "timeout": 30000,
+      "retries": 3
+    },
+    "web_search": {
+      "url": "https://api.example.com/mcp",
+      "type": "server",
+      "auth": "Bearer your-api-key-here",
+      "timeout": 15000,
+      "retries": 2
+    },
+    "database": {
+      "url": "stdio://python database-mcp-server.py",
+      "type": "server",
+      "timeout": 45000,
+      "retries": 3
+    },
+    "registry_discovery": {
+      "url": "https://registry.modelcontextprotocol.io",
+      "type": "discovery_channel",
+      "timeout": 10000
+    }
+  },
+  "wellKnownPaths": [
+    "/.well-known/mcp",
+    "/.well-known/model-context-protocol"
+  ],
+  "registryUrls": [
+    "https://registry.modelcontextprotocol.io"
+  ],
+  "cacheTtl": 300000
+}
