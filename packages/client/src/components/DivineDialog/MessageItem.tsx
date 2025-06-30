@@ -42,42 +42,6 @@ interface MessageItemProps {
   onTypewriterComplete: (message: Message, index?: number) => void;
 }
 
-// NEW: Enhanced thinking validation helper
-function validateThinkingData(message: Message): {
-  hasValidThinking: boolean;
-  thinkingData: any;
-  debugInfo: any;
-} {
-  const metadata = message.metadata;
-  const thinking = metadata?.thinking;
-  
-  const debugInfo = {
-    hasMetadata: !!metadata,
-    hasThinkingField: !!thinking,
-    thinkingType: typeof thinking,
-    hasThinkingFlag: thinking?.hasThinking,
-    hasContent: !!thinking?.content,
-    contentLength: thinking?.content?.length || 0,
-    processedAt: thinking?.processedAt
-  };
-  
-  console.log(`🧠 [MessageItem] Thinking validation for message:`, debugInfo);
-  
-  // Check if thinking data exists and has the correct structure
-  const hasValidThinking = !!(
-    thinking && 
-    thinking.hasThinking === true && 
-    thinking.content && 
-    thinking.content.length > 0
-  );
-  
-  return {
-    hasValidThinking,
-    thinkingData: thinking,
-    debugInfo
-  };
-}
-
 export function MessageItem({ 
   message, 
   messageIndex,
@@ -92,27 +56,22 @@ export function MessageItem({
   // that hasn't completed yet AND hasn't been finalized (prevents re-typewriting existing messages)
   const shouldShowTypewriter = !isUser && isLatest && !hasCompletedTypewriter && !isMessageFinalized;
   
-  // NEW: Enhanced thinking detection with validation
-  const thinkingValidation = validateThinkingData(message);
-  const messageHasThinking = thinkingValidation.hasValidThinking;
+  // FIXED: Enhanced thinking validation with better error handling
+  const messageHasThinking = hasThinking(message.metadata);
+  const thinkingData = message.metadata?.thinking;
   
-  // Debug logging for thinking data
-  useEffect(() => {
-    if (message.role === 'assistant') {
-      console.log(`🧠 [MessageItem] Assistant message ${message._id || 'temp'} thinking check:`, {
-        messageIndex,
-        hasMetadata: !!message.metadata,
-        hasThinkingField: !!message.metadata?.thinking,
-        thinkingValidation: thinkingValidation.debugInfo,
-        messageHasThinking,
-        shouldShowThinking: messageHasThinking && !shouldShowTypewriter,
-        shouldShowTypewriter,
-        isLatest,
-        hasCompletedTypewriter,
-        isMessageFinalized
-      });
-    }
-  }, [message, messageIndex, messageHasThinking, shouldShowTypewriter, thinkingValidation.debugInfo, isLatest, hasCompletedTypewriter, isMessageFinalized]);
+  // DEBUG: Add console logging for thinking detection
+  if (message.role === 'assistant') {
+    console.log(`🧠 [MessageItem] Thinking validation for message ${messageIndex}:`, {
+      messageHasThinking,
+      hasMetadata: !!message.metadata,
+      hasThinkingField: !!message.metadata?.thinking,
+      hasThinkingFlag: message.metadata?.thinking?.hasThinking,
+      thinkingContent: message.metadata?.thinking?.content?.substring(0, 100) + '...',
+      shouldShowTypewriter,
+      messageId: message._id
+    });
+  }
   
   const { 
     selectArtifact, 
@@ -316,11 +275,17 @@ export function MessageItem({
               )}
             </Badge>
           )}
-          
-          {/* NEW: Thinking indicator badge */}
-          {messageHasThinking && (
-            <Badge variant="outline" className="text-xs flex items-center gap-1 border-blue-500/30 text-blue-400">
-              🧠 Thinking
+
+          {/* FIXED: Enhanced thinking indicator - shows when thinking data is available */}
+          {messageHasThinking && thinkingData && !shouldShowTypewriter && (
+            <Badge 
+              variant="secondary" 
+              className="text-xs flex items-center gap-1 bg-blue-900/30 text-blue-300 border-blue-600/30"
+            >
+              <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 3.94-3.04Z"/>
+              </svg>
+              Reasoning
             </Badge>
           )}
         </div>
@@ -377,7 +342,7 @@ export function MessageItem({
                       );
                     },
                     code: ({ node: _node, children, className, ...props }) => {
-                      const match = /language-(\w+)/.exec(className || '');
+                      const match = /language-(\\w+)/.exec(className || '');
                       const isInline = !match;
                       
                       return isInline ? (
@@ -397,12 +362,12 @@ export function MessageItem({
             </>
           )}
           
-          {/* NEW: Enhanced Thinking Section - positioned after content but before artifacts */}
-          {messageHasThinking && thinkingValidation.thinkingData && !shouldShowTypewriter && (
+          {/* FIXED: Enhanced Thinking Section - positioned after content but before artifacts */}
+          {messageHasThinking && thinkingData && !shouldShowTypewriter && (
             <div className="mt-4">
               <ThinkingSection 
-                thinking={thinkingValidation.thinkingData}
-                className=""
+                thinking={thinkingData}
+                className="w-full"
               />
             </div>
           )}
