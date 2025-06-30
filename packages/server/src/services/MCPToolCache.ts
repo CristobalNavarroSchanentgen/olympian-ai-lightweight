@@ -1,4 +1,4 @@
-import { MCPTool, MCPToolCache, MCPToolCacheStatus, MCPServer, MCPEvent, MCPEventHandler } from '@olympian/shared';
+import { MCPTool, MCPToolCache as MCPToolCacheType, MCPToolCacheStatus, MCPServer, MCPEvent, MCPEventHandler } from '@olympian/shared';
 import { logger } from '../utils/logger';
 import EventEmitter from 'events';
 
@@ -14,7 +14,7 @@ import EventEmitter from 'events';
  */
 export class MCPToolCache extends EventEmitter {
   private static instance: MCPToolCache;
-  private toolCaches: Map<string, MCPToolCache> = new Map();
+  private toolCaches: Map<string, MCPToolCacheType> = new Map();
   private globalToolIndex: Map<string, MCPTool[]> = new Map(); // toolName -> array of tools from different servers
   private serverClients: Map<string, any> = new Map(); // serverId -> MCP client instance
   private cacheStats = {
@@ -91,7 +91,7 @@ export class MCPToolCache extends EventEmitter {
       }));
 
       // Cache the tools
-      const toolCache: MCPToolCache = {
+      const toolCache: MCPToolCacheType = {
         serverId,
         tools: mcpTools,
         lastUpdated: new Date(),
@@ -157,6 +157,14 @@ export class MCPToolCache extends EventEmitter {
     }
 
     return await this.discoverAndCacheTools(serverId, client);
+  }
+
+  /**
+   * Get cached tools for a server (without refresh)
+   */
+  getCachedTools(serverId: string): MCPTool[] | null {
+    const cache = this.toolCaches.get(serverId);
+    return cache ? cache.tools : null;
   }
 
   /**
@@ -384,14 +392,6 @@ export class MCPToolCache extends EventEmitter {
   }
 
   /**
-   * Get cached tools for a server (without checking expiration)
-   */
-  private getCachedTools(serverId: string): MCPTool[] | null {
-    const cache = this.toolCaches.get(serverId);
-    return cache ? cache.tools : null;
-  }
-
-  /**
    * Check if cache is expired for a server
    */
   private isCacheExpired(serverId: string): boolean {
@@ -402,7 +402,7 @@ export class MCPToolCache extends EventEmitter {
   /**
    * Check if a cache object is expired
    */
-  private isCacheExpiredByCache(cache: MCPToolCache): boolean {
+  private isCacheExpiredByCache(cache: MCPToolCacheType): boolean {
     return Date.now() > cache.expiry.getTime();
   }
 
