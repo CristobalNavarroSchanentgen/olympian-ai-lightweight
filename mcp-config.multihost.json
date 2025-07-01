@@ -1,0 +1,45 @@
+{
+  "mcpServers": {
+    "met-museum": {
+      "command": "npx",
+      "args": ["-y", "metmuseum-mcp"]
+    },
+    "applescript_execute": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/Users/YOUR_USERNAME/Servers/applescript-mcp",
+        "run",
+        "src/applescript_mcp/server.py"
+      ]
+    },
+    "nasa-mcp": {
+      "command": "npx",
+      "args": ["-y", "@programcomputer/nasa-mcp-server@latest"],
+      "env": {
+        "NASA_API_KEY": "YOUR_NASA_API_KEY_HERE"
+      }
+    },
+    "github": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-github"
+      ],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "YOUR_GITHUB_TOKEN_HERE"
+      }
+    },
+    "basic-memory": {
+      "command": "uvx",
+      "args": [
+        "basic-memory",
+        "mcp"
+      ]
+    },
+    "Context7": {
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp"]
+    }
+  }
+}
