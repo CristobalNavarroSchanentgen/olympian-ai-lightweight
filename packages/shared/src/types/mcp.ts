@@ -96,7 +96,7 @@ export interface MCPInvokeResponse {
 export interface MCPHealthCheck {
   serverId: string;
   timestamp: Date;
-  status: 'healthy' | 'unhealthy' | 'timeout' | 'error';
+  status: 'healthy' | 'unhealthy' | 'timeout' | 'error' | 'unknown';
   responseTime?: number;
   error?: string;
   consecutiveFailures: number;
@@ -256,7 +256,7 @@ export type MCPErrorType =
   | 'CONFIGURATION_ERROR'
   | 'CACHE_ERROR';
 
-export interface MCPError {
+export interface MCPError extends Record<string, unknown> {
   type: MCPErrorType;
   message: string;
   serverId?: string;
