@@ -10,7 +10,9 @@
       "headers": {
         "Authorization": "Bearer ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
         "Content-Type": "application/json",
-        "User-Agent": "Olympian-AI-MCP-Client/1.0"
+        "User-Agent": "Olympian-AI-MCP-Client/1.0",
+        "Accept": "application/json, text/event-stream",
+        "MCP-Protocol-Version": "2024-11-05"
       },
       "env": {
         "GITHUB_PERSONAL_ACCESS_TOKEN": "ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
@@ -25,7 +27,9 @@
       "retries": 3,
       "headers": {
         "Content-Type": "application/json",
-        "User-Agent": "Olympian-AI-MCP-Client/1.0"
+        "User-Agent": "Olympian-AI-MCP-Client/1.0",
+        "Accept": "application/json, text/event-stream",
+        "MCP-Protocol-Version": "2024-11-05"
       },
       "env": {
         "NASA_API_KEY": "your_nasa_api_key_here"
@@ -40,7 +44,9 @@
       "retries": 3,
       "headers": {
         "Content-Type": "application/json",
-        "User-Agent": "Olympian-AI-MCP-Client/1.0"
+        "User-Agent": "Olympian-AI-MCP-Client/1.0",
+        "Accept": "application/json, text/event-stream",
+        "MCP-Protocol-Version": "2024-11-05"
       }
     },
     "Context7": {
@@ -52,30 +58,75 @@
       "retries": 3,
       "headers": {
         "Content-Type": "application/json",
-        "User-Agent": "Olympian-AI-MCP-Client/1.0"
+        "User-Agent": "Olympian-AI-MCP-Client/1.0",
+        "Accept": "application/json, text/event-stream",
+        "MCP-Protocol-Version": "2024-11-05"
+      }
+    },
+    "applescript-mcp": {
+      "transport": "http",
+      "endpoint": "http://host.docker.internal:3005/mcp",
+      "description": "AppleScript MCP server for macOS automation via HTTP",
+      "optional": true,
+      "timeout": 30000,
+      "retries": 3,
+      "headers": {
+        "Content-Type": "application/json",
+        "User-Agent": "Olympian-AI-MCP-Client/1.0",
+        "Accept": "application/json, text/event-stream",
+        "MCP-Protocol-Version": "2024-11-05"
+      }
+    },
+    "web-search": {
+      "transport": "http", 
+      "endpoint": "http://host.docker.internal:3006/mcp",
+      "description": "Web search MCP server via HTTP",
+      "optional": true,
+      "timeout": 45000,
+      "retries": 3,
+      "headers": {
+        "Content-Type": "application/json",
+        "User-Agent": "Olympian-AI-MCP-Client/1.0",
+        "Accept": "application/json, text/event-stream",
+        "MCP-Protocol-Version": "2024-11-05"
       }
     }
   },
   "_meta": {
-    "version": "2.0.0",
+    "version": "3.0.0",
     "deployment": "multi-host",
-    "transport_protocol": "http",
-    "description": "Multi-host MCP configuration for subproject 3 - HTTP-only transport (no stdio)",
+    "transport_protocol": "http_only",
+    "description": "Multi-host MCP configuration for subproject 3 - Pure HTTP transport (stdio completely removed)",
+    "schema_compliance": "JSON-RPC 2.0 over HTTP",
     "notes": [
-      "All servers use HTTP transport exclusively - stdio support removed",
+      "All servers use HTTP transport exclusively - stdio support completely removed",
       "Connects to MCP servers running on host machine via pure HTTP transport",
       "Uses host.docker.internal to reach host services from Docker container",
       "All servers are marked as optional to prevent startup failures",
       "Includes retry logic and timeouts for robust multi-host deployment",
-      "Personal tokens are included directly in configuration",
-      "HTTP endpoints expect standard JSON-RPC over HTTP protocol"
+      "Headers include proper MCP protocol version and content negotiation",
+      "HTTP endpoints expect standard JSON-RPC 2.0 over HTTP protocol",
+      "Supports both single JSON responses and SSE streaming",
+      "Personal tokens should be replaced with actual tokens from .env file"
     ],
     "requirements": {
       "docker": true,
       "external_mcp_servers": true,
       "node": ">=18",
       "network_access": "host.docker.internal",
-      "transport": "http_only"
+      "transport": "http_only",
+      "stdio_support": false
+    },
+    "http_transport_specification": {
+      "protocol": "JSON-RPC 2.0 over HTTP",
+      "method": "POST",
+      "content_type": "application/json",
+      "accept_header": "application/json, text/event-stream",
+      "authentication": "Bearer token in Authorization header (where applicable)",
+      "timeout": "30-45 seconds per request",
+      "retry_strategy": "exponential_backoff",
+      "session_management": "Mcp-Session-Id header support",
+      "sse_streaming": "Optional Server-Sent Events for long-running operations"
     },
     "host_server_configuration": {
       "github": {
@@ -83,7 +134,7 @@
         "start_command": "npx -y @modelcontextprotocol/server-github --transport http --port 3001",
         "endpoint_path": "/mcp",
         "env_required": ["GITHUB_PERSONAL_ACCESS_TOKEN"],
-        "personal_token": "ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+        "personal_token_example": "ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
       },
       "nasa-mcp": {
         "default_port": 3002,
@@ -103,29 +154,91 @@
         "start_command": "npx -y @upstash/context7-mcp --transport http --port 3004",
         "endpoint_path": "/mcp",
         "env_required": []
+      },
+      "applescript-mcp": {
+        "default_port": 3005,
+        "start_command": "npx -y @sampullman/applescript-mcp --transport http --port 3005",
+        "endpoint_path": "/mcp",
+        "env_required": []
+      },
+      "web-search": {
+        "default_port": 3006,
+        "start_command": "npx -y @modelcontextprotocol/server-brave-search --transport http --port 3006",
+        "endpoint_path": "/mcp",
+        "env_optional": ["BRAVE_API_KEY"]
       }
     },
-    "http_transport_details": {
-      "protocol": "JSON-RPC 2.0 over HTTP",
-      "method": "POST",
-      "content_type": "application/json",
-      "authentication": "Bearer token in Authorization header",
-      "timeout": "30 seconds per request",
-      "retry_strategy": "exponential_backoff",
-      "no_stdio": "stdio transport completely removed"
+    "json_rpc_examples": {
+      "initialize_request": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+          "protocolVersion": "2024-11-05",
+          "capabilities": {
+            "tools": true,
+            "prompts": true,
+            "resources": true,
+            "completion": true
+          },
+          "clientInfo": {
+            "name": "olympian-client",
+            "version": "1.0.0"
+          }
+        }
+      },
+      "tools_list_request": {
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "tools/list"
+      },
+      "tool_call_request": {
+        "jsonrpc": "2.0",
+        "id": 3,
+        "method": "tools/call",
+        "params": {
+          "name": "tool_name",
+          "arguments": {
+            "param1": "value1"
+          }
+        }
+      }
     },
-    "personal_tokens": {
-      "github_token": "ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-      "nasa_api_key": "your_nasa_api_key_here",
-      "note": "Replace with actual tokens from .env file in production"
+    "environment_variables": {
+      "DEPLOYMENT_MODE": "multi-host",
+      "ENABLE_MULTI_HOST": "true",
+      "MCP_HTTP_ONLY": "true",
+      "NODE_ENV": "multihost",
+      "GITHUB_PERSONAL_ACCESS_TOKEN": "replace_with_actual_token",
+      "NASA_API_KEY": "replace_with_actual_key_if_needed",
+      "BRAVE_API_KEY": "replace_with_actual_key_if_needed"
     },
     "troubleshooting": {
       "connection_timeout": "Ensure MCP servers are running on host with HTTP transport and ports are accessible",
       "host_resolution": "Verify host.docker.internal resolves correctly in container",
-      "port_conflicts": "Check for port conflicts on host machine",
-      "http_errors": "Check server logs for HTTP-specific errors (404, 500, etc.)",
-      "transport_mismatch": "Ensure all servers are configured for HTTP transport, not stdio or SSE",
-      "token_authentication": "Verify personal tokens are valid and properly formatted"
+      "port_conflicts": "Check for port conflicts on host machine (3001-3006)",
+      "http_errors": "Check server logs for HTTP-specific errors (400, 404, 405, 500, etc.)",
+      "transport_validation": "Ensure all servers are configured for HTTP transport, not stdio or SSE",
+      "token_authentication": "Verify personal tokens are valid and properly formatted",
+      "json_rpc_compliance": "Ensure server responses follow JSON-RPC 2.0 specification",
+      "session_management": "Check for proper Mcp-Session-Id header handling",
+      "stdio_rejection": "stdio transport is completely disabled in multihost mode"
+    },
+    "security_considerations": {
+      "authentication": "Use proper Bearer tokens for authenticated services",
+      "origin_validation": "Servers should validate Origin header to prevent DNS rebinding",
+      "localhost_binding": "Servers should bind to localhost (127.0.0.1) when running locally",
+      "token_management": "Store tokens securely in environment variables, not in config",
+      "https_preferred": "Use HTTPS endpoints in production environments",
+      "cors_configuration": "Configure CORS properly for cross-origin requests"
+    },
+    "performance_optimization": {
+      "connection_pooling": "Reuse HTTP connections when possible",
+      "request_timeout": "Set appropriate timeouts for different operations",
+      "retry_logic": "Implement exponential backoff for failed requests",
+      "caching": "Cache tool definitions and capabilities",
+      "streaming": "Use SSE streaming for long-running operations",
+      "concurrent_requests": "Support concurrent requests to multiple servers"
     }
   }
 }
