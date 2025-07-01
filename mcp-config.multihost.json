@@ -1,52 +1,101 @@
 {
   "mcpServers": {
-    "met-museum": {
-      "command": "npx",
-      "args": ["-y", "metmuseum-mcp"],
-      "description": "Metropolitan Museum of Art MCP server",
-      "optional": true
+    "github": {
+      "transport": "sse",
+      "endpoint": "http://host.docker.internal:3001/sse",
+      "description": "GitHub MCP server for repository access",
+      "optional": true,
+      "timeout": 30000,
+      "retries": 3,
+      "headers": {
+        "Authorization": "Bearer ${GITHUB_PERSONAL_ACCESS_TOKEN}",
+        "Content-Type": "application/json"
+      },
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_PERSONAL_ACCESS_TOKEN:-}"
+      }
     },
     "nasa-mcp": {
-      "command": "npx", 
-      "args": ["-y", "@programcomputer/nasa-mcp-server@latest"],
-      "env": {
-        "NASA_API_KEY": "YOUR_NASA_API_KEY_HERE"
-      },
+      "transport": "sse", 
+      "endpoint": "http://host.docker.internal:3002/sse",
       "description": "NASA MCP server for space data",
-      "optional": true
-    },
-    "github": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@modelcontextprotocol/server-github"
-      ],
-      "env": {
-        "GITHUB_PERSONAL_ACCESS_TOKEN": "YOUR_GITHUB_TOKEN_HERE"
+      "optional": true,
+      "timeout": 30000,
+      "retries": 3,
+      "headers": {
+        "Content-Type": "application/json"
       },
-      "description": "GitHub MCP server for repository access", 
-      "optional": true
+      "env": {
+        "NASA_API_KEY": "${NASA_API_KEY:-DEMO_KEY}"
+      }
+    },
+    "met-museum": {
+      "transport": "sse",
+      "endpoint": "http://host.docker.internal:3003/sse", 
+      "description": "Metropolitan Museum of Art MCP server",
+      "optional": true,
+      "timeout": 30000,
+      "retries": 3,
+      "headers": {
+        "Content-Type": "application/json"
+      }
     },
     "Context7": {
-      "command": "npx",
-      "args": ["-y", "@upstash/context7-mcp"],
+      "transport": "sse",
+      "endpoint": "http://host.docker.internal:3004/sse",
       "description": "Context7 MCP server for documentation",
-      "optional": true
+      "optional": true,
+      "timeout": 30000,
+      "retries": 3,
+      "headers": {
+        "Content-Type": "application/json"
+      }
     }
   },
   "_meta": {
-    "version": "1.0.0",
+    "version": "1.1.0",
     "deployment": "multi-host",
-    "description": "Multi-host MCP configuration for subproject 3 - Docker production deployment",
+    "description": "Multi-host MCP configuration for subproject 3 - External server connections via HTTP",
     "notes": [
-      "Removed applescript_execute and basic-memory servers - they require Python uv/uvx tools not available in Docker",
-      "All remaining servers are marked as optional to prevent server startup failures",
+      "Connects to existing MCP servers running on host machine via HTTP transport",
+      "Uses host.docker.internal to reach host services from Docker container",
+      "All servers are marked as optional to prevent startup failures",
+      "Includes retry logic and timeouts for robust multi-host deployment",
       "Environment variables should be configured in .env file for production use"
     ],
     "requirements": {
       "docker": true,
-      "python": false,
-      "node": ">=18"
+      "external_mcp_servers": true,
+      "node": ">=18",
+      "network_access": "host.docker.internal"
+    },
+    "host_server_configuration": {
+      "github": {
+        "default_port": 3001,
+        "start_command": "npx -y @modelcontextprotocol/server-github --transport sse --port 3001",
+        "env_required": ["GITHUB_PERSONAL_ACCESS_TOKEN"]
+      },
+      "nasa-mcp": {
+        "default_port": 3002,
+        "start_command": "npx -y @programcomputer/nasa-mcp-server@latest --transport sse --port 3002",
+        "env_optional": ["NASA_API_KEY"]
+      },
+      "met-museum": {
+        "default_port": 3003,
+        "start_command": "npx -y metmuseum-mcp --transport sse --port 3003",
+        "env_required": []
+      },
+      "Context7": {
+        "default_port": 3004,
+        "start_command": "npx -y @upstash/context7-mcp --transport sse --port 3004",
+        "env_required": []
+      }
+    },
+    "troubleshooting": {
+      "connection_timeout": "Ensure MCP servers are running on host and ports are accessible",
+      "host_resolution": "Verify host.docker.internal resolves correctly in container",
+      "port_conflicts": "Check for port conflicts on host machine",
+      "environment_variables": "Ensure all required environment variables are set in .env file"
     }
   }
 }
