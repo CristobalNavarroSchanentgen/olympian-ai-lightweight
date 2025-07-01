@@ -65,12 +65,15 @@ const toolCallResponseSchema = z.object({
  * 6. Error handling with exponential backoff
  * 7. Session management and recovery
  */
-export class MCPClientService extends EventEmitter {
+export class MCPClient extends EventEmitter {
+  private static instance: MCPClient;
+  
   private clients: Map<string, Client> = new Map();
   private processes: Map<string, ChildProcess> = new Map();
   private servers: Map<string, MCPServer> = new Map();
   private sessions: Map<string, MCPSession> = new Map();
   private configPath: string;
+  private initialized: boolean = false;
 
   // Core services
   private configParser: MCPConfigParser;
@@ -106,7 +109,7 @@ export class MCPClientService extends EventEmitter {
   private readonly RETRY_DELAY_BASE = 1000; // 1 second
   private readonly CONNECTION_TIMEOUT = 30000; // 30 seconds
 
-  constructor() {
+  private constructor() {
     super();
     this.setMaxListeners(50);
     
@@ -122,27 +125,49 @@ export class MCPClientService extends EventEmitter {
   }
 
   /**
-   * Initialize MCP client service following best practices
-   * Following guideline: "Tool Discovery and Initialization"
+   * Get singleton instance
    */
-  async initialize(): Promise<void> {
+  static getInstance(): MCPClient {
+    if (!MCPClient.instance) {
+      MCPClient.instance = new MCPClient();
+    }
+    return MCPClient.instance;
+  }
+
+  /**
+   * Initialize MCP client service with provided servers
+   */
+  async initialize(servers?: MCPServer[]): Promise<void> {
+    if (this.initialized) {
+      logger.warn('⚠️ [MCP Client] Already initialized, skipping...');
+      return;
+    }
+
     logger.info('🚀 [MCP Client] Initializing enhanced MCP client service...');
 
     try {
       // Ensure config directory exists
       await fs.mkdir(path.dirname(this.configPath), { recursive: true });
 
-      // Step 1: Parse configuration and discover endpoints
-      logger.info('📖 [MCP Client] Parsing configuration...');
-      await this.configParser.parseConfiguration();
+      // Step 1: Load provided servers or discover from config
+      if (servers && servers.length > 0) {
+        logger.info(`📋 [MCP Client] Using provided servers: ${servers.length} servers`);
+        for (const server of servers) {
+          this.servers.set(server.id, server);
+        }
+      } else {
+        // Step 1: Parse configuration and discover endpoints
+        logger.info('📖 [MCP Client] Parsing configuration...');
+        await this.configParser.parseConfiguration();
 
-      // Step 2: Load saved server configurations
-      await this.loadConfig();
+        // Step 2: Load saved server configurations
+        await this.loadConfig();
 
-      // Step 3: Create servers from discovered endpoints
-      const discoveredServers = await this.configParser.createServersFromConfig();
-      for (const server of discoveredServers) {
-        this.servers.set(server.id, server);
+        // Step 3: Create servers from discovered endpoints
+        const discoveredServers = await this.configParser.createServersFromConfig();
+        for (const server of discoveredServers) {
+          this.servers.set(server.id, server);
+        }
       }
 
       // Step 4: Initialize health checker
@@ -159,10 +184,52 @@ export class MCPClientService extends EventEmitter {
       // Step 7: Start monitoring and maintenance
       this.startMonitoring();
 
+      this.initialized = true;
       logger.info(`✅ [MCP Client] Enhanced MCP client initialized: ${this.clients.size} active connections`);
 
     } catch (error) {
       logger.error('❌ [MCP Client] Failed to initialize:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get health statistics for server status reporting
+   */
+  getHealthStats(): { total: number; healthy: number; unhealthy: number } {
+    const total = this.servers.size;
+    const healthyServers = this.healthChecker.getHealthyServers();
+    const healthy = healthyServers.length;
+    const unhealthy = total - healthy;
+
+    return { total, healthy, unhealthy };
+  }
+
+  /**
+   * Cleanup MCP client service
+   */
+  async cleanup(): Promise<void> {
+    logger.info('🧹 [MCP Client] Cleaning up MCP client service...');
+
+    try {
+      // Stop all services
+      await this.toolCache.stop();
+      await this.healthChecker.stop();
+
+      // Stop all servers
+      for (const serverId of this.servers.keys()) {
+        try {
+          await this.stopServer(serverId);
+        } catch (error) {
+          logger.error(`❌ [MCP Client] Failed to stop server ${serverId}:`, error);
+        }
+      }
+
+      this.initialized = false;
+      logger.info('✅ [MCP Client] MCP client service cleaned up');
+
+    } catch (error) {
+      logger.error('❌ [MCP Client] Error during cleanup:', error);
       throw error;
     }
   }
@@ -243,7 +310,7 @@ export class MCPClientService extends EventEmitter {
 
       this.metrics.activeConnections++;
       
-      logger.info(`✅ [MCP Client] Connected to ${server.name} (${server.transport}, ${negotiation.serverVersion})`);;
+      logger.info(`✅ [MCP Client] Connected to ${server.name} (${server.transport}, ${negotiation.serverVersion})`);
 
       // Emit connection event
       this.emitEvent('server_connected', server.id, { 
@@ -285,12 +352,27 @@ export class MCPClientService extends EventEmitter {
    * Create stdio transport
    */
   private async createStdioTransport(server: MCPServer): Promise<StdioClientTransport> {
-    if (!server.command) {
+    // Extract command and args from headers if stored from standard config format
+    let command = server.command;
+    let args = server.args || [];
+    let env = server.env || {};
+
+    if (!command && server.endpoint?.startsWith('mcp-stdio:')) {
+      // Try to extract from headers (stored by MCPConfigParser)
+      const headers = (server as any).headers || {};
+      if (headers['x-mcp-command']) {
+        command = headers['x-mcp-command'];
+        args = JSON.parse(headers['x-mcp-args'] || '[]');
+        env = JSON.parse(headers['x-mcp-env'] || '{}');
+      }
+    }
+
+    if (!command) {
       throw new Error('Command required for stdio transport');
     }
 
-    const childProcess = spawn(server.command, server.args || [], {
-      env: { ...process.env, ...server.env },
+    const childProcess = spawn(command, args, {
+      env: { ...process.env, ...env },
       stdio: ['pipe', 'pipe', 'pipe'],
     });
 
@@ -303,9 +385,9 @@ export class MCPClientService extends EventEmitter {
     });
 
     return new StdioClientTransport({
-      command: server.command,
-      args: server.args,
-      env: server.env,
+      command,
+      args,
+      env,
     });
   }
 
@@ -915,25 +997,10 @@ export class MCPClientService extends EventEmitter {
   }
 
   /**
-   * Shutdown gracefully
+   * Shutdown gracefully (alias for cleanup)
    */
   async shutdown(): Promise<void> {
-    logger.info('🛑 [MCP Client] Shutting down MCP client service...');
-
-    // Stop all services
-    await this.toolCache.stop();
-    await this.healthChecker.stop();
-
-    // Stop all servers
-    for (const serverId of this.servers.keys()) {
-      try {
-        await this.stopServer(serverId);
-      } catch (error) {
-        logger.error(`❌ [MCP Client] Failed to stop server ${serverId}:`, error);
-      }
-    }
-
-    logger.info('✅ [MCP Client] MCP client service shut down');
+    await this.cleanup();
   }
 
   /**
@@ -950,3 +1017,6 @@ export class MCPClientService extends EventEmitter {
     this.off('mcp_event', handler);
   }
 }
+
+// Export singleton instance for legacy compatibility
+export const MCPClientService = MCPClient;
