@@ -71,10 +71,12 @@ export class MCPConfigParser {
   private constructor() {
     // Detect deployment mode for path prioritization
     const deploymentMode = process.env.DEPLOYMENT_MODE || 'development';
-    // Fix TypeScript boolean | undefined error by ensuring boolean result
-    this.isMultiHost = deploymentMode === 'multi-host' || 
-                      (process.env.ENABLE_MULTI_HOST === 'true') ||
-                      (process.env.NODE_ENV === 'multihost');
+    // Fix TypeScript boolean | undefined error by ensuring explicit boolean result
+    this.isMultiHost = Boolean(
+      deploymentMode === 'multi-host' || 
+      (process.env.ENABLE_MULTI_HOST === 'true') ||
+      (process.env.NODE_ENV === 'multihost')
+    );
     
     // Standard MCP configuration paths following conventions
     // For multihost deployment, prioritize multihost-specific configs
