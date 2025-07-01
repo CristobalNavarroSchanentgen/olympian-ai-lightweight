@@ -15,6 +15,17 @@ const configEndpointSchema = z.object({
   retries: z.number().optional()
 });
 
+// Support for standard Claude Desktop MCP config format
+const standardMcpServerSchema = z.object({
+  command: z.string(),
+  args: z.array(z.string()).optional(),
+  env: z.record(z.string()).optional()
+});
+
+const standardMcpConfigSchema = z.object({
+  mcpServers: z.record(standardMcpServerSchema)
+});
+
 const mcpConfigSchema = z.object({
   mcpServers: z.record(configEndpointSchema),
   wellKnownPaths: z.array(z.string()).optional(),
@@ -45,6 +56,7 @@ interface RegistryResponseData {
  * 2. Endpoint discovery and validation
  * 3. Well-known path resolution (.well-known/mcp)
  * 4. Registry integration for server discovery
+ * 5. Multi-host deployment specific configuration
  */
 export class MCPConfigParser {
   private static instance: MCPConfigParser;
@@ -53,14 +65,40 @@ export class MCPConfigParser {
   private lastParsed: Date | null = null;
 
   private constructor() {
+    // Detect deployment mode for path prioritization
+    const deploymentMode = process.env.DEPLOYMENT_MODE || 'development';
+    const isMultiHost = deploymentMode === 'multi-host' || process.env.ENABLE_MULTI_HOST === 'true';
+    
     // Standard MCP configuration paths following conventions
-    this.configPaths = [
+    // For multihost deployment, prioritize multihost-specific configs
+    const basePaths = [
       path.join(os.homedir(), '.config', 'mcp', 'config.json'),
       path.join(os.homedir(), '.mcp', 'config.json'),
       path.join(os.homedir(), '.olympian-ai-lite', 'mcp_config.json'),
       path.join(process.cwd(), 'mcp-config.json'),
       path.join(process.cwd(), '.mcp-config.json'),
     ];
+
+    // Add multihost-specific configuration paths
+    const multihostPaths = [
+      path.join(process.cwd(), 'mcp-config.multihost.json'),
+      path.join(process.cwd(), `.mcp-config.${deploymentMode}.json`),
+      path.join(os.homedir(), '.olympian-ai-lite', `mcp_config.${deploymentMode}.json`),
+      // Docker container paths
+      path.join('/app', 'mcp-config.multihost.json'),
+      path.join('/config', 'mcp-config.json'),
+      path.join('/config', 'mcp-config.multihost.json'),
+    ];
+
+    // Prioritize multihost configs when in multihost mode
+    if (isMultiHost) {
+      this.configPaths = [...multihostPaths, ...basePaths];
+    } else {
+      this.configPaths = [...basePaths, ...multihostPaths];
+    }
+
+    logger.info(`🔍 [MCP Config] Initialized with deployment mode: ${deploymentMode}, multihost: ${isMultiHost}`);
+    logger.debug(`🔍 [MCP Config] Config search paths: ${this.configPaths.join(', ')}`);
   }
 
   static getInstance(): MCPConfigParser {
@@ -78,24 +116,39 @@ export class MCPConfigParser {
     logger.info('🔍 [MCP Config] Parsing MCP configuration files...');
 
     let foundConfig: MCPDiscoveryConfig | null = null;
+    let configPath: string | null = null;
 
     // Try each configuration path
-    for (const configPath of this.configPaths) {
+    for (const searchPath of this.configPaths) {
       try {
-        const configData = await fs.readFile(configPath, 'utf-8');
+        const configData = await fs.readFile(searchPath, 'utf-8');
         const rawConfig = JSON.parse(configData);
         
-        // Validate configuration
-        const validatedConfig = mcpConfigSchema.parse(rawConfig);
-        
-        // Convert to internal format
-        foundConfig = await this.convertToDiscoveryConfig(validatedConfig, configPath);
-        
-        logger.info(`✅ [MCP Config] Loaded configuration from: ${configPath}`);
-        break;
+        // Try to parse as standard Claude Desktop format first
+        try {
+          const standardConfig = standardMcpConfigSchema.parse(rawConfig);
+          foundConfig = await this.convertStandardToDiscoveryConfig(standardConfig, searchPath);
+          configPath = searchPath;
+          logger.info(`✅ [MCP Config] Loaded standard MCP configuration from: ${searchPath}`);
+          break;
+        } catch (standardParseError) {
+          // If that fails, try our internal URL-based format
+          try {
+            const validatedConfig = mcpConfigSchema.parse(rawConfig);
+            foundConfig = await this.convertToDiscoveryConfig(validatedConfig, searchPath);
+            configPath = searchPath;
+            logger.info(`✅ [MCP Config] Loaded URL-based MCP configuration from: ${searchPath}`);
+            break;
+          } catch (urlParseError) {
+            logger.warn(`⚠️ [MCP Config] Failed to parse config at ${searchPath} in either format:`, {
+              standardError: standardParseError,
+              urlError: urlParseError
+            });
+          }
+        }
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-          logger.warn(`⚠️ [MCP Config] Failed to parse config at ${configPath}:`, error);
+          logger.warn(`⚠️ [MCP Config] Failed to read config at ${searchPath}:`, error);
         }
       }
     }
@@ -113,7 +166,57 @@ export class MCPConfigParser {
     this.lastParsed = new Date();
 
     logger.info(`🎯 [MCP Config] Configuration parsed: ${Object.keys(foundConfig.mcpServers).length} endpoints found`);
+    if (configPath) {
+      logger.info(`📂 [MCP Config] Using config file: ${configPath}`);
+    }
+    
     return foundConfig;
+  }
+
+  /**
+   * Convert standard Claude Desktop MCP config format to internal discovery config
+   */
+  private async convertStandardToDiscoveryConfig(
+    config: z.infer<typeof standardMcpConfigSchema>, 
+    configPath: string
+  ): Promise<MCPDiscoveryConfig> {
+    logger.info('🔄 [MCP Config] Converting standard MCP config format to internal format...');
+    
+    const mcpServers: Record<string, MCPConfigEndpoint> = {};
+
+    for (const [name, serverConfig] of Object.entries(config.mcpServers)) {
+      // For standard MCP servers, we need to create pseudo-URLs since they use stdio
+      // These will be handled specially by the MCP client
+      const pseudoUrl = `mcp-stdio://${name}`;
+      
+      mcpServers[name] = {
+        url: pseudoUrl,
+        type: 'server',
+        timeout: 30000,
+        retries: 3,
+        // Store the original command/args in headers for later use
+        headers: {
+          'x-mcp-command': serverConfig.command,
+          'x-mcp-args': JSON.stringify(serverConfig.args || []),
+          'x-mcp-env': JSON.stringify(serverConfig.env || {})
+        }
+      };
+    }
+
+    logger.info(`🔄 [MCP Config] Converted ${Object.keys(mcpServers).length} standard MCP servers to internal format`);
+
+    return {
+      mcpServers,
+      wellKnownPaths: [
+        '/.well-known/mcp',
+        '/.well-known/model-context-protocol'
+      ],
+      registryUrls: [
+        'https://registry.modelcontextprotocol.io',
+        'https://mcp-registry.anthropic.com'
+      ],
+      cacheTtl: 300000 // 5 minutes
+    };
   }
 
   /**
@@ -365,7 +468,7 @@ export class MCPConfigParser {
         const server: MCPServer = {
           id: `config_${name}_${Date.now()}`,
           name,
-          command: '', // Will be set based on transport type
+          command: this.extractCommand(endpoint),
           transport: this.determineTransport(endpoint.url),
           endpoint: endpoint.url,
           status: 'stopped',
@@ -384,13 +487,28 @@ export class MCPConfigParser {
   }
 
   /**
+   * Extract command from endpoint configuration
+   */
+  private extractCommand(endpoint: MCPConfigEndpoint): string {
+    // Check if this is a standard MCP server (stdio) with command in headers
+    if (endpoint.headers && endpoint.headers['x-mcp-command']) {
+      return endpoint.headers['x-mcp-command'];
+    }
+    
+    // For URL-based endpoints, return empty (will be handled by transport)
+    return '';
+  }
+
+  /**
    * Determine transport type from URL
    */
   private determineTransport(url: string): MCPServer['transport'] {
     try {
       const parsed = new URL(url);
       
-      if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+      if (parsed.protocol === 'mcp-stdio:') {
+        return 'stdio';
+      } else if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
         return 'streamable_http';
       } else if (parsed.protocol === 'ws:' || parsed.protocol === 'wss:') {
         return 'sse';
@@ -433,6 +551,11 @@ export class MCPConfigParser {
    */
   async validateEndpoint(endpoint: MCPConfigEndpoint): Promise<boolean> {
     try {
+      // Skip validation for stdio endpoints
+      if (endpoint.url.startsWith('mcp-stdio:')) {
+        return true;
+      }
+
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), endpoint.timeout || 5000);
 
