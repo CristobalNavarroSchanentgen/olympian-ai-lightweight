@@ -64,8 +64,9 @@ services:
     networks:
       - olympian-network
     environment:
-      # Deployment mode
+      # Deployment mode - CRITICAL for subproject 3
       DEPLOYMENT_MODE: ${DEPLOYMENT_MODE:-multi-host}
+      ENABLE_MULTI_HOST: ${ENABLE_MULTI_HOST:-true}
       
       # Docker environment indicator
       RUNNING_IN_DOCKER: "true"
@@ -86,6 +87,9 @@ services:
       # Model capability configuration - CRITICAL for subproject 3
       MODEL_CAPABILITY_MODE: ${MODEL_CAPABILITY_MODE:-automatic}
       
+      # MCP Configuration - NEW for subproject 3
+      MCP_OPTIONAL: ${MCP_OPTIONAL:-false}
+      
       # Application settings
       NODE_ENV: production
       PORT: 4000
@@ -103,6 +107,10 @@ services:
     volumes:
       - config-data:/config/.olympian-ai-lite
       - logs:/app/logs
+      # NEW: Mount MCP configuration for subproject 3
+      - ./mcp-config.multihost.json:/app/mcp-config.multihost.json:ro
+      # Alternative mount path for container-based config loading
+      - ./mcp-config.multihost.json:/config/mcp-config.json:ro
     depends_on:
       mongodb-replica-init:
         condition: service_completed_successfully
