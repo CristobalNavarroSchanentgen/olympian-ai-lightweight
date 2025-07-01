@@ -74,8 +74,8 @@ export class MCPConfigParser {
     // Fix TypeScript boolean | undefined error by ensuring explicit boolean result
     this.isMultiHost = Boolean(
       deploymentMode === 'multi-host' || 
-      (process.env.ENABLE_MULTI_HOST === 'true') ||
-      (process.env.NODE_ENV === 'multihost')
+      Boolean(process.env.ENABLE_MULTI_HOST === 'true') ||
+      Boolean(process.env.NODE_ENV === 'multihost')
     );
     
     // Standard MCP configuration paths following conventions
@@ -241,7 +241,7 @@ export class MCPConfigParser {
    */
   private isStdioEndpoint(endpoint: MCPConfigEndpoint): boolean {
     return endpoint.url.startsWith('mcp-stdio:') || 
-           (endpoint.headers && endpoint.headers['x-mcp-command'] !== undefined);
+           Boolean(endpoint.headers && endpoint.headers['x-mcp-command'] !== undefined);
   }
 
   /**
@@ -250,7 +250,7 @@ export class MCPConfigParser {
   private isValidHttpEndpoint(endpoint: MCPConfigEndpoint): boolean {
     try {
       const url = new URL(endpoint.url);
-      return url.protocol === 'http:' || url.protocol === 'https:';
+      return Boolean(url.protocol === 'http:' || url.protocol === 'https:');
     } catch {
       return false;
     }
@@ -486,7 +486,7 @@ export class MCPConfigParser {
   private isValidHttpUrl(url: string): boolean {
     try {
       const parsed = new URL(url);
-      return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+      return Boolean(parsed.protocol === 'http:' || parsed.protocol === 'https:');
     } catch {
       return false;
     }
@@ -663,7 +663,7 @@ export class MCPConfigParser {
    */
   needsRefresh(maxAge: number = 3600000): boolean { // 1 hour default
     if (!this.lastParsed) return true;
-    return Date.now() - this.lastParsed.getTime() > maxAge;
+    return Boolean(Date.now() - this.lastParsed.getTime() > maxAge);
   }
 
   /**
@@ -685,7 +685,7 @@ export class MCPConfigParser {
       // Skip validation for stdio endpoints
       if (endpoint.url.startsWith('mcp-stdio:')) {
         // In multihost mode, stdio endpoints are invalid
-        return !this.isMultiHost;
+        return Boolean(!this.isMultiHost);
       }
 
       const controller = new AbortController();
@@ -701,7 +701,7 @@ export class MCPConfigParser {
       });
 
       clearTimeout(timeoutId);
-      return response.ok || response.status === 405; // 405 Method Not Allowed is acceptable
+      return Boolean(response.ok || response.status === 405); // 405 Method Not Allowed is acceptable
     } catch (error) {
       logger.debug(`⚠️ [MCP Config] Endpoint validation failed for ${endpoint.url}:`, error);
       return false;
