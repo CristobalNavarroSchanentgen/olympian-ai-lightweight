@@ -87,8 +87,13 @@ services:
       # Model capability configuration - CRITICAL for subproject 3
       MODEL_CAPABILITY_MODE: ${MODEL_CAPABILITY_MODE:-automatic}
       
-      # MCP Configuration - NEW for subproject 3
-      MCP_OPTIONAL: ${MCP_OPTIONAL:-false}
+      # MCP Configuration - NEW for subproject 3 with proper defaults
+      MCP_ENABLED: ${MCP_ENABLED:-true}
+      MCP_OPTIONAL: ${MCP_OPTIONAL:-true}
+      
+      # Redis Configuration - Optional for multi-host coordination
+      REDIS_URL: ${REDIS_URL:-}
+      REDIS_OPTIONAL: ${REDIS_OPTIONAL:-true}
       
       # Application settings
       NODE_ENV: production
@@ -214,7 +219,38 @@ services:
         }
       '
 
-  # Example MCP server (optional)
+  # Optional Redis service for multi-host coordination
+  # This service is completely optional and will not prevent the backend from starting
+  redis:
+    image: redis:7-alpine
+    container_name: olympian-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-data:/data
+    networks:
+      - olympian-network
+    # Resource limits for Redis
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    # Redis is optional - backend should not depend on it
+    profiles:
+      - redis
+      - full
+
+  # Example MCP server (optional and disabled by default)
   mcp-filesystem:
     image: node:20-alpine
     container_name: olympian-mcp-filesystem
@@ -240,12 +276,17 @@ services:
       timeout: 5s
       retries: 3
       start_period: 15s
+    # MCP services are optional
+    profiles:
+      - mcp
+      - full
 
 volumes:
   config-data:
   logs:
   mongodb-data:
   mongodb-config:
+  redis-data:
   mcp-data:
 
 networks:
