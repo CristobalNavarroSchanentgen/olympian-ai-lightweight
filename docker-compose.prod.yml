@@ -90,6 +90,18 @@ services:
       # MCP Configuration - NEW for subproject 3 with proper defaults
       MCP_ENABLED: ${MCP_ENABLED:-true}
       MCP_OPTIONAL: ${MCP_OPTIONAL:-true}
+      MCP_TRANSPORT: ${MCP_TRANSPORT:-sse}
+      MCP_CONFIG_PATH: ${MCP_CONFIG_PATH:-/app/mcp-config.multihost.json}
+      
+      # MCP Server Authentication - Multi-host deployment specific
+      GITHUB_PERSONAL_ACCESS_TOKEN: ${GITHUB_PERSONAL_ACCESS_TOKEN:-}
+      NASA_API_KEY: ${NASA_API_KEY:-DEMO_KEY}
+      
+      # MCP Server Endpoints - Host-based connections
+      MCP_GITHUB_ENDPOINT: ${MCP_GITHUB_ENDPOINT:-http://host.docker.internal:3001/sse}
+      MCP_NASA_ENDPOINT: ${MCP_NASA_ENDPOINT:-http://host.docker.internal:3002/sse}
+      MCP_METMUSEUM_ENDPOINT: ${MCP_METMUSEUM_ENDPOINT:-http://host.docker.internal:3003/sse}
+      MCP_CONTEXT7_ENDPOINT: ${MCP_CONTEXT7_ENDPOINT:-http://host.docker.internal:3004/sse}
       
       # Redis Configuration - Optional for multi-host coordination
       REDIS_URL: ${REDIS_URL:-}
