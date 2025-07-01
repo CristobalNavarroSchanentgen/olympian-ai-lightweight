@@ -2,23 +2,18 @@
   "mcpServers": {
     "met-museum": {
       "command": "npx",
-      "args": ["-y", "metmuseum-mcp"]
-    },
-    "applescript_execute": {
-      "command": "uv",
-      "args": [
-        "--directory",
-        "/Users/YOUR_USERNAME/Servers/applescript-mcp",
-        "run",
-        "src/applescript_mcp/server.py"
-      ]
+      "args": ["-y", "metmuseum-mcp"],
+      "description": "Metropolitan Museum of Art MCP server",
+      "optional": true
     },
     "nasa-mcp": {
-      "command": "npx",
+      "command": "npx", 
       "args": ["-y", "@programcomputer/nasa-mcp-server@latest"],
       "env": {
         "NASA_API_KEY": "YOUR_NASA_API_KEY_HERE"
-      }
+      },
+      "description": "NASA MCP server for space data",
+      "optional": true
     },
     "github": {
       "command": "npx",
@@ -28,18 +23,30 @@
       ],
       "env": {
         "GITHUB_PERSONAL_ACCESS_TOKEN": "YOUR_GITHUB_TOKEN_HERE"
-      }
-    },
-    "basic-memory": {
-      "command": "uvx",
-      "args": [
-        "basic-memory",
-        "mcp"
-      ]
+      },
+      "description": "GitHub MCP server for repository access", 
+      "optional": true
     },
     "Context7": {
       "command": "npx",
-      "args": ["-y", "@upstash/context7-mcp"]
+      "args": ["-y", "@upstash/context7-mcp"],
+      "description": "Context7 MCP server for documentation",
+      "optional": true
+    }
+  },
+  "_meta": {
+    "version": "1.0.0",
+    "deployment": "multi-host",
+    "description": "Multi-host MCP configuration for subproject 3 - Docker production deployment",
+    "notes": [
+      "Removed applescript_execute and basic-memory servers - they require Python uv/uvx tools not available in Docker",
+      "All remaining servers are marked as optional to prevent server startup failures",
+      "Environment variables should be configured in .env file for production use"
+    ],
+    "requirements": {
+      "docker": true,
+      "python": false,
+      "node": ">=18"
     }
   }
 }
