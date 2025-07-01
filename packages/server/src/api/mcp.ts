@@ -8,11 +8,11 @@ import { z } from 'zod';
 
 const router = Router();
 
-// Initialize enhanced MCP client service
-const mcpClient = new MCPClientService();
+// Initialize enhanced MCP client service using singleton pattern
+const mcpClient = MCPClientService.getInstance();
 
 // Initialize the enhanced client
-mcpClient.initialize().catch(error => {
+mcpClient.initialize().catch((error: Error) => {
   console.error('❌ [MCP API] Failed to initialize enhanced MCP client:', error);
 });
 
@@ -200,7 +200,7 @@ router.get('/servers/:id/tools', async (req, res, next) => {
     res.json({
       success: true,
       data: tools,
-      cached: tools.some(t => t.cachedAt),
+      cached: tools.some((t: any) => t.cachedAt),
       timestamp: new Date()
     });
   } catch (error) {
@@ -220,7 +220,7 @@ router.get('/tools', async (req, res, next) => {
       success: true,
       data: allTools,
       totalTools: allTools.length,
-      serverCount: new Set(allTools.map(t => t.serverId)).size,
+      serverCount: new Set(allTools.map((t: any) => t.serverId)).size,
       timestamp: new Date()
     });
   } catch (error) {
@@ -266,7 +266,7 @@ router.get('/tools/:name/best', (req, res, next) => {
     const healthChecker = MCPHealthChecker.getInstance();
     
     const healthyServerIds = new Set(
-      healthChecker.getHealthyServers().map(s => s.id)
+      healthChecker.getHealthyServers().map((s: any) => s.id)
     );
     
     const bestTool = toolCache.getBestToolForName(req.params.name, healthyServerIds);
@@ -278,7 +278,7 @@ router.get('/tools/:name/best', (req, res, next) => {
     res.json({
       success: true,
       data: bestTool,
-      alternatives: toolCache.findToolsByName(req.params.name).filter(t => t.serverId !== bestTool.serverId),
+      alternatives: toolCache.findToolsByName(req.params.name).filter((t: any) => t.serverId !== bestTool.serverId),
       timestamp: new Date()
     });
   } catch (error) {
@@ -323,16 +323,16 @@ router.post('/tools/select', async (req, res, next) => {
     const healthChecker = MCPHealthChecker.getInstance();
     
     const allTools = toolCache.getAllCachedTools();
-    const healthyServerIds = new Set(healthChecker.getHealthyServers().map(s => s.id));
+    const healthyServerIds = new Set(healthChecker.getHealthyServers().map((s: any) => s.id));
     
     // Filter tools by healthy servers
-    const availableTools = allTools.filter(tool => 
+    const availableTools = allTools.filter((tool: any) => 
       healthyServerIds.has(tool.serverId)
     );
 
     // Simple keyword matching for tool selection
     const query = validated.query.toLowerCase();
-    const matchedTools = availableTools.filter(tool => 
+    const matchedTools = availableTools.filter((tool: any) => 
       tool.name.toLowerCase().includes(query) || 
       tool.description.toLowerCase().includes(query)
     );
@@ -342,7 +342,7 @@ router.post('/tools/select', async (req, res, next) => {
     }
 
     // Sort by usage count and return the best match
-    matchedTools.sort((a, b) => (b.usageCount || 0) - (a.usageCount || 0));
+    matchedTools.sort((a: any, b: any) => (b.usageCount || 0) - (a.usageCount || 0));
     const selectedTool = matchedTools[0];
 
     res.json({
@@ -697,7 +697,7 @@ router.post('/diagnostics', async (req, res, next) => {
       health: healthChecker.getOverallHealthStatus(),
       cache: toolCache.getCacheStatus(),
       config: configParser.getConfigurationStats(),
-      servers: mcpClient.getServers().map(server => ({
+      servers: mcpClient.getServers().map((server: any) => ({
         id: server.id,
         name: server.name,
         status: server.status,
