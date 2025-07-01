@@ -5,6 +5,7 @@ A minimalist MCP client application focused on seamless Ollama integration with 
 ## Features
 
 - **MCP Client**: Full MCP client implementation with tool discovery and invocation
+- **HTTP-Only MCP for Multihost**: Pure HTTP transport for robust multi-host deployments (NEW!)
 - **Plugs (Auto-Discovery)**: Automatic scanning for Ollama instances, MCP servers, and MongoDB databases
 - **MCP Config Panel**: Visual editor for MCP configuration and tool descriptions
 - **Divine Dialog**: Advanced chat interface with model state indicators, image support, and persistent history
@@ -12,6 +13,19 @@ A minimalist MCP client application focused on seamless Ollama integration with 
 - **Vision Capabilities**: Process images with vision models or hybrid vision/text processing
 - **Ollama Streamliner**: Intelligent request handling based on model capabilities
 - **Automatic Nginx Configuration**: Zero-config nginx setup with environment-based routing
+
+## What's New: HTTP-Only MCP for Multihost Deployment 🌐
+
+Subproject 3 (Multi-host deployment) now features a completely refactored MCP implementation with pure HTTP transport:
+
+- **🚫 stdio Removed**: Complete removal of stdio transport for robust multi-host operation
+- **🌐 HTTP-Only**: Pure JSON-RPC 2.0 over HTTP following official MCP specification
+- **🔍 Automatic Validation**: Intelligent rejection of stdio configurations in multihost mode
+- **📡 SSE Streaming**: Optional Server-Sent Events for long-running operations
+- **🔐 Enhanced Security**: Proper authentication headers and CORS configuration
+- **⚡ Performance Optimized**: Connection pooling, retry logic, and caching
+
+**📚 Documentation**: [MCP HTTP Multihost Guide](docs/MCP_HTTP_MULTIHOST.md) - Complete HTTP-only deployment guide
 
 ## What's New: Development Mode with Hot Reloading 🔥
 
@@ -59,6 +73,7 @@ The latest version includes an intelligent chat memory system that automatically
 - **Database**: MongoDB (local or remote)
 - **Communication**: WebSockets for real-time streaming
 - **MCP SDK**: Official MCP TypeScript SDK
+- **MCP Transport**: HTTP-only for multihost, mixed for other deployments
 - **Proxy**: Integrated nginx with automatic configuration
 
 ## Prerequisites
@@ -66,7 +81,7 @@ The latest version includes an intelligent chat memory system that automatically
 - Node.js 18+
 - MongoDB (local or remote instance)
 - Ollama installed and running
-- MCP servers (optional)
+- MCP servers (optional, HTTP-based for multihost)
 - Docker & Docker Compose (for containerized deployment)
 - Make (for running commands)
 
@@ -112,7 +127,7 @@ make quick-docker-same
 # Same-host with existing Ollama
 make quick-docker-same-existing
 
-# Multi-host deployment (configure .env first)
+# Multi-host deployment (HTTP-only MCP - configure .env first)
 make quick-docker-multi
 ```
 
@@ -133,6 +148,7 @@ make quick-dev                    # Development setup + start
 make quick-docker-dev             # Docker dev setup + start
 make quick-docker-same            # Production same-host with Ollama
 make quick-docker-same-existing   # Production with existing Ollama
+make quick-docker-multi           # HTTP-only MCP multihost deployment (NEW!)
 make dev-multi                    # Development mode with hot reloading (NEW!)
 ```
 
@@ -141,7 +157,7 @@ make dev-multi                    # Development mode with hot reloading (NEW!)
 make docker-dev                   # Start Docker development
 make docker-same                  # Deploy same-host with Ollama
 make docker-same-existing         # Deploy with existing Ollama
-make docker-multi                 # Deploy multi-host setup
+make docker-multi                 # Deploy multi-host setup (HTTP-only MCP)
 make docker-down                  # Stop all containers
 make docker-restart               # Restart containers
 make rebuild-frontend             # Rebuild only frontend (NEW!)
@@ -211,7 +227,7 @@ make setup                        # Initial project setup
 make env-dev                      # Configure for development
 make env-docker-same              # Configure for same-host with Ollama
 make env-docker-same-existing     # Configure for existing Ollama
-make env-docker-multi             # Configure for multi-host
+make env-docker-multi             # Configure for multi-host (HTTP-only MCP)
 make show-env                     # Show current configuration
 make apply-secrets                # Generate new secrets
 ```
@@ -233,7 +249,7 @@ make docker-build                 # Build Docker images
 make docker-dev                   # Run development in Docker
 make docker-same                  # Deploy same-host with Ollama
 make docker-same-existing         # Deploy with existing Ollama
-make docker-multi                 # Deploy multi-host setup
+make docker-multi                 # Deploy multi-host setup (HTTP-only MCP)
 make docker-down                  # Stop all containers
 make docker-restart               # Restart containers
 ```
@@ -263,7 +279,10 @@ make db-restore                   # Restore MongoDB
 
 2. **Auto-discover connections**: The app automatically scans for Ollama, MCP servers, and MongoDB
 
-3. **Configure MCP**: Use the MCP Config panel to set up your MCP servers and tools
+3. **Configure MCP**: 
+   - Use the MCP Config panel to set up your MCP servers and tools
+   - For multihost deployment: Configure HTTP-based MCP servers only
+   - stdio transport is automatically rejected in multihost mode
 
 4. **Start chatting**: Select a model in Divine Dialog and start conversing
    - Your conversation history is automatically maintained
@@ -272,6 +291,35 @@ make db-restore                   # Restore MongoDB
    - Monitor memory usage with the new API endpoints
 
 ## Architecture Improvements
+
+### 🌐 HTTP-Only MCP for Multihost
+
+Subproject 3 now features a completely refactored MCP architecture optimized for multi-host deployments:
+
+**Key Benefits**:
+- ✅ **Robust Network Communication**: HTTP transport eliminates subprocess management complexities
+- ✅ **Multi-Host Ready**: MCP servers run independently on different machines
+- ✅ **Protocol Compliant**: Follows official JSON-RPC 2.0 over HTTP specification
+- ✅ **Enhanced Security**: Proper authentication, CORS, and origin validation
+- ✅ **Performance Optimized**: Connection pooling, retry logic, and smart caching
+
+**Architecture**:
+```
+Docker Container (App)
+    ↓ HTTP/JSON-RPC 2.0
+host.docker.internal:3001-3006
+    ↓
+Independent MCP Servers on Host
+    ↓
+Tools: GitHub, NASA, Met Museum, Context7, AppleScript, Web Search
+```
+
+**Technical Features**:
+- **Automatic stdio Rejection**: Multihost mode automatically rejects stdio configurations
+- **HTTP Validation**: Validates all endpoints for HTTP compliance
+- **Session Management**: Support for Mcp-Session-Id headers
+- **SSE Streaming**: Optional Server-Sent Events for long operations
+- **Fallback Strategies**: Intelligent retry and fallback mechanisms
 
 ### 🎨 Vision Processing System
 
@@ -367,12 +415,15 @@ make quick-docker-same            # With Ollama container
 make quick-docker-same-existing   # With existing Ollama
 ```
 
-### 🌐 Production Multi-Host
+### 🌐 Production Multi-Host (HTTP-Only MCP)
 ```bash
 make env-docker-multi             # Configure environment
 # Edit .env for your IPs
-make docker-multi                 # Deploy
+# Start HTTP-based MCP servers on host
+make docker-multi                 # Deploy with HTTP-only MCP
 ```
+
+**Important**: Multi-host deployment now requires HTTP-based MCP servers. See the [MCP HTTP Multihost Guide](docs/MCP_HTTP_MULTIHOST.md) for detailed setup instructions.
 
 ## Troubleshooting
 
@@ -396,6 +447,30 @@ make docker-restart
 # Full reset (careful!)
 make reset-all
 ```
+
+### MCP HTTP-Only Issues
+
+For multihost deployments with HTTP-only MCP:
+
+```bash
+# Check MCP server status
+curl http://host.docker.internal:3001/mcp  # GitHub MCP
+curl http://host.docker.internal:3002/mcp  # NASA MCP
+
+# Verify MCP configuration validation
+docker logs olympian-backend | grep "MCP Config"
+
+# Check for stdio rejection
+docker logs olympian-backend | grep "stdio.*multihost"
+
+# Test JSON-RPC endpoint
+curl -X POST http://host.docker.internal:3001/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05"}}'
+```
+
+See the comprehensive [MCP HTTP Multihost Guide](docs/MCP_HTTP_MULTIHOST.md) for detailed troubleshooting.
 
 ### Development Mode Issues
 
@@ -473,10 +548,13 @@ olympian-ai-lightweight/
 ├── docker-compose.yml            # Development Docker setup
 ├── docker-compose.dev.yml        # 🔥 Development mode with hot reloading
 ├── docker-compose.*.yml          # Various deployment configs
+├── mcp-config.multihost.json     # 🌐 HTTP-only MCP configuration (NEW!)
 ├── packages/
 │   ├── client/                   # React frontend
 │   ├── server/                   # Express backend
 │   │   └── services/
+│   │       ├── MCPClient.ts              # 🌐 HTTP-only MCP client (UPDATED!)
+│   │       ├── MCPConfigParser.ts        # 🔍 HTTP validation (UPDATED!)
 │   │       ├── ChatMemoryService.ts      # 🧠 Memory management
 │   │       ├── OllamaStreamliner.ts      # 🎨 Vision processing & detection
 │   │       └── OllamaHealthCheck.ts      # 🔍 Health monitoring
@@ -493,6 +571,7 @@ olympian-ai-lightweight/
 │   ├── VISION_CAPABILITIES.md              # Vision features user guide
 │   ├── VISION_DETECTION_TECHNICAL.md       # 🔬 Technical implementation details
 │   ├── MULTI_HOST_VISION_TROUBLESHOOTING.md # 🔍 Multi-host vision fixes
+│   ├── MCP_HTTP_MULTIHOST.md               # 🌐 HTTP-only MCP guide (NEW!)
 │   └── DOCKER_BUILD_CACHING.md             # 🔥 Docker caching & dev guide
 └── scripts/                      # Helper scripts
     └── generate-build-args.sh    # 🔧 Auto cache-busting script
@@ -505,6 +584,7 @@ olympian-ai-lightweight/
 - **📊 Security Status** - `make show-env` shows security status
 - **🔄 Secret Rotation** - `make apply-secrets` for new secrets
 - **🚫 Git Protection** - `.env` and `.env.build` are gitignored
+- **🌐 MCP Security** - HTTP-only transport with proper authentication and CORS
 
 ## Documentation
 
@@ -515,6 +595,7 @@ olympian-ai-lightweight/
 - [Vision Capabilities (User Guide)](docs/VISION_CAPABILITIES.md)
 - [Vision Detection Technical](docs/VISION_DETECTION_TECHNICAL.md) - Technical deep dive
 - [Multi-Host Vision Troubleshooting](docs/MULTI_HOST_VISION_TROUBLESHOOTING.md) - Fix vision issues
+- [MCP HTTP Multihost Guide](docs/MCP_HTTP_MULTIHOST.md) - **NEW!** HTTP-only MCP deployment
 - [Docker Build Caching Guide](docs/DOCKER_BUILD_CACHING.md) - Development workflow & caching
 - [Docker Deployment Guide](docker/README.md)
 - [Contributing Guide](CONTRIBUTING.md)
