@@ -49,14 +49,15 @@ interface RegistryResponseData {
 }
 
 /**
- * MCP Configuration Parser following best practices from guidelines
+ * MCP Configuration Parser for HTTP-only multihost deployment
  * 
  * Handles:
  * 1. Configuration extraction from mcp-config.json files
  * 2. Endpoint discovery and validation
  * 3. Well-known path resolution (.well-known/mcp)
  * 4. Registry integration for server discovery
- * 5. Multi-host deployment specific configuration
+ * 5. HTTP-only transport validation for multihost deployment
+ * 6. Rejection of stdio configurations in multihost mode
  */
 export class MCPConfigParser {
   private static instance: MCPConfigParser;
@@ -64,10 +65,15 @@ export class MCPConfigParser {
   private discoveryConfig: MCPDiscoveryConfig | null = null;
   private lastParsed: Date | null = null;
 
+  // Deployment mode detection
+  private readonly isMultiHost: boolean;
+
   private constructor() {
     // Detect deployment mode for path prioritization
     const deploymentMode = process.env.DEPLOYMENT_MODE || 'development';
-    const isMultiHost = deploymentMode === 'multi-host' || process.env.ENABLE_MULTI_HOST === 'true';
+    this.isMultiHost = deploymentMode === 'multi-host' || 
+                      process.env.ENABLE_MULTI_HOST === 'true' ||
+                      process.env.NODE_ENV === 'multihost';
     
     // Standard MCP configuration paths following conventions
     // For multihost deployment, prioritize multihost-specific configs
@@ -91,13 +97,13 @@ export class MCPConfigParser {
     ];
 
     // Prioritize multihost configs when in multihost mode
-    if (isMultiHost) {
+    if (this.isMultiHost) {
       this.configPaths = [...multihostPaths, ...basePaths];
     } else {
       this.configPaths = [...basePaths, ...multihostPaths];
     }
 
-    logger.info(`🔍 [MCP Config] Initialized with deployment mode: ${deploymentMode}, multihost: ${isMultiHost}`);
+    logger.info(`🔍 [MCP Config] Initialized with deployment mode: ${deploymentMode}, multihost: ${this.isMultiHost}`);
     logger.debug(`🔍 [MCP Config] Config search paths: ${this.configPaths.join(', ')}`);
   }
 
@@ -127,6 +133,13 @@ export class MCPConfigParser {
         // Try to parse as standard Claude Desktop format first
         try {
           const standardConfig = standardMcpConfigSchema.parse(rawConfig);
+          
+          // In multihost mode, reject stdio configurations
+          if (this.isMultiHost) {
+            logger.warn(`⚠️ [MCP Config] Rejecting stdio configuration in multihost mode: ${searchPath}`);
+            continue;
+          }
+          
           foundConfig = await this.convertStandardToDiscoveryConfig(standardConfig, searchPath);
           configPath = searchPath;
           logger.info(`✅ [MCP Config] Loaded standard MCP configuration from: ${searchPath}`);
@@ -159,13 +172,18 @@ export class MCPConfigParser {
       foundConfig = this.createDefaultConfig();
     }
 
+    // Validate and filter for multihost deployment
+    if (this.isMultiHost) {
+      foundConfig = await this.validateMultihostConfig(foundConfig);
+    }
+
     // Discover additional endpoints
     foundConfig = await this.enhanceWithDiscovery(foundConfig);
 
     this.discoveryConfig = foundConfig;
     this.lastParsed = new Date();
 
-    logger.info(`🎯 [MCP Config] Configuration parsed: ${Object.keys(foundConfig.mcpServers).length} endpoints found`);
+    logger.info(`🎯 [MCP Config] Configuration parsed: ${Object.keys(foundConfig.mcpServers).length} endpoints found (${this.isMultiHost ? 'HTTP-only' : 'mixed transports'})`);
     if (configPath) {
       logger.info(`📂 [MCP Config] Using config file: ${configPath}`);
     }
@@ -174,13 +192,81 @@ export class MCPConfigParser {
   }
 
   /**
+   * Validate configuration for multihost deployment (HTTP-only)
+   */
+  private async validateMultihostConfig(config: MCPDiscoveryConfig): Promise<MCPDiscoveryConfig> {
+    if (!this.isMultiHost) {
+      return config;
+    }
+
+    logger.info('🌐 [MCP Config] Validating configuration for multihost deployment (HTTP-only)...');
+
+    const validatedServers: Record<string, MCPConfigEndpoint> = {};
+    let rejectedCount = 0;
+
+    for (const [name, endpoint] of Object.entries(config.mcpServers)) {
+      // Check if this is a stdio-based endpoint
+      if (this.isStdioEndpoint(endpoint)) {
+        logger.warn(`⚠️ [MCP Config] Rejecting stdio server "${name}" in multihost mode`);
+        rejectedCount++;
+        continue;
+      }
+
+      // Validate HTTP endpoint
+      if (!this.isValidHttpEndpoint(endpoint)) {
+        logger.warn(`⚠️ [MCP Config] Rejecting invalid HTTP endpoint "${name}": ${endpoint.url}`);
+        rejectedCount++;
+        continue;
+      }
+
+      validatedServers[name] = endpoint;
+      logger.debug(`✅ [MCP Config] Validated HTTP endpoint "${name}": ${endpoint.url}`);
+    }
+
+    if (rejectedCount > 0) {
+      logger.info(`🛡️ [MCP Config] Multihost validation: ${Object.keys(validatedServers).length} valid HTTP endpoints, ${rejectedCount} rejected`);
+    }
+
+    return {
+      ...config,
+      mcpServers: validatedServers
+    };
+  }
+
+  /**
+   * Check if endpoint is stdio-based
+   */
+  private isStdioEndpoint(endpoint: MCPConfigEndpoint): boolean {
+    return endpoint.url.startsWith('mcp-stdio:') || 
+           (endpoint.headers && endpoint.headers['x-mcp-command'] !== undefined);
+  }
+
+  /**
+   * Check if endpoint is a valid HTTP endpoint
+   */
+  private isValidHttpEndpoint(endpoint: MCPConfigEndpoint): boolean {
+    try {
+      const url = new URL(endpoint.url);
+      return url.protocol === 'http:' || url.protocol === 'https:';
+    } catch {
+      return false;
+    }
+  }
+
+  /**
    * Convert standard Claude Desktop MCP config format to internal discovery config
+   * Note: This method is disabled for multihost deployment as it generates stdio configs
    */
   private async convertStandardToDiscoveryConfig(
     config: z.infer<typeof standardMcpConfigSchema>, 
     configPath: string
   ): Promise<MCPDiscoveryConfig> {
     logger.info('🔄 [MCP Config] Converting standard MCP config format to internal format...');
+    
+    // In multihost mode, we should not be processing stdio configs
+    if (this.isMultiHost) {
+      throw new Error('Standard MCP config (stdio) not supported in multihost mode');
+    }
     
     const mcpServers: Record<string, MCPConfigEndpoint> = {};
 
@@ -229,6 +315,12 @@ export class MCPConfigParser {
     const mcpServers: Record<string, MCPConfigEndpoint> = {};
 
     for (const [name, endpoint] of Object.entries(config.mcpServers)) {
+      // In multihost mode, skip stdio endpoints
+      if (this.isMultiHost && this.isStdioEndpoint(endpoint)) {
+        logger.warn(`⚠️ [MCP Config] Skipping stdio endpoint "${name}" in multihost mode`);
+        continue;
+      }
+
       mcpServers[name] = {
         url: endpoint.url,
         type: endpoint.type || 'server',
@@ -328,6 +420,12 @@ export class MCPConfigParser {
             logger.info(`✅ [MCP Config] Discovered ${discovered.length} servers from ${discoveryUrl}`);
             
             for (const server of discovered) {
+              // Skip non-HTTP servers in multihost mode
+              if (this.isMultiHost && !this.isValidHttpUrl(server.url)) {
+                logger.debug(`⚠️ [MCP Config] Skipping non-HTTP discovered server: ${server.url}`);
+                continue;
+              }
+
               const serverName = `discovered_${server.name || Math.random().toString(36).substr(2, 9)}`;
               config.mcpServers[serverName] = {
                 url: server.url,
@@ -358,6 +456,12 @@ export class MCPConfigParser {
           logger.info(`✅ [MCP Config] Discovered ${discovered.length} servers from registry ${registryUrl}`);
           
           for (const server of discovered) {
+            // Skip non-HTTP servers in multihost mode
+            if (this.isMultiHost && !this.isValidHttpUrl(server.url)) {
+              logger.debug(`⚠️ [MCP Config] Skipping non-HTTP registry server: ${server.url}`);
+              continue;
+            }
+
             const serverName = `registry_${server.name || Math.random().toString(36).substr(2, 9)}`;
             config.mcpServers[serverName] = {
               url: server.url,
@@ -370,6 +474,18 @@ export class MCPConfigParser {
       } catch (error) {
         logger.debug(`⚠️ [MCP Config] Failed to discover from registry ${registryUrl}:`, error);
       }
+    }
+  }
+
+  /**
+   * Check if URL is a valid HTTP/HTTPS URL
+   */
+  private isValidHttpUrl(url: string): boolean {
+    try {
+      const parsed = new URL(url);
+      return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+    } catch {
+      return false;
     }
   }
 
@@ -465,6 +581,12 @@ export class MCPConfigParser {
 
     for (const [name, endpoint] of Object.entries(this.discoveryConfig!.mcpServers)) {
       if (endpoint.type === 'server') {
+        // Skip stdio servers in multihost mode
+        if (this.isMultiHost && this.isStdioEndpoint(endpoint)) {
+          logger.warn(`⚠️ [MCP Config] Skipping stdio server "${name}" in multihost mode`);
+          continue;
+        }
+
         const server: MCPServer = {
           id: `config_${name}_${Date.now()}`,
           name,
@@ -478,11 +600,17 @@ export class MCPConfigParser {
           priority: 0
         };
 
+        // Final validation for multihost
+        if (this.isMultiHost && server.transport === 'stdio') {
+          logger.warn(`⚠️ [MCP Config] Rejecting stdio server "${name}" in multihost mode`);
+          continue;
+        }
+
         servers.push(server);
       }
     }
 
-    logger.info(`📊 [MCP Config] Created ${servers.length} server configurations`);
+    logger.info(`📊 [MCP Config] Created ${servers.length} server configurations (${this.isMultiHost ? 'HTTP-only' : 'mixed transports'})`);
     return servers;
   }
 
@@ -553,6 +681,10 @@ export class MCPConfigParser {
     try {
       // Skip validation for stdio endpoints
       if (endpoint.url.startsWith('mcp-stdio:')) {
+        // In multihost mode, stdio endpoints are invalid
+        if (this.isMultiHost) {
+          return false;
+        }
         return true;
       }
 
@@ -585,6 +717,8 @@ export class MCPConfigParser {
     discoveryChannels: number;
     registries: number;
     lastParsed: Date | null;
+    deploymentMode: string;
+    httpOnlyMode: boolean;
   } {
     if (!this.discoveryConfig) {
       return {
@@ -592,7 +726,9 @@ export class MCPConfigParser {
         serverEndpoints: 0,
         discoveryChannels: 0,
         registries: 0,
-        lastParsed: null
+        lastParsed: null,
+        deploymentMode: this.isMultiHost ? 'multihost' : 'standard',
+        httpOnlyMode: this.isMultiHost
       };
     }
 
@@ -602,7 +738,53 @@ export class MCPConfigParser {
       serverEndpoints: endpoints.filter(e => e.type === 'server').length,
       discoveryChannels: endpoints.filter(e => e.type === 'discovery_channel').length,
       registries: endpoints.filter(e => e.type === 'registry').length,
-      lastParsed: this.lastParsed
+      lastParsed: this.lastParsed,
+      deploymentMode: this.isMultiHost ? 'multihost' : 'standard',
+      httpOnlyMode: this.isMultiHost
+    };
+  }
+
+  /**
+   * Check if running in multihost mode
+   */
+  isMultihostMode(): boolean {
+    return this.isMultiHost;
+  }
+
+  /**
+   * Get list of rejected stdio servers (for logging purposes)
+   */
+  getHttpOnlyValidationResults(): {
+    acceptedEndpoints: string[];
+    rejectedStdioEndpoints: string[];
+    invalidHttpEndpoints: string[];
+  } {
+    if (!this.discoveryConfig) {
+      return {
+        acceptedEndpoints: [],
+        rejectedStdioEndpoints: [],
+        invalidHttpEndpoints: []
+      };
+    }
+
+    const accepted: string[] = [];
+    const rejectedStdio: string[] = [];
+    const invalidHttp: string[] = [];
+
+    for (const [name, endpoint] of Object.entries(this.discoveryConfig.mcpServers)) {
+      if (this.isStdioEndpoint(endpoint)) {
+        rejectedStdio.push(name);
+      } else if (!this.isValidHttpEndpoint(endpoint)) {
+        invalidHttp.push(name);
+      } else {
+        accepted.push(name);
+      }
+    }
+
+    return {
+      acceptedEndpoints: accepted,
+      rejectedStdioEndpoints: rejectedStdio,
+      invalidHttpEndpoints: invalidHttp
     };
   }
 }
