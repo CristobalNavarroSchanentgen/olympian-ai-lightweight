@@ -1,101 +1,131 @@
 {
   "mcpServers": {
     "github": {
-      "transport": "sse",
-      "endpoint": "http://host.docker.internal:3001/sse",
-      "description": "GitHub MCP server for repository access",
+      "transport": "http",
+      "endpoint": "http://host.docker.internal:3001/mcp",
+      "description": "GitHub MCP server for repository access via HTTP",
       "optional": true,
       "timeout": 30000,
       "retries": 3,
       "headers": {
-        "Authorization": "Bearer ${GITHUB_PERSONAL_ACCESS_TOKEN}",
-        "Content-Type": "application/json"
+        "Authorization": "Bearer ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "Content-Type": "application/json",
+        "User-Agent": "Olympian-AI-MCP-Client/1.0"
       },
       "env": {
-        "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_PERSONAL_ACCESS_TOKEN:-}"
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
       }
     },
     "nasa-mcp": {
-      "transport": "sse", 
-      "endpoint": "http://host.docker.internal:3002/sse",
-      "description": "NASA MCP server for space data",
+      "transport": "http",
+      "endpoint": "http://host.docker.internal:3002/mcp",
+      "description": "NASA MCP server for space data via HTTP",
       "optional": true,
       "timeout": 30000,
       "retries": 3,
       "headers": {
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "User-Agent": "Olympian-AI-MCP-Client/1.0"
       },
       "env": {
-        "NASA_API_KEY": "${NASA_API_KEY:-DEMO_KEY}"
+        "NASA_API_KEY": "your_nasa_api_key_here"
       }
     },
     "met-museum": {
-      "transport": "sse",
-      "endpoint": "http://host.docker.internal:3003/sse", 
-      "description": "Metropolitan Museum of Art MCP server",
+      "transport": "http",
+      "endpoint": "http://host.docker.internal:3003/mcp",
+      "description": "Metropolitan Museum of Art MCP server via HTTP",
       "optional": true,
       "timeout": 30000,
       "retries": 3,
       "headers": {
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "User-Agent": "Olympian-AI-MCP-Client/1.0"
       }
     },
     "Context7": {
-      "transport": "sse",
-      "endpoint": "http://host.docker.internal:3004/sse",
-      "description": "Context7 MCP server for documentation",
+      "transport": "http",
+      "endpoint": "http://host.docker.internal:3004/mcp",
+      "description": "Context7 MCP server for documentation via HTTP",
       "optional": true,
       "timeout": 30000,
       "retries": 3,
       "headers": {
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "User-Agent": "Olympian-AI-MCP-Client/1.0"
       }
     }
   },
   "_meta": {
-    "version": "1.1.0",
+    "version": "2.0.0",
     "deployment": "multi-host",
-    "description": "Multi-host MCP configuration for subproject 3 - External server connections via HTTP",
+    "transport_protocol": "http",
+    "description": "Multi-host MCP configuration for subproject 3 - HTTP-only transport (no stdio)",
     "notes": [
-      "Connects to existing MCP servers running on host machine via HTTP transport",
+      "All servers use HTTP transport exclusively - stdio support removed",
+      "Connects to MCP servers running on host machine via pure HTTP transport",
       "Uses host.docker.internal to reach host services from Docker container",
       "All servers are marked as optional to prevent startup failures",
       "Includes retry logic and timeouts for robust multi-host deployment",
-      "Environment variables should be configured in .env file for production use"
+      "Personal tokens are included directly in configuration",
+      "HTTP endpoints expect standard JSON-RPC over HTTP protocol"
     ],
     "requirements": {
       "docker": true,
       "external_mcp_servers": true,
       "node": ">=18",
-      "network_access": "host.docker.internal"
+      "network_access": "host.docker.internal",
+      "transport": "http_only"
     },
     "host_server_configuration": {
       "github": {
         "default_port": 3001,
-        "start_command": "npx -y @modelcontextprotocol/server-github --transport sse --port 3001",
-        "env_required": ["GITHUB_PERSONAL_ACCESS_TOKEN"]
+        "start_command": "npx -y @modelcontextprotocol/server-github --transport http --port 3001",
+        "endpoint_path": "/mcp",
+        "env_required": ["GITHUB_PERSONAL_ACCESS_TOKEN"],
+        "personal_token": "ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
       },
       "nasa-mcp": {
         "default_port": 3002,
-        "start_command": "npx -y @programcomputer/nasa-mcp-server@latest --transport sse --port 3002",
-        "env_optional": ["NASA_API_KEY"]
+        "start_command": "npx -y @programcomputer/nasa-mcp-server@latest --transport http --port 3002",
+        "endpoint_path": "/mcp",
+        "env_optional": ["NASA_API_KEY"],
+        "demo_key_available": true
       },
       "met-museum": {
         "default_port": 3003,
-        "start_command": "npx -y metmuseum-mcp --transport sse --port 3003",
+        "start_command": "npx -y metmuseum-mcp --transport http --port 3003",
+        "endpoint_path": "/mcp",
         "env_required": []
       },
       "Context7": {
         "default_port": 3004,
-        "start_command": "npx -y @upstash/context7-mcp --transport sse --port 3004",
+        "start_command": "npx -y @upstash/context7-mcp --transport http --port 3004",
+        "endpoint_path": "/mcp",
         "env_required": []
       }
     },
+    "http_transport_details": {
+      "protocol": "JSON-RPC 2.0 over HTTP",
+      "method": "POST",
+      "content_type": "application/json",
+      "authentication": "Bearer token in Authorization header",
+      "timeout": "30 seconds per request",
+      "retry_strategy": "exponential_backoff",
+      "no_stdio": "stdio transport completely removed"
+    },
+    "personal_tokens": {
+      "github_token": "ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "nasa_api_key": "your_nasa_api_key_here",
+      "note": "Replace with actual tokens from .env file in production"
+    },
     "troubleshooting": {
-      "connection_timeout": "Ensure MCP servers are running on host and ports are accessible",
+      "connection_timeout": "Ensure MCP servers are running on host with HTTP transport and ports are accessible",
       "host_resolution": "Verify host.docker.internal resolves correctly in container",
       "port_conflicts": "Check for port conflicts on host machine",
-      "environment_variables": "Ensure all required environment variables are set in .env file"
+      "http_errors": "Check server logs for HTTP-specific errors (404, 500, etc.)",
+      "transport_mismatch": "Ensure all servers are configured for HTTP transport, not stdio or SSE",
+      "token_authentication": "Verify personal tokens are valid and properly formatted"
     }
   }
 }
