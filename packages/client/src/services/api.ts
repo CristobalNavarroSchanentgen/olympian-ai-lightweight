@@ -543,7 +543,7 @@ class ApiService {
         }
 
         const chunk = decoder.decode(value);
-        const lines = chunk.split('\\n');
+        const lines = chunk.split('\n'); // FIXED: Changed from '\\\\n' to '\\n' for proper line splitting
 
         for (const line of lines) {
           if (line.startsWith('data: ')) {
