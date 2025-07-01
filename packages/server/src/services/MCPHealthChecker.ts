@@ -146,7 +146,7 @@ export class MCPHealthChecker extends EventEmitter {
     const currentCheck = this.healthChecks.get(serverId) || {
       serverId,
       timestamp: new Date(),
-      status: 'unknown',
+      status: 'unknown' as const,
       consecutiveFailures: 0
     };
 
