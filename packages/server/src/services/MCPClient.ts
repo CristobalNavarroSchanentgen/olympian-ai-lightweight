@@ -1,6 +1,6 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+// Try alternative import for streamableHttp
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 
 import { 
@@ -30,6 +30,15 @@ import * as path from 'path';
 import * as os from 'os';
 import { z } from 'zod';
 import EventEmitter from 'events';
+
+// Try to import StreamableHTTPClientTransport with fallback
+let StreamableHTTPClientTransport: any;
+try {
+  StreamableHTTPClientTransport = require('@modelcontextprotocol/sdk/client/streamableHttp.js').StreamableHTTPClientTransport;
+} catch (error) {
+  logger.warn('⚠️ [MCP Client] StreamableHTTPClientTransport not available, will use SSE fallback');
+  StreamableHTTPClientTransport = null;
+}
 
 // Validation schemas for MCP responses
 const toolListResponseSchema = z.object({
@@ -234,7 +243,7 @@ export class MCPClientService extends EventEmitter {
 
       this.metrics.activeConnections++;
       
-      logger.info(`✅ [MCP Client] Connected to ${server.name} (${server.transport}, ${negotiation.serverVersion})`);
+      logger.info(`✅ [MCP Client] Connected to ${server.name} (${server.transport}, ${negotiation.serverVersion})`);;
 
       // Emit connection event
       this.emitEvent('server_connected', server.id, { 
@@ -310,11 +319,17 @@ export class MCPClientService extends EventEmitter {
     }
 
     try {
-      // Try streamable HTTP first
-      const streamableTransport = new StreamableHTTPClientTransport(
-        new URL(server.endpoint)
-      );
-      return streamableTransport;
+      // Try streamable HTTP first if available
+      if (StreamableHTTPClientTransport) {
+        const streamableTransport = new StreamableHTTPClientTransport(
+          new URL(server.endpoint)
+        );
+        return streamableTransport;
+      } else {
+        // Fallback to SSE if streamable HTTP is not available
+        logger.info(`🔄 [MCP Client] StreamableHTTP not available for ${server.name}, falling back to SSE`);
+        return await this.createSSETransport(server);
+      }
     } catch (error) {
       // Fallback to SSE if streamable HTTP fails
       logger.info(`🔄 [MCP Client] Streamable HTTP failed for ${server.name}, falling back to SSE`);
