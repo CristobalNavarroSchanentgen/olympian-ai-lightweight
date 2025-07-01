@@ -682,10 +682,7 @@ export class MCPConfigParser {
       // Skip validation for stdio endpoints
       if (endpoint.url.startsWith('mcp-stdio:')) {
         // In multihost mode, stdio endpoints are invalid
-        if (this.isMultiHost) {
-          return false;
-        }
-        return true;
+        return !this.isMultiHost;
       }
 
       const controller = new AbortController();
