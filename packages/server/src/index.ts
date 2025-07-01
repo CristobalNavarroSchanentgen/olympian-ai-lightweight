@@ -13,6 +13,9 @@ import { modelProgressiveLoader } from './services/ModelProgressiveLoader';
 import { ArtifactService } from './services/ArtifactService';
 // NEW: Phase 3 Multi-host Services
 import { multiHostInit } from './services/MultiHostInitializationService';
+// NEW: MCP Services
+import { MCPConfigParser } from './services/MCPConfigParser';
+import { MCPClient } from './services/MCPClient';
 
 import apiRoutes from './api/routes';
 import { errorHandler } from './middleware/errorHandler';
@@ -28,6 +31,7 @@ const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5173';
 
 // NEW: Multi-host environment variables
 const ENABLE_MULTI_HOST = process.env.ENABLE_MULTI_HOST === 'true';
+const DEPLOYMENT_MODE = process.env.DEPLOYMENT_MODE || 'development';
 const REDIS_URL = process.env.REDIS_URL;
 const INSTANCE_ID = process.env.INSTANCE_ID || `server-${Date.now()}`;
 const HOSTNAME = process.env.HOSTNAME || 'localhost';
@@ -71,7 +75,8 @@ app.get('/health', (req, res) => {
     version: process.env.npm_package_version || '1.0.0',
     instanceId: INSTANCE_ID,
     hostname: HOSTNAME,
-    multiHost: ENABLE_MULTI_HOST
+    multiHost: ENABLE_MULTI_HOST,
+    deploymentMode: DEPLOYMENT_MODE
   });
 });
 
@@ -86,12 +91,66 @@ app.use('*', (req, res) => {
   });
 });
 
+// Initialize MCP services
+async function initializeMCPServices() {
+  try {
+    console.log('🔧 [Server] Initializing MCP services...');
+    
+    // Parse MCP configuration
+    const mcpParser = MCPConfigParser.getInstance();
+    const mcpConfig = await mcpParser.parseConfiguration();
+    
+    const stats = mcpParser.getConfigurationStats();
+    console.log(`📊 [Server] MCP configuration loaded:`, {
+      totalEndpoints: stats.totalEndpoints,
+      serverEndpoints: stats.serverEndpoints,
+      discoveryChannels: stats.discoveryChannels,
+      registries: stats.registries
+    });
+    
+    // Initialize MCP client if we have servers configured
+    if (stats.serverEndpoints > 0) {
+      console.log('🚀 [Server] Initializing MCP clients...');
+      
+      const mcpServers = await mcpParser.createServersFromConfig();
+      const mcpClient = MCPClient.getInstance();
+      
+      // Initialize the MCP client with the parsed servers
+      await mcpClient.initialize(mcpServers);
+      
+      console.log(`✅ [Server] MCP services initialized with ${mcpServers.length} servers`);
+      
+      // Perform initial health check
+      const healthStats = await mcpClient.getHealthStats();
+      console.log(`📊 [Server] MCP Health: ${healthStats.healthy}/${healthStats.total} servers healthy`);
+      
+      if (healthStats.total > healthStats.healthy) {
+        console.warn(`⚠️ [Server] Some MCP servers are unhealthy. Check logs for details.`);
+      }
+    } else {
+      console.log('ℹ️ [Server] No MCP servers configured, skipping MCP client initialization');
+    }
+    
+  } catch (error) {
+    console.error('❌ [Server] MCP initialization failed:', error);
+    
+    // Check if MCP is optional
+    const mcpOptional = process.env.MCP_OPTIONAL === 'true' || DEPLOYMENT_MODE === 'development';
+    if (mcpOptional) {
+      console.warn('⚠️ [Server] Continuing without MCP services (MCP_OPTIONAL=true or development mode)');
+    } else {
+      throw error;
+    }
+  }
+}
+
 // Initialize services
 async function initializeServices() {
   try {
     console.log('🚀 [Server] Initializing Olympian AI Lightweight Server...');
     console.log(`📍 [Server] Instance: ${INSTANCE_ID} on ${HOSTNAME}`);
     console.log(`🌐 [Server] Multi-host mode: ${ENABLE_MULTI_HOST ? 'ENABLED' : 'DISABLED'}`);
+    console.log(`🚀 [Server] Deployment mode: ${DEPLOYMENT_MODE}`);
 
     // Connect to database first
     console.log('🔌 [Server] Connecting to MongoDB...');
@@ -158,6 +217,9 @@ async function initializeServices() {
       console.warn(`⚠️ [Server] Artifacts health issues detected:`, artifactHealth.issues);
     }
 
+    // NEW: Initialize MCP services
+    await initializeMCPServices();
+
     // Initialize Socket.IO
     console.log('🔌 [Server] Initializing WebSocket service...');
     const io = new SocketIOServer(server, {
@@ -206,12 +268,21 @@ async function initializeServices() {
   }
 }
 
-// NEW: Enhanced graceful cleanup with multi-host support
+// NEW: Enhanced graceful cleanup with multi-host and MCP support
 async function gracefulCleanup() {
   console.log('🧹 [Server] Starting cleanup...');
   
   try {
-    // Cleanup multi-host services first
+    // Cleanup MCP services first
+    try {
+      const mcpClient = MCPClient.getInstance();
+      await mcpClient.cleanup();
+      console.log('✅ [Server] MCP services cleaned up');
+    } catch (mcpError) {
+      console.warn('⚠️ [Server] MCP cleanup failed:', mcpError);
+    }
+
+    // Cleanup multi-host services
     if (ENABLE_MULTI_HOST) {
       console.log('🧹 [Server] Cleaning up multi-host services...');
       await multiHostInit.cleanup();
@@ -280,8 +351,15 @@ async function startServer() {
       
       // NEW: Multi-host status
       if (ENABLE_MULTI_HOST) {
-        console.log(`🌐 [Server] Multi-host coordination: ${REDIS_URL ? 'ENABLED' : 'LIMITED (no Redis)'}`);
-        console.log(`📊 [Server] Instance: ${INSTANCE_ID}`);
+        console.log(`🌐 [Server] Multi-host coordination: ${REDIS_URL ? 'ENABLED' : 'LIMITED (no Redis)'}`);}
+      
+      // NEW: MCP status
+      try {
+        const mcpClient = MCPClient.getInstance();
+        const mcpStats = mcpClient.getHealthStats();
+        console.log(`🔧 [Server] MCP services: ${mcpStats.healthy}/${mcpStats.total} servers healthy`);
+      } catch (mcpError) {
+        console.log('🔧 [Server] MCP services: Not initialized');
       }
       
       console.log(`🌐 [Server] CORS enabled for: ${CLIENT_URL}`);
@@ -314,6 +392,7 @@ async function startServer() {
         console.log(`\n📍 [Server] Multi-host instance ready:`);
         console.log(`   Instance ID: ${INSTANCE_ID}`);
         console.log(`   Hostname: ${HOSTNAME}`);
+        console.log(`   Deployment Mode: ${DEPLOYMENT_MODE}`);
         console.log(`   Redis: ${REDIS_URL ? '✅ Connected' : '❌ Not configured'}`);
         console.log(`   Coordination: ${multiHostInit.getStatus().services.coordination ? '✅' : '❌'}`);
         console.log(`   Monitoring: ${multiHostInit.getStatus().services.monitoring ? '✅' : '❌'}`);
