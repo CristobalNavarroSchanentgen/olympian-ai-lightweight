@@ -22,6 +22,21 @@ const mcpConfigSchema = z.object({
   cacheTtl: z.number().optional()
 });
 
+// Type helpers for safe data access
+interface DiscoveryResponseData {
+  servers?: Array<{
+    name?: string;
+    url: string;
+  }>;
+}
+
+interface RegistryResponseData {
+  servers?: Array<{
+    name?: string;
+    url: string;
+  }>;
+}
+
 /**
  * MCP Configuration Parser following best practices from guidelines
  * 
@@ -258,7 +273,7 @@ export class MCPConfigParser {
   /**
    * Fetch servers from discovery endpoint
    */
-  private async fetchDiscoveryEndpoint(url: string): Promise<any[]> {
+  private async fetchDiscoveryEndpoint(url: string): Promise<Array<{ name?: string; url: string }>> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000);
 
@@ -275,8 +290,14 @@ export class MCPConfigParser {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
-      const data = await response.json();
-      return Array.isArray(data.servers) ? data.servers : [];
+      const data = await response.json() as unknown;
+      
+      // Type-safe data access
+      if (this.isDiscoveryResponseData(data) && Array.isArray(data.servers)) {
+        return data.servers;
+      }
+      
+      return [];
     } finally {
       clearTimeout(timeoutId);
     }
@@ -285,7 +306,7 @@ export class MCPConfigParser {
   /**
    * Fetch servers from registry
    */
-  private async fetchRegistryServers(registryUrl: string): Promise<any[]> {
+  private async fetchRegistryServers(registryUrl: string): Promise<Array<{ name?: string; url: string }>> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 15000);
 
@@ -302,11 +323,31 @@ export class MCPConfigParser {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
-      const data = await response.json();
-      return Array.isArray(data.servers) ? data.servers : [];
+      const data = await response.json() as unknown;
+      
+      // Type-safe data access
+      if (this.isRegistryResponseData(data) && Array.isArray(data.servers)) {
+        return data.servers;
+      }
+      
+      return [];
     } finally {
       clearTimeout(timeoutId);
     }
+  }
+
+  /**
+   * Type guard for discovery response data
+   */
+  private isDiscoveryResponseData(data: unknown): data is DiscoveryResponseData {
+    return typeof data === 'object' && data !== null && 'servers' in data;
+  }
+
+  /**
+   * Type guard for registry response data
+   */
+  private isRegistryResponseData(data: unknown): data is RegistryResponseData {
+    return typeof data === 'object' && data !== null && 'servers' in data;
   }
 
   /**
