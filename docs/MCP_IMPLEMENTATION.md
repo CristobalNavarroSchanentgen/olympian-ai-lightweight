@@ -25,9 +25,107 @@ This implementation follows all MCP best practices and guidelines to provide a r
 
 ## Configuration
 
-### 1. Basic Configuration File
+### 1. Subproject-Specific Configurations
 
-Create a configuration file at one of these locations:
+Olympian AI Lightweight provides pre-configured MCP setups for each deployment subproject:
+
+#### Subproject 3: Multi-Host Deployment (Default Configuration)
+
+For multi-host deployments, use the default configuration provided in `mcp-config.multihost.json`:
+
+```json
+{
+  "mcpServers": {
+    "met-museum": {
+      "command": "npx",
+      "args": ["-y", "metmuseum-mcp"]
+    },
+    "applescript_execute": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/Users/YOUR_USERNAME/Servers/applescript-mcp",
+        "run",
+        "src/applescript_mcp/server.py"
+      ]
+    },
+    "nasa-mcp": {
+      "command": "npx",
+      "args": ["-y", "@programcomputer/nasa-mcp-server@latest"],
+      "env": {
+        "NASA_API_KEY": "YOUR_NASA_API_KEY_HERE"
+      }
+    },
+    "github": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-github"
+      ],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "YOUR_GITHUB_TOKEN_HERE"
+      }
+    },
+    "basic-memory": {
+      "command": "uvx",
+      "args": [
+        "basic-memory",
+        "mcp"
+      ]
+    },
+    "Context7": {
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp"]
+    }
+  }
+}
+```
+
+**Setup Instructions for Subproject 3:**
+
+1. Copy `mcp-config.multihost.json` to your preferred location:
+   ```bash
+   cp mcp-config.multihost.json ~/.config/mcp/config.json
+   # OR
+   cp mcp-config.multihost.json ~/.olympian-ai-lite/mcp_config.json
+   ```
+
+2. Configure your credentials:
+   ```bash
+   # Replace placeholder values with your actual credentials
+   sed -i 's/YOUR_USERNAME/your-actual-username/g' ~/.config/mcp/config.json
+   sed -i 's/YOUR_NASA_API_KEY_HERE/your-nasa-api-key/g' ~/.config/mcp/config.json
+   sed -i 's/YOUR_GITHUB_TOKEN_HERE/your-github-token/g' ~/.config/mcp/config.json
+   ```
+
+3. Install required dependencies:
+   ```bash
+   # For AppleScript MCP (macOS only)
+   pip install uv
+   
+   # For NASA and GitHub MCP servers
+   npm install -g @programcomputer/nasa-mcp-server@latest
+   npm install -g @modelcontextprotocol/server-github
+   
+   # For Context7 and Memory servers
+   npm install -g @upstash/context7-mcp
+   pip install basic-memory
+   ```
+
+#### Multi-Host Specific Features
+
+The multihost configuration includes servers optimized for distributed deployments:
+
+- **Met Museum MCP**: Provides access to Metropolitan Museum of Art collections
+- **AppleScript MCP**: Enables automation of macOS applications (if running on macOS host)
+- **NASA MCP**: Provides access to NASA APIs and space data
+- **GitHub MCP**: Integrates with GitHub repositories and operations
+- **Basic Memory**: Provides persistent memory across chat sessions
+- **Context7**: Provides documentation and context retrieval capabilities
+
+### 2. Basic Configuration File
+
+For custom configurations, create a configuration file at one of these locations:
 - `~/.config/mcp/config.json`
 - `~/.mcp/config.json`
 - `~/.olympian-ai-lite/mcp_config.json`
@@ -51,7 +149,7 @@ Create a configuration file at one of these locations:
 }
 ```
 
-### 2. Server Configuration Options
+### 3. Server Configuration Options
 
 Each server can be configured with:
 
@@ -66,7 +164,7 @@ Each server can be configured with:
 }
 ```
 
-### 3. Transport Types
+### 4. Transport Types
 
 - **`stdio`** - For local command-line tools
 - **`streamable_http`** - Modern HTTP transport (recommended)
@@ -269,9 +367,9 @@ This MCP implementation is designed to work seamlessly with all three subproject
 
 1. **Same-host with Ollama container** - Uses stdio transport for local communication
 2. **Same-host with existing Ollama** - Connects to existing Ollama MCP servers
-3. **Multi-host deployment** - Supports distributed MCP server architecture
+3. **Multi-host deployment** - Supports distributed MCP server architecture with pre-configured defaults
 
-The system automatically detects the deployment configuration and optimizes accordingly.
+The system automatically detects the deployment configuration and optimizes accordingly. For subproject 3, the `mcp-config.multihost.json` file provides a comprehensive set of MCP servers optimized for distributed deployments.
 
 ## Performance Considerations
 
