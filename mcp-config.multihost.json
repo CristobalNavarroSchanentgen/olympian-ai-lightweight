@@ -1,117 +1,106 @@
 {
   "mcpServers": {
     "github": {
-      "transport": "http",
-      "endpoint": "http://mcp-github:3001/mcp",
-      "description": "GitHub MCP server for repository access via HTTP (self-reliant container)",
-      "optional": true,
-      "timeout": 30000,
-      "retries": 3,
+      "url": "http://mcp-github:3001/mcp",
+      "type": "server",
+      "auth": "Bearer ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
       "headers": {
-        "Authorization": "Bearer ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
         "Content-Type": "application/json",
         "User-Agent": "Olympian-AI-MCP-Client/1.0",
         "Accept": "application/json, text/event-stream",
         "MCP-Protocol-Version": "2024-11-05"
       },
-      "env": {
-        "GITHUB_PERSONAL_ACCESS_TOKEN": "ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-      }
+      "timeout": 30000,
+      "retries": 3
     },
     "nasa-mcp": {
-      "transport": "http",
-      "endpoint": "http://mcp-nasa:3002/mcp",
-      "description": "NASA MCP server for space data via HTTP (self-reliant container)",
-      "optional": true,
-      "timeout": 30000,
-      "retries": 3,
+      "url": "http://mcp-nasa:3002/mcp",
+      "type": "server",
       "headers": {
         "Content-Type": "application/json",
         "User-Agent": "Olympian-AI-MCP-Client/1.0",
         "Accept": "application/json, text/event-stream",
         "MCP-Protocol-Version": "2024-11-05"
       },
-      "env": {
-        "NASA_API_KEY": "your_nasa_api_key_here"
-      }
+      "timeout": 30000,
+      "retries": 3
     },
     "met-museum": {
-      "transport": "http",
-      "endpoint": "http://mcp-metmuseum:3003/mcp",
-      "description": "Metropolitan Museum of Art MCP server via HTTP (self-reliant container)",
-      "optional": true,
-      "timeout": 30000,
-      "retries": 3,
-      "headers": {
-        "Content-Type": "application/json",
-        "User-Agent": "Olympian-AI-MCP-Client/1.0",
-        "Accept": "application/json, text/event-stream",
-        "MCP-Protocol-Version": "2024-11-05"
-      }
-    },
-    "Context7": {
-      "transport": "http",
-      "endpoint": "http://mcp-context7:3004/mcp",
-      "description": "Context7 MCP server for documentation via HTTP (self-reliant container)",
-      "optional": true,
-      "timeout": 30000,
-      "retries": 3,
-      "headers": {
-        "Content-Type": "application/json",
-        "User-Agent": "Olympian-AI-MCP-Client/1.0",
-        "Accept": "application/json, text/event-stream",
-        "MCP-Protocol-Version": "2024-11-05"
-      }
-    },
-    "applescript-mcp": {
-      "transport": "http",
-      "endpoint": "http://mcp-applescript:3005/mcp",
-      "description": "AppleScript MCP server for macOS automation via HTTP (self-reliant container)",
-      "optional": true,
-      "timeout": 30000,
-      "retries": 3,
-      "headers": {
-        "Content-Type": "application/json",
-        "User-Agent": "Olympian-AI-MCP-Client/1.0",
-        "Accept": "application/json, text/event-stream",
-        "MCP-Protocol-Version": "2024-11-05"
-      }
-    },
-    "web-search": {
-      "transport": "http", 
-      "endpoint": "http://mcp-websearch:3006/mcp",
-      "description": "Web search MCP server via HTTP (self-reliant container)",
-      "optional": true,
-      "timeout": 45000,
-      "retries": 3,
+      "url": "http://mcp-metmuseum:3003/mcp",
+      "type": "server",
       "headers": {
         "Content-Type": "application/json",
         "User-Agent": "Olympian-AI-MCP-Client/1.0",
         "Accept": "application/json, text/event-stream",
         "MCP-Protocol-Version": "2024-11-05"
       },
-      "env": {
-        "BRAVE_API_KEY": "your_brave_api_key_here"
-      }
+      "timeout": 30000,
+      "retries": 3
+    },
+    "Context7": {
+      "url": "http://mcp-context7:3004/mcp",
+      "type": "server",
+      "headers": {
+        "Content-Type": "application/json",
+        "User-Agent": "Olympian-AI-MCP-Client/1.0",
+        "Accept": "application/json, text/event-stream",
+        "MCP-Protocol-Version": "2024-11-05"
+      },
+      "timeout": 30000,
+      "retries": 3
+    },
+    "applescript-mcp": {
+      "url": "http://mcp-applescript:3005/mcp",
+      "type": "server",
+      "headers": {
+        "Content-Type": "application/json",
+        "User-Agent": "Olympian-AI-MCP-Client/1.0",
+        "Accept": "application/json, text/event-stream",
+        "MCP-Protocol-Version": "2024-11-05"
+      },
+      "timeout": 30000,
+      "retries": 3
+    },
+    "web-search": {
+      "url": "http://mcp-websearch:3006/mcp",
+      "type": "server",
+      "headers": {
+        "Content-Type": "application/json",
+        "User-Agent": "Olympian-AI-MCP-Client/1.0",
+        "Accept": "application/json, text/event-stream",
+        "MCP-Protocol-Version": "2024-11-05"
+      },
+      "timeout": 45000,
+      "retries": 3
     }
   },
+  "wellKnownPaths": [
+    "/.well-known/mcp",
+    "/.well-known/model-context-protocol"
+  ],
+  "registryUrls": [
+    "https://registry.modelcontextprotocol.io"
+  ],
+  "cacheTtl": 300000,
   "_meta": {
-    "version": "3.1.0",
+    "version": "3.2.0",
     "deployment": "multi-host-self-reliant",
     "transport_protocol": "http_container_only",
-    "description": "Self-reliant MCP configuration for subproject 3 - All MCP servers run as containers",
+    "description": "Self-reliant MCP configuration for subproject 3 - All MCP servers run as containers, format compatible with MCPConfigParser",
     "schema_compliance": "JSON-RPC 2.0 over HTTP",
+    "format_updated": "Updated to match MCPConfigParser expected format (url instead of endpoint, type instead of transport)",
     "notes": [
       "All servers use HTTP transport exclusively with container endpoints",
       "Self-contained deployment - no external MCP server dependencies",
       "Uses Docker service names for inter-container communication",
-      "All servers are marked as optional to prevent startup failures",
+      "All servers are marked as 'server' type for MCPConfigParser compatibility",
       "Includes retry logic and timeouts for robust container deployment",
       "Headers include proper MCP protocol version and content negotiation",
       "HTTP endpoints expect standard JSON-RPC 2.0 over HTTP protocol",
       "Supports both single JSON responses and SSE streaming",
       "Personal tokens should be replaced with actual tokens from .env file",
-      "Container-based endpoints provide better resource isolation and scaling"
+      "Container-based endpoints provide better resource isolation and scaling",
+      "Format now compatible with MCPConfigParser validation schemas"
     ],
     "requirements": {
       "docker": true,
@@ -120,19 +109,8 @@
       "network_access": "docker_bridge_network",
       "transport": "http_container_only",
       "stdio_support": false,
-      "self_reliant": true
-    },
-    "http_transport_specification": {
-      "protocol": "JSON-RPC 2.0 over HTTP",
-      "method": "POST",
-      "content_type": "application/json",
-      "accept_header": "application/json, text/event-stream",
-      "authentication": "Bearer token in Authorization header (where applicable)",
-      "timeout": "30-45 seconds per request",
-      "retry_strategy": "exponential_backoff",
-      "session_management": "Mcp-Session-Id header support",
-      "sse_streaming": "Optional Server-Sent Events for long-running operations",
-      "container_networking": "Docker bridge network communication"
+      "self_reliant": true,
+      "mcpConfigParser_compatible": true
     },
     "container_server_configuration": {
       "github": {
@@ -180,42 +158,6 @@
         "npm_package": "@modelcontextprotocol/server-brave-search@latest"
       }
     },
-    "json_rpc_examples": {
-      "initialize_request": {
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "initialize",
-        "params": {
-          "protocolVersion": "2024-11-05",
-          "capabilities": {
-            "tools": true,
-            "prompts": true,
-            "resources": true,
-            "completion": true
-          },
-          "clientInfo": {
-            "name": "olympian-client",
-            "version": "1.0.0"
-          }
-        }
-      },
-      "tools_list_request": {
-        "jsonrpc": "2.0",
-        "id": 2,
-        "method": "tools/list"
-      },
-      "tool_call_request": {
-        "jsonrpc": "2.0",
-        "id": 3,
-        "method": "tools/call",
-        "params": {
-          "name": "tool_name",
-          "arguments": {
-            "param1": "value1"
-          }
-        }
-      }
-    },
     "environment_variables": {
       "DEPLOYMENT_MODE": "multi-host",
       "ENABLE_MULTI_HOST": "true",
@@ -226,6 +168,7 @@
       "BRAVE_API_KEY": "replace_with_actual_key_if_needed"
     },
     "troubleshooting": {
+      "configuration_format": "Ensure config uses 'url' and 'type' properties as expected by MCPConfigParser",
       "connection_timeout": "Ensure MCP server containers are running and healthy",
       "container_resolution": "Verify Docker bridge network connectivity between containers",
       "port_conflicts": "Check for port conflicts within Docker network (3001-3006)",
@@ -233,37 +176,8 @@
       "transport_validation": "Ensure all servers are configured for HTTP transport, not stdio",
       "token_authentication": "Verify personal tokens are valid and properly passed to containers",
       "json_rpc_compliance": "Ensure server responses follow JSON-RPC 2.0 specification",
-      "session_management": "Check for proper Mcp-Session-Id header handling",
       "container_health": "Use docker compose ps and docker compose logs to diagnose container issues",
       "stdio_rejection": "stdio transport is completely disabled in container mode"
-    },
-    "security_considerations": {
-      "authentication": "Use proper Bearer tokens for authenticated services",
-      "container_isolation": "Containers provide process and network isolation",
-      "bridge_networking": "Containers communicate via secure Docker bridge network",
-      "token_management": "Store tokens securely in environment variables, not in config",
-      "internal_communication": "No external network exposure of MCP container ports required",
-      "cors_configuration": "Configure CORS properly for cross-origin requests"
-    },
-    "performance_optimization": {
-      "connection_pooling": "Reuse HTTP connections when possible",
-      "request_timeout": "Set appropriate timeouts for different operations",
-      "retry_logic": "Implement exponential backoff for failed requests",
-      "caching": "Cache tool definitions and capabilities",
-      "streaming": "Use SSE streaming for long-running operations",
-      "concurrent_requests": "Support concurrent requests to multiple servers",
-      "container_scaling": "Easy horizontal scaling of individual MCP services",
-      "resource_limits": "Set appropriate memory and CPU limits for each container"
-    },
-    "deployment_advantages": {
-      "self_reliant": "No external MCP server dependencies required",
-      "container_isolation": "Each MCP server runs in isolated environment",
-      "easy_scaling": "Individual MCP services can be scaled independently",
-      "resource_management": "Better resource allocation and monitoring per service",
-      "health_monitoring": "Built-in health checks for each MCP service",
-      "rolling_updates": "Update individual MCP services without affecting others",
-      "development_consistency": "Same environment for development and production",
-      "networking_simplicity": "Standard Docker networking without host dependencies"
     }
   }
 }
