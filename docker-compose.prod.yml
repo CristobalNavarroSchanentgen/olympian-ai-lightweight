@@ -64,8 +64,11 @@ services:
     networks:
       - olympian-network
     environment:
+      # SUBPROJECT IDENTIFICATION - CRITICAL for stdio MCP mode
+      SUBPROJECT: "3"
+      
       # Deployment mode - CRITICAL for subproject 3
-      DEPLOYMENT_MODE: ${DEPLOYMENT_MODE:-multi-host}
+      DEPLOYMENT_MODE: ${DEPLOYMENT_MODE:-docker-multi-host}
       ENABLE_MULTI_HOST: ${ENABLE_MULTI_HOST:-true}
       
       # Docker environment indicator
@@ -84,18 +87,21 @@ services:
       SERVICE_DISCOVERY_SUBNET: ${SERVICE_DISCOVERY_SUBNET:-192.168.1.0/24}
       
       # Model capability configuration - CRITICAL for subproject 3
-      MODEL_CAPABILITY_MODE: ${MODEL_CAPABILITY_MODE:-automatic}
+      MODEL_CAPABILITY_MODE: ${MODEL_CAPABILITY_MODE:-custom}
       
-      # MCP Configuration - Stdio transport (servers run as subprocesses)
+      # MCP Configuration - Stdio transport (servers run as child processes)
       MCP_ENABLED: ${MCP_ENABLED:-true}
       MCP_OPTIONAL: ${MCP_OPTIONAL:-true}
-      MCP_TRANSPORT: ${MCP_TRANSPORT:-stdio}
-      MCP_CONFIG_PATH: ${MCP_CONFIG_PATH:-/app/mcp-config.multihost.json}
+      MCP_TRANSPORT: stdio
+      MCP_CONFIG_PATH: ${MCP_CONFIG_PATH:-/app/mcp-config.stdio.json}
       
-      # MCP Server Authentication
+      # MCP Server Authentication for stdio processes
       GITHUB_PERSONAL_ACCESS_TOKEN: ${GITHUB_PERSONAL_ACCESS_TOKEN:-}
+      CONTEXT7_API_KEY: ${CONTEXT7_API_KEY:-}
       NASA_API_KEY: ${NASA_API_KEY:-DEMO_KEY}
       BRAVE_API_KEY: ${BRAVE_API_KEY:-}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      GOOGLE_CSE_ID: ${GOOGLE_CSE_ID:-}
       
       # Redis Configuration - Optional for multi-host coordination
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
@@ -113,27 +119,27 @@ services:
       # CORS settings
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:8080}
       
-      # Memory tuning for vision processing
-      NODE_OPTIONS: "--max-old-space-size=2048"
+      # Memory tuning for stdio MCP servers and vision processing
+      NODE_OPTIONS: "--max-old-space-size=4096"
     volumes:
       - config-data:/config/.olympian-ai-lite
       - logs:/app/logs
-      # Mount MCP configuration for subproject 3
-      - ./mcp-config.multihost.json:/app/mcp-config.multihost.json:ro
+      # Mount stdio MCP configuration for subproject 3
+      - ./mcp-config.stdio.json:/app/mcp-config.stdio.json:ro
       # Alternative mount path for container-based config loading
-      - ./mcp-config.multihost.json:/config/mcp-config.json:ro
+      - ./mcp-config.stdio.json:/config/mcp-config.stdio.json:ro
     depends_on:
       mongodb-replica-init:
         condition: service_completed_successfully
-    # Resource limits for backend (increased for MCP servers and vision processing)
+    # Resource limits for backend (increased for stdio MCP servers and vision processing)
     deploy:
       resources:
         limits:
-          memory: 4G
-          cpus: '2.0'
+          memory: 6G
+          cpus: '3.0'
         reservations:
-          memory: 2G
-          cpus: '1.0'
+          memory: 3G
+          cpus: '1.5'
     # Add extra_hosts to allow backend to access host services and custom DNS
     extra_hosts:
       - "host.docker.internal:host-gateway"
