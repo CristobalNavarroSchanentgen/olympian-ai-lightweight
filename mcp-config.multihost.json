@@ -1,183 +1,127 @@
 {
   "mcpServers": {
     "github": {
-      "url": "http://mcp-github:3001/mcp",
-      "type": "server",
-      "auth": "Bearer ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-      "headers": {
-        "Content-Type": "application/json",
-        "User-Agent": "Olympian-AI-MCP-Client/1.0",
-        "Accept": "application/json, text/event-stream",
-        "MCP-Protocol-Version": "2024-11-05"
-      },
-      "timeout": 30000,
-      "retries": 3
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_PERSONAL_ACCESS_TOKEN}"
+      }
     },
     "nasa-mcp": {
-      "url": "http://mcp-nasa:3002/mcp",
-      "type": "server",
-      "headers": {
-        "Content-Type": "application/json",
-        "User-Agent": "Olympian-AI-MCP-Client/1.0",
-        "Accept": "application/json, text/event-stream",
-        "MCP-Protocol-Version": "2024-11-05"
-      },
-      "timeout": 30000,
-      "retries": 3
+      "command": "npx", 
+      "args": ["-y", "@programcomputer/nasa-mcp-server"],
+      "env": {
+        "NASA_API_KEY": "${NASA_API_KEY}"
+      }
     },
     "met-museum": {
-      "url": "http://mcp-metmuseum:3003/mcp",
-      "type": "server",
-      "headers": {
-        "Content-Type": "application/json",
-        "User-Agent": "Olympian-AI-MCP-Client/1.0",
-        "Accept": "application/json, text/event-stream",
-        "MCP-Protocol-Version": "2024-11-05"
-      },
-      "timeout": 30000,
-      "retries": 3
+      "command": "npx",
+      "args": ["-y", "metmuseum-mcp"]
     },
     "Context7": {
-      "url": "http://mcp-context7:3004/mcp",
-      "type": "server",
-      "headers": {
-        "Content-Type": "application/json",
-        "User-Agent": "Olympian-AI-MCP-Client/1.0",
-        "Accept": "application/json, text/event-stream",
-        "MCP-Protocol-Version": "2024-11-05"
-      },
-      "timeout": 30000,
-      "retries": 3
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp"]
     },
     "applescript-mcp": {
-      "url": "http://mcp-applescript:3005/mcp",
-      "type": "server",
-      "headers": {
-        "Content-Type": "application/json",
-        "User-Agent": "Olympian-AI-MCP-Client/1.0",
-        "Accept": "application/json, text/event-stream",
-        "MCP-Protocol-Version": "2024-11-05"
-      },
-      "timeout": 30000,
-      "retries": 3
+      "command": "npx",
+      "args": ["-y", "@sampullman/applescript-mcp"]
     },
     "web-search": {
-      "url": "http://mcp-websearch:3006/mcp",
-      "type": "server",
-      "headers": {
-        "Content-Type": "application/json",
-        "User-Agent": "Olympian-AI-MCP-Client/1.0",
-        "Accept": "application/json, text/event-stream",
-        "MCP-Protocol-Version": "2024-11-05"
-      },
-      "timeout": 45000,
-      "retries": 3
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+      "env": {
+        "BRAVE_API_KEY": "${BRAVE_API_KEY}"
+      }
     }
   },
-  "wellKnownPaths": [
-    "/.well-known/mcp",
-    "/.well-known/model-context-protocol"
-  ],
-  "registryUrls": [
-    "https://registry.modelcontextprotocol.io"
-  ],
-  "cacheTtl": 300000,
   "_meta": {
-    "version": "3.2.0",
-    "deployment": "multi-host-self-reliant",
-    "transport_protocol": "http_container_only",
-    "description": "Self-reliant MCP configuration for subproject 3 - All MCP servers run as containers, format compatible with MCPConfigParser",
-    "schema_compliance": "JSON-RPC 2.0 over HTTP",
-    "format_updated": "Updated to match MCPConfigParser expected format (url instead of endpoint, type instead of transport)",
+    "version": "3.3.0",
+    "deployment": "multi-host-stdio-subprocesses",
+    "transport_protocol": "stdio_subprocess_only",
+    "description": "Self-reliant MCP configuration for subproject 3 - All MCP servers run as subprocesses within backend container using stdio transport",
+    "schema_compliance": "MCP stdio subprocess pattern",
+    "format_updated": "Updated to use stdio transport with subprocess commands instead of HTTP endpoints",
     "notes": [
-      "All servers use HTTP transport exclusively with container endpoints",
-      "Self-contained deployment - no external MCP server dependencies",
-      "Uses Docker service names for inter-container communication",
-      "All servers are marked as 'server' type for MCPConfigParser compatibility",
-      "Includes retry logic and timeouts for robust container deployment",
-      "Headers include proper MCP protocol version and content negotiation",
-      "HTTP endpoints expect standard JSON-RPC 2.0 over HTTP protocol",
-      "Supports both single JSON responses and SSE streaming",
+      "All servers use stdio transport exclusively with subprocess execution",
+      "Self-contained deployment - MCP servers run as subprocesses in backend container",
+      "No separate containers needed - follows MCP best practices",
+      "Uses npx to launch MCP server packages as child processes",
+      "Environment variables are passed to subprocess environments",
+      "Backend container includes all required MCP server npm packages",
+      "Stdio transport allows direct process communication without network overhead",
+      "Supports both single JSON responses and streaming via stdio pipes",
       "Personal tokens should be replaced with actual tokens from .env file",
-      "Container-based endpoints provide better resource isolation and scaling",
-      "Format now compatible with MCPConfigParser validation schemas"
+      "Subprocess-based execution provides better resource sharing and management"
     ],
     "requirements": {
       "docker": true,
       "external_mcp_servers": false,
       "node": ">=18",
-      "network_access": "docker_bridge_network",
-      "transport": "http_container_only",
-      "stdio_support": false,
+      "network_access": "not_required_for_stdio",
+      "transport": "stdio_subprocess_only",
+      "stdio_support": true,
       "self_reliant": true,
-      "mcpConfigParser_compatible": true
+      "subprocess_execution": true
     },
-    "container_server_configuration": {
+    "subprocess_server_configuration": {
       "github": {
-        "container_name": "mcp-github",
-        "internal_port": 3001,
-        "endpoint_path": "/mcp",
+        "npm_package": "@modelcontextprotocol/server-github",
         "env_required": ["GITHUB_PERSONAL_ACCESS_TOKEN"],
-        "personal_token_example": "ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-        "npm_package": "@modelcontextprotocol/server-github@latest"
+        "transport": "stdio",
+        "execution_method": "npx_subprocess"
       },
       "nasa-mcp": {
-        "container_name": "mcp-nasa",
-        "internal_port": 3002,
-        "endpoint_path": "/mcp",
+        "npm_package": "@programcomputer/nasa-mcp-server",
         "env_optional": ["NASA_API_KEY"],
         "demo_key_available": true,
-        "npm_package": "@programcomputer/nasa-mcp-server@latest"
+        "transport": "stdio",
+        "execution_method": "npx_subprocess"
       },
       "met-museum": {
-        "container_name": "mcp-metmuseum",
-        "internal_port": 3003,
-        "endpoint_path": "/mcp",
+        "npm_package": "metmuseum-mcp",
         "env_required": [],
-        "npm_package": "metmuseum-mcp@latest"
+        "transport": "stdio",
+        "execution_method": "npx_subprocess"
       },
       "Context7": {
-        "container_name": "mcp-context7",
-        "internal_port": 3004,
-        "endpoint_path": "/mcp",
+        "npm_package": "@upstash/context7-mcp",
         "env_required": [],
-        "npm_package": "@upstash/context7-mcp@latest"
+        "transport": "stdio",
+        "execution_method": "npx_subprocess"
       },
       "applescript-mcp": {
-        "container_name": "mcp-applescript",
-        "internal_port": 3005,
-        "endpoint_path": "/mcp",
+        "npm_package": "@sampullman/applescript-mcp",
         "env_required": [],
-        "npm_package": "@sampullman/applescript-mcp@latest"
+        "transport": "stdio",
+        "execution_method": "npx_subprocess"
       },
       "web-search": {
-        "container_name": "mcp-websearch",
-        "internal_port": 3006,
-        "endpoint_path": "/mcp",
+        "npm_package": "@modelcontextprotocol/server-brave-search",
         "env_optional": ["BRAVE_API_KEY"],
-        "npm_package": "@modelcontextprotocol/server-brave-search@latest"
+        "transport": "stdio",
+        "execution_method": "npx_subprocess"
       }
     },
     "environment_variables": {
       "DEPLOYMENT_MODE": "multi-host",
       "ENABLE_MULTI_HOST": "true",
-      "MCP_HTTP_ONLY": "true",
+      "MCP_STDIO_ONLY": "true",
       "NODE_ENV": "production",
       "GITHUB_PERSONAL_ACCESS_TOKEN": "replace_with_actual_token",
       "NASA_API_KEY": "replace_with_actual_key_if_needed",
       "BRAVE_API_KEY": "replace_with_actual_key_if_needed"
     },
     "troubleshooting": {
-      "configuration_format": "Ensure config uses 'url' and 'type' properties as expected by MCPConfigParser",
-      "connection_timeout": "Ensure MCP server containers are running and healthy",
-      "container_resolution": "Verify Docker bridge network connectivity between containers",
-      "port_conflicts": "Check for port conflicts within Docker network (3001-3006)",
-      "http_errors": "Check container logs for HTTP-specific errors (400, 404, 405, 500, etc.)",
-      "transport_validation": "Ensure all servers are configured for HTTP transport, not stdio",
-      "token_authentication": "Verify personal tokens are valid and properly passed to containers",
-      "json_rpc_compliance": "Ensure server responses follow JSON-RPC 2.0 specification",
-      "container_health": "Use docker compose ps and docker compose logs to diagnose container issues",
-      "stdio_rejection": "stdio transport is completely disabled in container mode"
+      "subprocess_execution": "Ensure MCP server packages are installed in backend container",
+      "stdio_communication": "Verify MCP client can spawn and manage subprocess communications",
+      "package_availability": "Check that npx can find and execute MCP server packages",
+      "environment_variables": "Ensure environment variables are properly passed to subprocesses",
+      "process_management": "Monitor subprocess spawning and cleanup",
+      "memory_usage": "Backend container has sufficient memory for multiple MCP subprocesses",
+      "node_modules": "Verify all MCP packages are available in backend container node_modules",
+      "stdio_pipes": "Ensure stdin/stdout pipes are properly established between client and servers",
+      "package_installation": "Run npm install for MCP packages during container build",
+      "subprocess_errors": "Check container logs for subprocess spawn failures"
     }
   }
 }
