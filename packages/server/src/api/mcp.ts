@@ -144,7 +144,13 @@ router.post('/servers', async (req, res, next) => {
       throw new AppError(400, 'Only HTTP transports are supported in multihost deployment');
     }
     
-    const server = await mcpClient.addServer(validated);
+    // For HTTP servers in multihost deployment, provide default command since it's not needed
+    const serverConfig = {
+      ...validated,
+      command: validated.command || '' // Provide default empty command for HTTP servers
+    };
+    
+    const server = await mcpClient.addServer(serverConfig);
     
     res.status(201).json({
       success: true,
