@@ -72,7 +72,7 @@ RUN echo "=== Installing MCP Server Packages ===" && \
     npm install -g @programcomputer/nasa-mcp-server@latest && \
     npm install -g metmuseum-mcp@latest && \
     npm install -g @upstash/context7-mcp@latest && \
-    npm install -g @sampullman/applescript-mcp@latest && \
+    npm install -g @peakmojo/applescript-mcp@latest && \
     npm install -g @modelcontextprotocol/server-brave-search@latest && \
     echo "✓ MCP server packages installed successfully"
 
