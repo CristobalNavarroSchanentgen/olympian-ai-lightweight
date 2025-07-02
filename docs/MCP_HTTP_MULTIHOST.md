@@ -1,274 +1,217 @@
-# MCP HTTP-Only Configuration for Multihost Deployment
-
-This document describes the HTTP-only Model Context Protocol (MCP) configuration for **Subproject 3: Multi-host deployment** (`make quick-docker-multi`).
+# MCP HTTP Multihost Implementation
 
 ## Overview
 
-Subproject 3 has been refactored to use **pure HTTP transport** for MCP communication, completely removing stdio support to enable robust multi-host deployments. This architecture allows MCP servers to run independently on the host machine while the Olympian AI application runs in Docker containers.
+This document describes the self-reliant HTTP-only MCP (Model Context Protocol) implementation for **Subproject 3: Multi-host deployment**. The system is designed to run MCP servers as containers within the Docker network, providing a fully self-contained architecture with no external dependencies.
 
-## Key Changes
+## Architecture
 
-### 🚫 Stdio Support Removed
-- All stdio-based transport logic has been removed from the multihost deployment
-- MCPClient automatically rejects stdio configurations in multihost mode
-- MCPConfigParser validates configurations to ensure HTTP-only compliance
+### Key Design Principles
 
-### 🌐 HTTP-Only Transport
-- Uses JSON-RPC 2.0 over HTTP as specified in the MCP protocol
-- Supports both single JSON responses and Server-Sent Events (SSE) streaming
-- Implements proper HTTP headers for MCP protocol compliance
+1. **Self-Reliant Architecture**: All MCP servers run as Docker containers within the same network
+2. **HTTP-Only Transport**: No stdio support - all communication uses HTTP/SSE protocols
+3. **Container-Based Networking**: Services communicate via Docker service names
+4. **Zero External Dependencies**: No need for external MCP server installations
 
-### 🔧 Architecture Changes
-- **MCPClient.ts**: Removed stdio transport creation and child process management
-- **MCPConfigParser.ts**: Added multihost validation and stdio rejection
-- **mcp-config.multihost.json**: Pure HTTP configuration with comprehensive documentation
+### Components
 
-## Configuration Format
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Docker Network (olympian-network)         │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  ┌─────────────┐     ┌─────────────────────────────────┐  │
+│  │   Backend    │────▶│     MCP Server Containers       │  │
+│  │  Container   │     ├─────────────────────────────────┤  │
+│  │             │     │ • mcp-github     (port 3001)    │  │
+│  │  MCP Client │     │ • mcp-nasa       (port 3002)    │  │
+│  │  - HTTP     │     │ • mcp-metmuseum  (port 3003)    │  │
+│  │  - SSE      │     │ • mcp-context7   (port 3004)    │  │
+│  │             │     │ • mcp-applescript (port 3005)   │  │
+│  └─────────────┘     │ • mcp-websearch  (port 3006)    │  │
+│                      └─────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────┘
+```
 
-The `mcp-config.multihost.json` follows the HTTP-only MCP specification:
+## Configuration
+
+### 1. MCP Configuration File
+
+The system uses `mcp-config.multihost.json` which defines HTTP endpoints for all MCP servers:
 
 ```json
 {
   "mcpServers": {
-    "server-name": {
-      "transport": "http",
-      "endpoint": "http://host.docker.internal:3001/mcp",
-      "description": "Server description",
-      "optional": true,
+    "github": {
+      "url": "http://mcp-github:3001/mcp",
+      "type": "server",
+      "auth": "Bearer YOUR_GITHUB_TOKEN",
       "timeout": 30000,
-      "retries": 3,
-      "headers": {
-        "Content-Type": "application/json",
-        "Accept": "application/json, text/event-stream",
-        "MCP-Protocol-Version": "2024-11-05",
-        "Authorization": "Bearer token-if-needed"
-      }
-    }
+      "retries": 3
+    },
+    // ... other servers
   }
 }
 ```
 
-## Supported MCP Servers
+### 2. Environment Variables
 
-The configuration includes the following HTTP-based MCP servers:
-
-| Server | Port | Description | Authentication |
-|--------|------|-------------|----------------|
-| github | 3001 | GitHub repository access | Bearer token required |
-| nasa-mcp | 3002 | NASA space data | API key optional |
-| met-museum | 3003 | Metropolitan Museum API | None |
-| Context7 | 3004 | Documentation search | None |
-| applescript-mcp | 3005 | macOS automation | None |
-| web-search | 3006 | Web search capabilities | API key optional |
-
-## HTTP Transport Specification
-
-### JSON-RPC 2.0 over HTTP
-- **Method**: POST for client-to-server messages
-- **Content-Type**: `application/json`
-- **Accept**: `application/json, text/event-stream`
-- **Protocol Version**: Specified in `MCP-Protocol-Version` header
-
-### Request Format
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 1,
-  "method": "tools/call",
-  "params": {
-    "name": "tool_name",
-    "arguments": { "param": "value" }
-  }
-}
-```
-
-### Response Format
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 1,
-  "result": {
-    "content": [
-      {
-        "type": "text",
-        "text": "Tool response"
-      }
-    ]
-  }
-}
-```
-
-## Setup and Deployment
-
-### 1. Environment Configuration
-
-Set the following environment variables for multihost mode:
+Set these in your `.env` file:
 
 ```bash
-export DEPLOYMENT_MODE=multi-host
-export ENABLE_MULTI_HOST=true
-export MCP_HTTP_ONLY=true
-export NODE_ENV=multihost
+# Deployment mode - CRITICAL for subproject 3
+DEPLOYMENT_MODE=multi-host
+ENABLE_MULTI_HOST=true
 
-# Authentication tokens (replace with actual values)
-export GITHUB_PERSONAL_ACCESS_TOKEN=ghp_your_actual_token
-export NASA_API_KEY=your_nasa_key_if_needed
-export BRAVE_API_KEY=your_brave_key_if_needed
+# MCP Configuration
+MCP_ENABLED=true
+MCP_TRANSPORT=http
+MCP_CONFIG_PATH=/app/mcp-config.multihost.json
+
+# Authentication tokens
+GITHUB_PERSONAL_ACCESS_TOKEN=your_token_here
+NASA_API_KEY=your_key_or_DEMO_KEY
+BRAVE_API_KEY=your_key_here
 ```
 
-### 2. Start MCP Servers on Host
+### 3. Docker Compose Configuration
 
-Before starting the Olympian AI application, start the MCP servers on your host machine:
+The `docker-compose.prod.yml` defines all MCP servers as separate containers:
 
-```bash
-# GitHub MCP Server
-npx -y @modelcontextprotocol/server-github --transport http --port 3001 &
-
-# NASA MCP Server  
-npx -y @programcomputer/nasa-mcp-server@latest --transport http --port 3002 &
-
-# Met Museum MCP Server
-npx -y metmuseum-mcp --transport http --port 3003 &
-
-# Context7 MCP Server
-npx -y @upstash/context7-mcp --transport http --port 3004 &
-
-# AppleScript MCP Server (macOS only)
-npx -y @sampullman/applescript-mcp --transport http --port 3005 &
-
-# Web Search MCP Server
-npx -y @modelcontextprotocol/server-brave-search --transport http --port 3006 &
+```yaml
+services:
+  mcp-github:
+    image: node:20-alpine
+    container_name: olympian-mcp-github
+    command: >
+      sh -c "
+        npm install -g @modelcontextprotocol/server-github@latest &&
+        npx @modelcontextprotocol/server-github --transport http --port 3001
+      "
+    environment:
+      GITHUB_PERSONAL_ACCESS_TOKEN: ${GITHUB_PERSONAL_ACCESS_TOKEN}
+    networks:
+      - olympian-network
 ```
 
-### 3. Deploy Olympian AI
+## Implementation Details
 
-```bash
-# Start multihost deployment
-make quick-docker-multi
-```
+### HTTP-Only Transport Enforcement
 
-## Validation and Debugging
+The implementation enforces HTTP-only transports at multiple levels:
 
-### Configuration Validation
+1. **MCPClient.ts**: Rejects any non-HTTP transport configurations
+2. **MCPConfigParser.ts**: Filters out stdio configurations during parsing
+3. **API Routes**: Validates that only HTTP transports are accepted
 
-The system automatically validates the configuration for HTTP-only compliance:
+### Container Networking
 
-```javascript
-// Check validation results
-const configParser = MCPConfigParser.getInstance();
-const results = configParser.getHttpOnlyValidationResults();
+MCP servers are accessed using Docker service names:
+- Internal: `http://mcp-github:3001/mcp`
+- External (if needed): `http://localhost:3001/mcp`
 
-console.log('Accepted endpoints:', results.acceptedEndpoints);
-console.log('Rejected stdio endpoints:', results.rejectedStdioEndpoints);
-console.log('Invalid HTTP endpoints:', results.invalidHttpEndpoints);
-```
+### Health Checking
 
-### Debug Logs
+The system includes proactive health monitoring:
+- Regular health checks for all MCP servers
+- Automatic failover to healthy servers
+- Exponential backoff for failed servers
 
-Enable detailed MCP logging:
+### Tool Caching
 
-```bash
-export DEBUG=mcp:*
-export LOG_LEVEL=debug
-```
+Tools are cached locally for efficient access:
+- Background refresh of tool lists
+- Hit/miss tracking for optimization
+- Automatic cache invalidation
 
-### Common Issues
+## API Endpoints
 
-| Issue | Cause | Solution |
-|-------|-------|----------|
-| Connection timeout | MCP server not running | Check server status on host |
-| Host resolution error | Docker networking issue | Verify `host.docker.internal` resolution |
-| 405 Method Not Allowed | Server doesn't support HTTP POST | Ensure server uses HTTP transport |
-| stdio rejection | Legacy config detected | Use HTTP endpoints only |
-| Authentication failure | Invalid tokens | Check environment variables |
+### Server Management
+- `GET /api/mcp/servers` - List all HTTP MCP servers
+- `POST /api/mcp/servers` - Add new HTTP server
+- `DELETE /api/mcp/servers/:id` - Remove server
+- `POST /api/mcp/servers/:id/start` - Start server
+- `POST /api/mcp/servers/:id/stop` - Stop server
+
+### Tool Operations
+- `GET /api/mcp/tools` - List all available tools
+- `POST /api/mcp/invoke` - Invoke a tool with fallback support
+- `POST /api/mcp/tools/select` - Smart tool selection
+
+### Health & Monitoring
+- `GET /api/mcp/health` - Overall health status
+- `POST /api/mcp/servers/:id/health-check` - Force health check
+- `GET /api/mcp/metrics` - System metrics
+
+## Deployment
+
+### Quick Start
+
+1. Configure environment variables:
+   ```bash
+   cp .env.example .env
+   # Edit .env with your tokens
+   ```
+
+2. Start the multihost deployment:
+   ```bash
+   make quick-docker-multi
+   ```
+
+3. Verify MCP servers are running:
+   ```bash
+   docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
+   ```
+
+### Troubleshooting
+
+1. **Check container logs**:
+   ```bash
+   docker logs olympian-mcp-github
+   ```
+
+2. **Verify network connectivity**:
+   ```bash
+   docker exec olympian-backend curl http://mcp-github:3001/health
+   ```
+
+3. **Check configuration loading**:
+   ```bash
+   curl http://localhost:4000/api/mcp/config/discovery
+   ```
 
 ## Security Considerations
 
-### Authentication
-- Use Bearer tokens for authenticated services
-- Store tokens in environment variables, not config files
-- Rotate tokens regularly
+1. **Authentication**: Each MCP server uses its own authentication tokens
+2. **Network Isolation**: MCP servers are only accessible within the Docker network
+3. **No External Access**: MCP servers don't need to be exposed to the host
 
-### Network Security
-- Servers should validate Origin header to prevent DNS rebinding
-- Bind to localhost (127.0.0.1) when running locally
-- Use HTTPS endpoints in production environments
+## Migration from External MCP Servers
 
-### CORS Configuration
-- Configure CORS properly for cross-origin requests
-- Set appropriate Access-Control-Allow-Origin headers
+If migrating from external MCP server setup:
 
-## Performance Optimization
+1. Remove any stdio-based configurations
+2. Update configuration to use HTTP endpoints
+3. Ensure all authentication tokens are set
+4. Restart the deployment
 
-### Connection Management
-- HTTP connections are reused when possible
-- Connection pooling is implemented for efficiency
-- Timeout values are optimized for each server type
+## Benefits of Self-Reliant Architecture
 
-### Retry Logic
-- Exponential backoff for failed requests
-- Configurable retry counts per server
-- Fallback servers for high availability
+1. **Portability**: Entire system can be deployed anywhere with Docker
+2. **Consistency**: Same MCP server versions across all deployments
+3. **Isolation**: No conflicts with host system MCP installations
+4. **Scalability**: Easy to add or remove MCP servers
+5. **Maintainability**: All configurations in one place
 
-### Caching
-- Tool definitions and capabilities are cached
-- Cache invalidation on server restart
-- Configurable cache TTL values
+## Future Enhancements
 
-## Migration from Stdio
+1. **Custom MCP Servers**: Add your own MCP servers as containers
+2. **Load Balancing**: Multiple instances of the same MCP server
+3. **Persistent Storage**: Volume mounts for MCP server data
+4. **Monitoring**: Prometheus/Grafana integration for metrics
 
-If migrating from stdio-based configurations:
+## Related Documentation
 
-1. **Update transport type**: Change `"transport": "stdio"` to `"transport": "http"`
-2. **Add endpoint URL**: Replace command/args with HTTP endpoint
-3. **Add HTTP headers**: Include required MCP headers
-4. **Start servers separately**: Run MCP servers as independent processes
-5. **Update environment**: Set multihost deployment variables
-
-### Example Migration
-
-**Before (stdio):**
-```json
-{
-  "command": "npx @modelcontextprotocol/server-github",
-  "args": ["--stdio"],
-  "env": {
-    "GITHUB_PERSONAL_ACCESS_TOKEN": "token"
-  }
-}
-```
-
-**After (HTTP):**
-```json
-{
-  "transport": "http",
-  "endpoint": "http://host.docker.internal:3001/mcp",
-  "headers": {
-    "Authorization": "Bearer token",
-    "Content-Type": "application/json",
-    "Accept": "application/json, text/event-stream",
-    "MCP-Protocol-Version": "2024-11-05"
-  }
-}
-```
-
-## Protocol Compliance
-
-This implementation follows the official MCP specification:
-- **JSON-RPC 2.0**: Standard request/response format
-- **HTTP Transport**: POST requests with proper headers
-- **SSE Streaming**: Optional for long-running operations
-- **Session Management**: Mcp-Session-Id header support
-- **Error Handling**: Standard JSON-RPC error codes
-
-## Support and Troubleshooting
-
-For issues with the HTTP-only multihost deployment:
-
-1. Check server logs for HTTP-specific errors
-2. Verify network connectivity between container and host
-3. Validate JSON-RPC message format
-4. Ensure proper authentication headers
-5. Review security and CORS configuration
-
-The system provides comprehensive logging and error reporting to help diagnose issues quickly.
+- [MCP_IMPLEMENTATION.md](./MCP_IMPLEMENTATION.md) - General MCP implementation guide
+- [MULTI_HOST_RECOVERY.md](./MULTI_HOST_RECOVERY.md) - Recovery procedures
+- [docker-compose.prod.yml](../docker-compose.prod.yml) - Docker configuration
