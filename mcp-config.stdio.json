@@ -1,0 +1,52 @@
+{
+  "mcpServers": {
+    "github": {
+      "command": "npx",
+      "args": ["--yes", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": ""
+      },
+      "timeout": 30000,
+      "retries": 3
+    },
+    "nasa-mcp": {
+      "command": "npx",
+      "args": ["--yes", "@modelcontextprotocol/server-nasa"],
+      "timeout": 30000,
+      "retries": 3
+    },
+    "met-museum": {
+      "command": "npx",
+      "args": ["--yes", "@modelcontextprotocol/server-metmuseum"],
+      "timeout": 30000,
+      "retries": 3
+    },
+    "context7": {
+      "command": "npx",
+      "args": ["--yes", "@modelcontextprotocol/server-context7"],
+      "env": {
+        "CONTEXT7_API_KEY": ""
+      },
+      "timeout": 30000,
+      "retries": 3
+    },
+    "applescript": {
+      "command": "npx",
+      "args": ["--yes", "@modelcontextprotocol/server-applescript"],
+      "timeout": 30000,
+      "retries": 3
+    },
+    "websearch": {
+      "command": "npx",
+      "args": ["--yes", "@modelcontextprotocol/server-websearch"],
+      "env": {
+        "BRAVE_API_KEY": "",
+        "GOOGLE_API_KEY": "",
+        "GOOGLE_CSE_ID": ""
+      },
+      "timeout": 45000,
+      "retries": 3
+    }
+  },
+  "cacheTtl": 300000
+}
