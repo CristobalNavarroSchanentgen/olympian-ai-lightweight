@@ -35,12 +35,9 @@ export class MCPConfigParserStdio {
   private lastParsed: Date | null = null;
 
   // Deployment mode - enforced stdio for subproject 3
-  private readonly isStdioMode: boolean = true;
+  private readonly deploymentMode: 'stdio' = 'stdio';
 
   private constructor() {
-    // Enforce stdio deployment mode for subproject 3
-    this.isStdioMode = true;
-    
     // Configuration paths for stdio deployment
     this.configPaths = [
       // Docker container paths (highest priority)
@@ -346,7 +343,7 @@ export class MCPConfigParserStdio {
    * Check if running in stdio mode (always true for subproject 3)
    */
   isStdioMode(): boolean {
-    return true;
+    return this.deploymentMode === 'stdio';
   }
 
   /**
