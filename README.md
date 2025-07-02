@@ -5,7 +5,8 @@ A minimalist MCP client application focused on seamless Ollama integration with 
 ## Features
 
 - **MCP Client**: Full MCP client implementation with tool discovery and invocation
-- **HTTP-Only MCP for Multihost**: Pure HTTP transport for robust multi-host deployments (NEW!)
+- **Self-Reliant MCP Deployment**: Integrated MCP servers as containers (NEW for Subproject 3!)
+- **HTTP-Only MCP for Multihost**: Pure HTTP transport for robust multi-host deployments
 - **Plugs (Auto-Discovery)**: Automatic scanning for Ollama instances, MCP servers, and MongoDB databases
 - **MCP Config Panel**: Visual editor for MCP configuration and tool descriptions
 - **Divine Dialog**: Advanced chat interface with model state indicators, image support, and persistent history
@@ -14,9 +15,23 @@ A minimalist MCP client application focused on seamless Ollama integration with 
 - **Ollama Streamliner**: Intelligent request handling based on model capabilities
 - **Automatic Nginx Configuration**: Zero-config nginx setup with environment-based routing
 
+## What's New: Self-Reliant MCP Container Deployment 🚀
+
+Subproject 3 (Multi-host deployment) now features completely self-contained MCP servers running as containers:
+
+- **🏗️ Self-Reliant Architecture**: All MCP servers run as containers - no external dependencies
+- **🔧 Enhanced Setup Script**: Interactive token configuration with `bash scripts/setup-multihost.sh`
+- **📦 6 Integrated MCP Servers**: GitHub, NASA, Met Museum, Context7, AppleScript, Web Search
+- **🔐 Token Management**: Secure authentication setup during initialization
+- **⚡ Container Isolation**: Better resource management and scaling per service
+- **🔍 Health Monitoring**: Built-in health checks for each MCP service
+- **🎯 One-Command Deployment**: Complete setup with `make quick-docker-multi`
+
+**📚 Setup Guide**: Run `bash scripts/setup-multihost.sh` for guided token configuration
+
 ## What's New: HTTP-Only MCP for Multihost Deployment 🌐
 
-Subproject 3 (Multi-host deployment) now features a completely refactored MCP implementation with pure HTTP transport:
+Subproject 3 (Multi-host deployment) features a completely refactored MCP implementation with pure HTTP transport:
 
 - **🚫 stdio Removed**: Complete removal of stdio transport for robust multi-host operation
 - **🌐 HTTP-Only**: Pure JSON-RPC 2.0 over HTTP following official MCP specification
@@ -74,6 +89,7 @@ The latest version includes an intelligent chat memory system that automatically
 - **Communication**: WebSockets for real-time streaming
 - **MCP SDK**: Official MCP TypeScript SDK
 - **MCP Transport**: HTTP-only for multihost, mixed for other deployments
+- **MCP Containers**: Self-reliant container deployment (Subproject 3)
 - **Proxy**: Integrated nginx with automatic configuration
 
 ## Prerequisites
@@ -81,9 +97,10 @@ The latest version includes an intelligent chat memory system that automatically
 - Node.js 18+
 - MongoDB (local or remote instance)
 - Ollama installed and running
-- MCP servers (optional, HTTP-based for multihost)
 - Docker & Docker Compose (for containerized deployment)
 - Make (for running commands)
+
+**Note**: For subproject 3 (multi-host), MCP servers are automatically containerized - no external setup required!
 
 ## Quick Start
 
@@ -127,7 +144,7 @@ make quick-docker-same
 # Same-host with existing Ollama
 make quick-docker-same-existing
 
-# Multi-host deployment (HTTP-only MCP - configure .env first)
+# Multi-host deployment with self-reliant MCP containers (NEW!)
 make quick-docker-multi
 ```
 
@@ -140,6 +157,32 @@ make dev-multi
 # This provides instant updates for React component changes!
 ```
 
+### 3. 🔐 Enhanced Setup for Subproject 3 (Multi-host Self-Reliant)
+
+For the complete self-reliant setup with integrated MCP servers:
+
+```bash
+# Run the enhanced setup script with token configuration
+bash scripts/setup-multihost.sh
+
+# This will prompt for:
+# - GitHub Personal Access Token
+# - NASA API Key  
+# - Brave Search API Key
+# - Ollama host configuration
+# - MongoDB configuration
+
+# Then start the deployment
+make quick-docker-multi
+```
+
+The enhanced setup script provides:
+- 🔐 **Interactive Token Setup**: Secure prompts for API tokens
+- 🎯 **Smart Defaults**: Sensible defaults for quick setup
+- 🔧 **Automatic Configuration**: Generates complete .env file
+- 📋 **Setup Summary**: Clear overview of configured services
+- 💡 **Next Steps Guidance**: Detailed instructions for deployment
+
 ## 🎯 Key Make Commands
 
 ### Quick Start Commands
@@ -148,7 +191,7 @@ make quick-dev                    # Development setup + start
 make quick-docker-dev             # Docker dev setup + start
 make quick-docker-same            # Production same-host with Ollama
 make quick-docker-same-existing   # Production with existing Ollama
-make quick-docker-multi           # HTTP-only MCP multihost deployment (NEW!)
+make quick-docker-multi           # Self-reliant MCP multihost deployment (NEW!)
 make dev-multi                    # Development mode with hot reloading (NEW!)
 ```
 
@@ -157,7 +200,7 @@ make dev-multi                    # Development mode with hot reloading (NEW!)
 make docker-dev                   # Start Docker development
 make docker-same                  # Deploy same-host with Ollama
 make docker-same-existing         # Deploy with existing Ollama
-make docker-multi                 # Deploy multi-host setup (HTTP-only MCP)
+make docker-multi                 # Deploy multi-host setup (self-reliant MCP)
 make docker-down                  # Stop all containers
 make docker-restart               # Restart containers
 make rebuild-frontend             # Rebuild only frontend (NEW!)
@@ -227,7 +270,7 @@ make setup                        # Initial project setup
 make env-dev                      # Configure for development
 make env-docker-same              # Configure for same-host with Ollama
 make env-docker-same-existing     # Configure for existing Ollama
-make env-docker-multi             # Configure for multi-host (HTTP-only MCP)
+make env-docker-multi             # Configure for multi-host (self-reliant MCP)
 make show-env                     # Show current configuration
 make apply-secrets                # Generate new secrets
 ```
@@ -249,7 +292,7 @@ make docker-build                 # Build Docker images
 make docker-dev                   # Run development in Docker
 make docker-same                  # Deploy same-host with Ollama
 make docker-same-existing         # Deploy with existing Ollama
-make docker-multi                 # Deploy multi-host setup (HTTP-only MCP)
+make docker-multi                 # Deploy multi-host setup (self-reliant MCP)
 make docker-down                  # Stop all containers
 make docker-restart               # Restart containers
 ```
@@ -280,8 +323,9 @@ make db-restore                   # Restore MongoDB
 2. **Auto-discover connections**: The app automatically scans for Ollama, MCP servers, and MongoDB
 
 3. **Configure MCP**: 
-   - Use the MCP Config panel to set up your MCP servers and tools
-   - For multihost deployment: Configure HTTP-based MCP servers only
+   - For subproject 3: All MCP servers are automatically containerized and configured
+   - Use the MCP Config panel to manage tool settings
+   - For multihost deployment: HTTP-based MCP servers are automatically available
    - stdio transport is automatically rejected in multihost mode
 
 4. **Start chatting**: Select a model in Divine Dialog and start conversing
@@ -292,24 +336,60 @@ make db-restore                   # Restore MongoDB
 
 ## Architecture Improvements
 
+### 🚀 Self-Reliant MCP Container Architecture
+
+Subproject 3 now features a completely self-contained MCP deployment with all servers running as managed containers:
+
+**Key Benefits**:
+- ✅ **Zero External Dependencies**: All MCP servers included as containers
+- ✅ **Better Resource Management**: Individual resource limits and monitoring per service
+- ✅ **Easy Scaling**: Scale individual MCP services independently
+- ✅ **Health Monitoring**: Built-in health checks for each service
+- ✅ **Simplified Deployment**: One command starts everything
+- ✅ **Development Consistency**: Same environment for dev and production
+
+**Architecture**:
+```
+Docker Compose (Subproject 3)
+├── Frontend Container (nginx + React)
+├── Backend Container (Node.js + Express)
+├── MongoDB Container (with replica set)
+├── Redis Container (optional coordination)
+└── MCP Server Containers:
+    ├── mcp-github:3001       (GitHub API access)
+    ├── mcp-nasa:3002         (Space data)
+    ├── mcp-metmuseum:3003    (Art & culture)
+    ├── mcp-context7:3004     (Documentation)
+    ├── mcp-applescript:3005  (macOS automation)
+    └── mcp-websearch:3006    (Web search)
+```
+
+**Container Features**:
+- **Automatic NPM Installation**: Each container installs its MCP server package
+- **HTTP Transport**: All containers use HTTP/JSON-RPC 2.0 communication
+- **Health Checks**: Automated health monitoring with retry logic
+- **Resource Limits**: Configurable memory and CPU limits per service
+- **Environment Variables**: Secure token passing from .env file
+- **Restart Policies**: Automatic restart on failure
+- **Inter-Container Networking**: Secure Docker bridge network communication
+
 ### 🌐 HTTP-Only MCP for Multihost
 
 Subproject 3 now features a completely refactored MCP architecture optimized for multi-host deployments:
 
 **Key Benefits**:
 - ✅ **Robust Network Communication**: HTTP transport eliminates subprocess management complexities
-- ✅ **Multi-Host Ready**: MCP servers run independently on different machines
+- ✅ **Multi-Host Ready**: MCP servers run independently on different machines or containers
 - ✅ **Protocol Compliant**: Follows official JSON-RPC 2.0 over HTTP specification
 - ✅ **Enhanced Security**: Proper authentication, CORS, and origin validation
 - ✅ **Performance Optimized**: Connection pooling, retry logic, and smart caching
 
 **Architecture**:
 ```
-Docker Container (App)
+Container Network (Subproject 3)
+Backend Container
     ↓ HTTP/JSON-RPC 2.0
-host.docker.internal:3001-3006
-    ↓
-Independent MCP Servers on Host
+MCP Container Services (mcp-github:3001, etc.)
     ↓
 Tools: GitHub, NASA, Met Museum, Context7, AppleScript, Web Search
 ```
@@ -415,15 +495,20 @@ make quick-docker-same            # With Ollama container
 make quick-docker-same-existing   # With existing Ollama
 ```
 
-### 🌐 Production Multi-Host (HTTP-Only MCP)
+### 🌐 Production Multi-Host (Self-Reliant MCP Containers)
 ```bash
+# Enhanced setup with token configuration
+bash scripts/setup-multihost.sh
+
+# Or manual configuration
 make env-docker-multi             # Configure environment
-# Edit .env for your IPs
-# Start HTTP-based MCP servers on host
-make docker-multi                 # Deploy with HTTP-only MCP
+# Edit .env for your IPs and tokens
+
+# Deploy with self-reliant MCP containers
+make docker-multi
 ```
 
-**Important**: Multi-host deployment now requires HTTP-based MCP servers. See the [MCP HTTP Multihost Guide](docs/MCP_HTTP_MULTIHOST.md) for detailed setup instructions.
+**Important**: Multi-host deployment now includes self-contained MCP servers as containers. No external MCP server setup required!
 
 ## Troubleshooting
 
@@ -448,29 +533,59 @@ make docker-restart
 make reset-all
 ```
 
-### MCP HTTP-Only Issues
+### MCP Container Issues (Subproject 3)
 
-For multihost deployments with HTTP-only MCP:
+For the new self-reliant MCP container deployment:
 
 ```bash
-# Check MCP server status
-curl http://host.docker.internal:3001/mcp  # GitHub MCP
-curl http://host.docker.internal:3002/mcp  # NASA MCP
+# Check all MCP container status
+docker compose -f docker-compose.prod.yml ps | grep mcp-
 
-# Verify MCP configuration validation
-docker logs olympian-backend | grep "MCP Config"
+# Check individual MCP server logs
+docker compose -f docker-compose.prod.yml logs mcp-github
+docker compose -f docker-compose.prod.yml logs mcp-nasa
+docker compose -f docker-compose.prod.yml logs mcp-metmuseum
+docker compose -f docker-compose.prod.yml logs mcp-context7
+docker compose -f docker-compose.prod.yml logs mcp-applescript
+docker compose -f docker-compose.prod.yml logs mcp-websearch
 
-# Check for stdio rejection
-docker logs olympian-backend | grep "stdio.*multihost"
+# Test MCP server endpoints
+curl http://localhost:3001/health  # GitHub MCP
+curl http://localhost:3002/health  # NASA MCP  
+curl http://localhost:3003/health  # Met Museum MCP
+curl http://localhost:3004/health  # Context7 MCP
+curl http://localhost:3005/health  # AppleScript MCP
+curl http://localhost:3006/health  # Web Search MCP
 
-# Test JSON-RPC endpoint
-curl -X POST http://host.docker.internal:3001/mcp \
-  -H "Content-Type: application/json" \
-  -H "Accept: application/json" \
-  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05"}}'
+# Restart individual MCP services
+docker compose -f docker-compose.prod.yml restart mcp-github
+docker compose -f docker-compose.prod.yml restart mcp-nasa
+
+# Scale MCP services if needed
+docker compose -f docker-compose.prod.yml up --scale mcp-github=2 -d
 ```
 
-See the comprehensive [MCP HTTP Multihost Guide](docs/MCP_HTTP_MULTIHOST.md) for detailed troubleshooting.
+### MCP Authentication Issues
+
+If MCP services fail due to authentication:
+
+```bash
+# Check if tokens are properly set
+make show-env | grep -E "(GITHUB|NASA|BRAVE)"
+
+# Update tokens in .env and restart
+# For GitHub token issues:
+docker compose -f docker-compose.prod.yml restart mcp-github
+
+# For NASA API key issues:
+docker compose -f docker-compose.prod.yml restart mcp-nasa
+
+# For Brave Search API issues:
+docker compose -f docker-compose.prod.yml restart mcp-websearch
+
+# Re-run setup script to reconfigure tokens
+bash scripts/setup-multihost.sh
+```
 
 ### Development Mode Issues
 
@@ -547,8 +662,9 @@ olympian-ai-lightweight/
 ├── Makefile                      # 🎯 All commands (use this!)
 ├── docker-compose.yml            # Development Docker setup
 ├── docker-compose.dev.yml        # 🔥 Development mode with hot reloading
+├── docker-compose.prod.yml       # 🚀 Self-reliant MCP containers (UPDATED!)
 ├── docker-compose.*.yml          # Various deployment configs
-├── mcp-config.multihost.json     # 🌐 HTTP-only MCP configuration (NEW!)
+├── mcp-config.multihost.json     # 🌐 Container-based MCP configuration (UPDATED!)
 ├── packages/
 │   ├── client/                   # React frontend
 │   ├── server/                   # Express backend
@@ -565,16 +681,18 @@ olympian-ai-lightweight/
 │   └── nginx/                    # Nginx configs
 │       ├── docker-entrypoint.sh  # 🔧 Auto-config script
 │       └── conf.d/               # Nginx configurations
+├── scripts/
+│   ├── setup-multihost.sh        # 🔐 Enhanced setup with token configuration (NEW!)
+│   └── generate-build-args.sh    # 🔧 Auto cache-busting script
 ├── docs/
 │   ├── nginx-configuration.md              # Nginx documentation
 │   ├── CHAT_MEMORY.md                      # Chat memory documentation
 │   ├── VISION_CAPABILITIES.md              # Vision features user guide
 │   ├── VISION_DETECTION_TECHNICAL.md       # 🔬 Technical implementation details
 │   ├── MULTI_HOST_VISION_TROUBLESHOOTING.md # 🔍 Multi-host vision fixes
-│   ├── MCP_HTTP_MULTIHOST.md               # 🌐 HTTP-only MCP guide (NEW!)
+│   ├── MCP_HTTP_MULTIHOST.md               # 🌐 HTTP-only MCP guide
 │   └── DOCKER_BUILD_CACHING.md             # 🔥 Docker caching & dev guide
 └── scripts/                      # Helper scripts
-    └── generate-build-args.sh    # 🔧 Auto cache-busting script
 ```
 
 ## Security Features
@@ -585,6 +703,8 @@ olympian-ai-lightweight/
 - **🔄 Secret Rotation** - `make apply-secrets` for new secrets
 - **🚫 Git Protection** - `.env` and `.env.build` are gitignored
 - **🌐 MCP Security** - HTTP-only transport with proper authentication and CORS
+- **🔒 Container Isolation** - Each MCP service runs in isolated container
+- **🔐 Token Management** - Secure environment variable token passing
 
 ## Documentation
 
@@ -595,7 +715,7 @@ olympian-ai-lightweight/
 - [Vision Capabilities (User Guide)](docs/VISION_CAPABILITIES.md)
 - [Vision Detection Technical](docs/VISION_DETECTION_TECHNICAL.md) - Technical deep dive
 - [Multi-Host Vision Troubleshooting](docs/MULTI_HOST_VISION_TROUBLESHOOTING.md) - Fix vision issues
-- [MCP HTTP Multihost Guide](docs/MCP_HTTP_MULTIHOST.md) - **NEW!** HTTP-only MCP deployment
+- [MCP HTTP Multihost Guide](docs/MCP_HTTP_MULTIHOST.md) - HTTP-only MCP deployment
 - [Docker Build Caching Guide](docs/DOCKER_BUILD_CACHING.md) - Development workflow & caching
 - [Docker Deployment Guide](docker/README.md)
 - [Contributing Guide](CONTRIBUTING.md)
