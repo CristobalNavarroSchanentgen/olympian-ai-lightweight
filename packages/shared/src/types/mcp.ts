@@ -133,7 +133,7 @@ export interface MCPToolCacheStatus {
   missRate?: number;
 }
 
-// Configuration parsing interfaces
+// Configuration parsing interfaces - Updated to support stdio-specific properties
 export interface MCPConfigEndpoint {
   url: string;
   type: 'server' | 'discovery_channel' | 'registry';
@@ -146,6 +146,11 @@ export interface MCPConfigEndpoint {
   headers?: Record<string, string>;
   timeout?: number;
   retries?: number;
+  
+  // Stdio-specific properties for subproject 3 (child process execution)
+  command?: string;
+  args?: string[];
+  env?: Record<string, string>;
 }
 
 export interface MCPDiscoveryConfig {
