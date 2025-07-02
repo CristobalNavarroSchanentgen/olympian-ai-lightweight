@@ -16,19 +16,28 @@ mcpClient.initialize().catch((error: Error) => {
   console.error('❌ [MCP API] Failed to initialize enhanced MCP client:', error);
 });
 
-// Enhanced validation schemas
+// Enhanced validation schemas for HTTP-only multihost deployment
 const createServerSchema = z.object({
   name: z.string().min(1),
-  command: z.string().min(1),
+  command: z.string().optional(), // Optional for HTTP servers
   args: z.array(z.string()).optional(),
   env: z.record(z.string()).optional(),
-  transport: z.enum(['stdio', 'http', 'streamable_http', 'sse']),
-  endpoint: z.string().optional(),
+  transport: z.enum(['http', 'streamable_http', 'sse']), // HTTP-only transports
+  endpoint: z.string().url(), // Required for HTTP transports
   healthCheckInterval: z.number().optional(),
   maxRetries: z.number().optional(),
   timeout: z.number().optional(),
   priority: z.number().optional()
-});
+}).refine(
+  (data) => {
+    // Ensure endpoint is provided for HTTP transports
+    return !!data.endpoint;
+  },
+  {
+    message: "Endpoint URL is required for HTTP transports",
+    path: ["endpoint"]
+  }
+);
 
 const invokeToolSchema = z.object({
   serverId: z.string(),
@@ -70,9 +79,17 @@ router.get('/status', (_req, res, next) => {
 router.get('/servers', (_req, res, next) => {
   try {
     const servers = mcpClient.getServers();
+    
+    // Filter to show only HTTP servers in multihost mode
+    const httpServers = servers.filter(server => 
+      server.transport === 'http' || 
+      server.transport === 'streamable_http' || 
+      server.transport === 'sse'
+    );
+    
     res.json({
       success: true,
-      data: servers,
+      data: httpServers,
       timestamp: new Date()
     });
   } catch (error) {
@@ -116,11 +133,17 @@ router.get('/servers/:id', (req, res, next) => {
 });
 
 /**
- * Add MCP server with enhanced validation
+ * Add MCP server with HTTP-only validation
  */
 router.post('/servers', async (req, res, next) => {
   try {
     const validated = createServerSchema.parse(req.body);
+    
+    // Ensure HTTP-only transport
+    if (!['http', 'streamable_http', 'sse'].includes(validated.transport)) {
+      throw new AppError(400, 'Only HTTP transports are supported in multihost deployment');
+    }
+    
     const server = await mcpClient.addServer(validated);
     
     res.status(201).json({
@@ -382,7 +405,9 @@ router.get('/health', (req, res, next) => {
       success: true,
       data: {
         ...healthStatus,
-        stats
+        stats,
+        deploymentMode: 'multihost',
+        transportMode: 'http-only'
       },
       timestamp: new Date()
     });
@@ -544,12 +569,14 @@ router.get('/config/discovery', (req, res, next) => {
     const configParser = MCPConfigParser.getInstance();
     const discoveryConfig = configParser.getDiscoveryConfig();
     const stats = configParser.getConfigurationStats();
+    const validationResults = configParser.getHttpOnlyValidationResults();
     
     res.json({
       success: true,
       data: {
         discoveryConfig,
         stats,
+        validationResults,
         needsRefresh: configParser.needsRefresh()
       },
       timestamp: new Date()
@@ -589,6 +616,16 @@ router.post('/config/validate', async (req, res, next) => {
       throw new AppError(400, 'URL is required for validation');
     }
 
+    // Validate HTTP URL format
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        throw new AppError(400, 'Only HTTP/HTTPS URLs are supported in multihost deployment');
+      }
+    } catch {
+      throw new AppError(400, 'Invalid URL format');
+    }
+
     const configParser = MCPConfigParser.getInstance();
     const isValid = await configParser.validateEndpoint({
       url,
@@ -624,7 +661,11 @@ router.get('/metrics', (req, res, next) => {
     
     res.json({
       success: true,
-      data: status.metrics,
+      data: {
+        ...status.metrics,
+        deploymentMode: 'multihost',
+        transportMode: 'http-only'
+      },
       timestamp: new Date()
     });
   } catch (error) {
@@ -697,13 +738,23 @@ router.post('/diagnostics', async (req, res, next) => {
       health: healthChecker.getOverallHealthStatus(),
       cache: toolCache.getCacheStatus(),
       config: configParser.getConfigurationStats(),
-      servers: mcpClient.getServers().map((server: any) => ({
-        id: server.id,
-        name: server.name,
-        status: server.status,
-        transport: server.transport,
-        lastError: server.lastError
-      }))
+      validationResults: configParser.getHttpOnlyValidationResults(),
+      servers: mcpClient.getServers()
+        .filter((server: any) => 
+          server.transport === 'http' || 
+          server.transport === 'streamable_http' || 
+          server.transport === 'sse'
+        )
+        .map((server: any) => ({
+          id: server.id,
+          name: server.name,
+          status: server.status,
+          transport: server.transport,
+          endpoint: server.endpoint,
+          lastError: server.lastError
+        })),
+      deploymentMode: 'multihost',
+      transportMode: 'http-only'
     };
 
     res.json({
@@ -728,6 +779,8 @@ router.get('/ping', (_req, res) => {
     success: true,
     status: 'healthy',
     service: 'MCP Client Service',
+    deploymentMode: 'multihost',
+    transportMode: 'http-only',
     timestamp: new Date()
   });
 });
