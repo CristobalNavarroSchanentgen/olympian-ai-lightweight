@@ -225,14 +225,10 @@ export class MCPClientStdio extends EventEmitter {
     server.status = 'initializing';
 
     try {
-      // Spawn the MCP server process
-      const childProcess = await this.spawnServerProcess(server);
-      this.processes.set(server.id, childProcess);
-
-      // Create stdio transport
+      // Create stdio transport with command and args (corrected implementation)
       const transport = new StdioClientTransport({
-        reader: childProcess.stdout!,
-        writer: childProcess.stdin!
+        command: server.command || 'npx',
+        args: server.args || []
       });
 
       // Create MCP client with capabilities
@@ -282,109 +278,15 @@ export class MCPClientStdio extends EventEmitter {
       this.emitEvent('server_connected', server.id, { 
         transport: 'stdio',
         protocolVersion: negotiation.serverVersion,
-        capabilities: negotiation.capabilities,
-        pid: childProcess.pid
+        capabilities: negotiation.capabilities
       });
 
     } catch (error) {
       server.status = 'error';
       server.lastError = error instanceof Error ? error.message : 'Unknown error';
       
-      // Clean up process if it was started
-      const process = this.processes.get(server.id);
-      if (process && !process.killed) {
-        process.kill('SIGTERM');
-        this.processes.delete(server.id);
-      }
-      
       throw error;
     }
-  }
-
-  /**
-   * Spawn the server process
-   */
-  private async spawnServerProcess(server: MCPServer): Promise<ChildProcess> {
-    const command = server.command || 'npx';
-    const args = server.args || [];
-    const env = { ...process.env, ...server.env };
-
-    logger.debug(`🔧 [MCP Client] Spawning: ${command} ${args.join(' ')}`);
-
-    const childProcess = spawn(command, args, {
-      stdio: ['pipe', 'pipe', 'pipe'],
-      env,
-      cwd: process.cwd()
-    });
-
-    // Set up process event handlers
-    this.setupProcessEventHandlers(server.id, childProcess);
-
-    // Wait for process to be ready
-    return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        reject(new Error(`Process startup timeout after ${server.timeout || this.CONNECTION_TIMEOUT}ms`));
-      }, server.timeout || this.CONNECTION_TIMEOUT);
-
-      childProcess.on('spawn', () => {
-        clearTimeout(timeout);
-        resolve(childProcess);
-      });
-
-      childProcess.on('error', (error) => {
-        clearTimeout(timeout);
-        reject(error);
-      });
-    });
-  }
-
-  /**
-   * Set up process event handlers
-   */
-  private setupProcessEventHandlers(serverId: string, process: ChildProcess): void {
-    process.on('error', (error) => {
-      logger.error(`❌ [MCP Client] Process error for ${serverId}:`, error);
-      this.handleProcessError(serverId, error);
-    });
-
-    process.on('exit', (code, signal) => {
-      logger.warn(`📤 [MCP Client] Process exited for ${serverId}: code=${code}, signal=${signal}`);
-      this.handleProcessExit(serverId, code, signal);
-    });
-
-    // Handle stderr for debugging
-    if (process.stderr) {
-      process.stderr.on('data', (data) => {
-        logger.debug(`[${serverId} stderr]: ${data.toString()}`);
-      });
-    }
-  }
-
-  /**
-   * Handle process errors
-   */
-  private handleProcessError(serverId: string, error: Error): void {
-    const server = this.servers.get(serverId);
-    if (server) {
-      server.status = 'error';
-      server.lastError = error.message;
-    }
-
-    this.handleServerDisconnection(serverId);
-    this.emitEvent('process_error', serverId, { error: error.message });
-  }
-
-  /**
-   * Handle process exit
-   */
-  private handleProcessExit(serverId: string, code: number | null, signal: string | null): void {
-    const server = this.servers.get(serverId);
-    if (server && server.status === 'running') {
-      server.status = 'stopped';
-    }
-
-    this.handleServerDisconnection(serverId);
-    this.emitEvent('process_exit', serverId, { code, signal });
   }
 
   /**
