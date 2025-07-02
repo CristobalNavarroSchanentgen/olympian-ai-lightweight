@@ -24,13 +24,7 @@
     "socket.io": "^4.6.1",
     "uuid": "^9.0.1",
     "winston": "^3.11.0",
-    "zod": "^3.22.4",
-    "@modelcontextprotocol/server-github": "^0.1.0",
-    "@modelcontextprotocol/server-nasa": "^0.1.0",
-    "@modelcontextprotocol/server-metmuseum": "^0.1.0",
-    "@modelcontextprotocol/server-context7": "^0.1.0",
-    "@modelcontextprotocol/server-applescript": "^0.1.0",
-    "@modelcontextprotocol/server-websearch": "^0.1.0"
+    "zod": "^3.22.4"
   },
   "devDependencies": {
     "@types/compression": "^1.7.5",
