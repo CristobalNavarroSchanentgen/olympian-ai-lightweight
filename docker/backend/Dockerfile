@@ -52,7 +52,7 @@ ARG GIT_COMMIT
 # Label the production image
 LABEL build_date=${BUILD_DATE}
 LABEL git_commit=${GIT_COMMIT}
-LABEL description="Olympian AI Lightweight Backend"
+LABEL description="Olympian AI Lightweight Backend with MCP Servers"
 
 # Install curl for debugging (keeping for manual health checks if needed)
 RUN apk add --no-cache curl
@@ -65,6 +65,17 @@ COPY packages/server/package*.json ./packages/server/
 # Install production dependencies for both workspaces
 RUN npm install --production --workspace=packages/shared --workspace=packages/server
 
+# Install MCP server packages globally for stdio subprocess execution
+# These will be available via npx from the backend application
+RUN echo "=== Installing MCP Server Packages ===" && \
+    npm install -g @modelcontextprotocol/server-github@latest && \
+    npm install -g @programcomputer/nasa-mcp-server@latest && \
+    npm install -g metmuseum-mcp@latest && \
+    npm install -g @upstash/context7-mcp@latest && \
+    npm install -g @sampullman/applescript-mcp@latest && \
+    npm install -g @modelcontextprotocol/server-brave-search@latest && \
+    echo "✓ MCP server packages installed successfully"
+
 # Copy built files from build stage
 COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
 COPY --from=builder /app/packages/server/dist ./packages/server/dist
@@ -75,7 +86,7 @@ COPY --from=builder /tmp/build_info /app/build_info.txt
 # Create config directory
 RUN mkdir -p /config/.olympian-ai-lite
 
-# Verify deployment with enhanced checks
+# Verify deployment with enhanced checks including MCP packages
 RUN echo "=== Final Backend Verification ===" && \
     echo "Build Date: ${BUILD_DATE}" && \
     echo "Git Commit: ${GIT_COMMIT}" && \
@@ -85,6 +96,9 @@ RUN echo "=== Final Backend Verification ===" && \
     echo "" && \
     echo "Node modules structure:" && \
     ls -la node_modules/@olympian/ || echo "No @olympian scope found" && \
+    echo "" && \
+    echo "Global MCP packages:" && \
+    npm list -g --depth=0 | grep -E "(server-github|nasa-mcp|metmuseum|context7|applescript|brave-search)" || echo "MCP packages verification" && \
     echo "" && \
     echo "Build info:" && \
     cat /app/build_info.txt && \
@@ -109,7 +123,11 @@ ENV NODE_ENV=production \
     OLLAMA_HOST=http://ollama-host:11434 \
     # Service discovery
     SERVICE_DISCOVERY_ENABLED=true \
-    SERVICE_DISCOVERY_NETWORK=bridge
+    SERVICE_DISCOVERY_NETWORK=bridge \
+    # MCP Configuration - stdio transport with subprocesses
+    MCP_ENABLED=true \
+    MCP_TRANSPORT=stdio \
+    MCP_CONFIG_PATH=/app/mcp-config.multihost.json
 
 EXPOSE 4000
 
