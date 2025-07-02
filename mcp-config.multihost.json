@@ -24,7 +24,7 @@
     },
     "applescript-mcp": {
       "command": "npx",
-      "args": ["-y", "@sampullman/applescript-mcp"]
+      "args": ["-y", "@peakmojo/applescript-mcp"]
     },
     "web-search": {
       "command": "npx",
@@ -35,7 +35,7 @@
     }
   },
   "_meta": {
-    "version": "3.3.0",
+    "version": "3.3.1",
     "deployment": "multi-host-stdio-subprocesses",
     "transport_protocol": "stdio_subprocess_only",
     "description": "Self-reliant MCP configuration for subproject 3 - All MCP servers run as subprocesses within backend container using stdio transport",
@@ -90,7 +90,7 @@
         "execution_method": "npx_subprocess"
       },
       "applescript-mcp": {
-        "npm_package": "@sampullman/applescript-mcp",
+        "npm_package": "@peakmojo/applescript-mcp",
         "env_required": [],
         "transport": "stdio",
         "execution_method": "npx_subprocess"
