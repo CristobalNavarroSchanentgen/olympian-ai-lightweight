@@ -1,6 +1,4 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-// Remove stdio import for multihost deployment - HTTP only
-// import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 
 import { 
@@ -24,8 +22,6 @@ import { MCPConfigParser } from './MCPConfigParser';
 import { MCPHealthChecker } from './MCPHealthChecker';
 import { MCPToolCache } from './MCPToolCache';
 
-// Remove child process imports for HTTP-only deployment
-// import { spawn, ChildProcess } from 'child_process';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
@@ -57,11 +53,11 @@ const toolCallResponseSchema = z.object({
 /**
  * Enhanced MCP Client Service for HTTP-only multihost deployment
  * 
- * Implements:
- * 1. HTTP-only transport (stdio removed for multihost)
- * 2. Tool Discovery and Initialization with JSON-RPC 2.0
- * 3. Protocol capability negotiation 
- * 4. Tool caching and efficient access
+ * This implementation enforces self-reliant container-based architecture:
+ * 1. HTTP-only transport (no stdio support)
+ * 2. Container-based MCP servers accessed via Docker network
+ * 3. Tool discovery and caching with JSON-RPC 2.0
+ * 4. Protocol capability negotiation 
  * 5. Health checking and fallback strategies
  * 6. Metadata field support (_meta)
  * 7. Error handling with exponential backoff
@@ -71,8 +67,6 @@ export class MCPClient extends EventEmitter {
   private static instance: MCPClient;
   
   private clients: Map<string, Client> = new Map();
-  // Remove processes map for HTTP-only deployment
-  // private processes: Map<string, ChildProcess> = new Map();
   private servers: Map<string, MCPServer> = new Map();
   private sessions: Map<string, MCPSession> = new Map();
   private configPath: string;
@@ -83,8 +77,8 @@ export class MCPClient extends EventEmitter {
   private healthChecker: MCPHealthChecker;
   private toolCache: MCPToolCache;
 
-  // Deployment mode detection
-  private readonly isMultiHost: boolean;
+  // Deployment mode - enforced multihost for subproject 3
+  private readonly isMultiHost: boolean = true;
 
   // Metrics and monitoring
   private metrics: MCPMetrics = {
@@ -119,10 +113,8 @@ export class MCPClient extends EventEmitter {
     super();
     this.setMaxListeners(50);
     
-    // Detect deployment mode
-    this.isMultiHost = process.env.DEPLOYMENT_MODE === 'multi-host' || 
-                      process.env.ENABLE_MULTI_HOST === 'true' ||
-                      process.env.NODE_ENV === 'multihost';
+    // Enforce multihost deployment mode for subproject 3
+    this.isMultiHost = true;
     
     this.configPath = path.join(os.homedir(), '.olympian-ai-lite', 'mcp_config.json');
     
@@ -134,9 +126,7 @@ export class MCPClient extends EventEmitter {
     // Set up event listeners
     this.setupEventListeners();
 
-    if (this.isMultiHost) {
-      logger.info('🌐 [MCP Client] Initialized in multihost mode - HTTP transport only');
-    }
+    logger.info('🌐 [MCP Client] Initialized in multihost mode - HTTP transport only');
   }
 
   /**
@@ -158,7 +148,7 @@ export class MCPClient extends EventEmitter {
       return;
     }
 
-    logger.info('🚀 [MCP Client] Initializing enhanced MCP client service...');
+    logger.info('🚀 [MCP Client] Initializing enhanced MCP client service (HTTP-only)...');
 
     try {
       // Ensure config directory exists
@@ -168,9 +158,9 @@ export class MCPClient extends EventEmitter {
       if (servers && servers.length > 0) {
         logger.info(`📋 [MCP Client] Using provided servers: ${servers.length} servers`);
         for (const server of servers) {
-          // Validate transport for multihost mode
-          if (this.isMultiHost && this.isStdioTransport(server.transport)) {
-            logger.warn(`⚠️ [MCP Client] Skipping stdio server ${server.name} in multihost mode`);
+          // Validate transport for multihost mode - only accept HTTP transports
+          if (!this.isHttpTransport(server.transport)) {
+            logger.warn(`⚠️ [MCP Client] Rejecting non-HTTP server ${server.name} in multihost mode`);
             continue;
           }
           this.servers.set(server.id, server);
@@ -183,12 +173,12 @@ export class MCPClient extends EventEmitter {
         // Step 2: Load saved server configurations
         await this.loadConfig();
 
-        // Step 3: Create servers from discovered endpoints
+        // Step 3: Create servers from discovered endpoints (HTTP-only)
         const discoveredServers = await this.configParser.createServersFromConfig();
         for (const server of discoveredServers) {
-          // Filter out stdio servers in multihost mode
-          if (this.isMultiHost && this.isStdioTransport(server.transport)) {
-            logger.warn(`⚠️ [MCP Client] Skipping stdio server ${server.name} in multihost mode`);
+          // Only accept HTTP servers in multihost mode
+          if (!this.isHttpTransport(server.transport)) {
+            logger.warn(`⚠️ [MCP Client] Skipping non-HTTP server ${server.name} in multihost mode`);
             continue;
           }
           this.servers.set(server.id, server);
@@ -210,7 +200,7 @@ export class MCPClient extends EventEmitter {
       this.startMonitoring();
 
       this.initialized = true;
-      logger.info(`✅ [MCP Client] Enhanced MCP client initialized: ${this.clients.size} active connections (HTTP-only: ${this.isMultiHost})`);
+      logger.info(`✅ [MCP Client] Enhanced MCP client initialized: ${this.clients.size} active HTTP connections`);
 
     } catch (error) {
       logger.error('❌ [MCP Client] Failed to initialize:', error);
@@ -219,10 +209,10 @@ export class MCPClient extends EventEmitter {
   }
 
   /**
-   * Check if transport is stdio-based
+   * Check if transport is HTTP-based
    */
-  private isStdioTransport(transport: string): boolean {
-    return transport === 'stdio';
+  private isHttpTransport(transport: string): boolean {
+    return transport === 'streamable_http' || transport === 'http' || transport === 'sse';
   }
 
   /**
@@ -271,7 +261,7 @@ export class MCPClient extends EventEmitter {
    * Following guideline: "Connection establishment using JSON-RPC 2.0 messages"
    */
   private async establishConnections(): Promise<void> {
-    logger.info('🔌 [MCP Client] Establishing connections to MCP servers...');
+    logger.info('🔌 [MCP Client] Establishing HTTP connections to MCP servers...');
 
     const connectionPromises = Array.from(this.servers.values()).map(async server => {
       try {
@@ -286,7 +276,7 @@ export class MCPClient extends EventEmitter {
     await Promise.allSettled(connectionPromises);
 
     const connectedCount = Array.from(this.servers.values()).filter(s => s.status === 'running').length;
-    logger.info(`🎯 [MCP Client] Connected to ${connectedCount}/${this.servers.size} servers (HTTP-only)`);
+    logger.info(`🎯 [MCP Client] Connected to ${connectedCount}/${this.servers.size} HTTP servers`);
   }
 
   /**
@@ -298,7 +288,7 @@ export class MCPClient extends EventEmitter {
     server.status = 'initializing';
 
     try {
-      // Create transport based on server configuration
+      // Create transport based on server configuration (HTTP-only)
       const transport = await this.createTransport(server);
       
       // Create MCP client with capabilities
@@ -362,24 +352,15 @@ export class MCPClient extends EventEmitter {
    * Create transport based on server configuration (HTTP-only for multihost)
    */
   private async createTransport(server: MCPServer): Promise<any> {
-    // In multihost mode, reject stdio transport
-    if (this.isMultiHost && server.transport === 'stdio') {
-      throw new Error(`stdio transport not supported in multihost mode`);
+    // In multihost mode, only accept HTTP transports
+    if (!this.isHttpTransport(server.transport)) {
+      throw new Error(`Transport ${server.transport} not supported in multihost mode`);
     }
 
     switch (server.transport) {
-      case 'stdio':
-        // Only allow stdio in non-multihost deployments
-        if (this.isMultiHost) {
-          throw new Error('stdio transport not supported in multihost mode');
-        }
-        throw new Error('stdio transport disabled for this deployment mode');
-      
       case 'streamable_http':
-        return await this.createStreamableHttpTransport(server);
-      
       case 'http':
-        return await this.createStreamableHttpTransport(server); // Use streamable HTTP as default
+        return await this.createStreamableHttpTransport(server);
       
       case 'sse':
         return await this.createSSETransport(server);
@@ -478,6 +459,7 @@ export class MCPClient extends EventEmitter {
       // Return minimal negotiation
       return {
         clientVersion: this.PROTOCOL_VERSION,
+        serverVersion: 'unknown',
         supportedTransports: [server.transport],
         agreedTransport: server.transport,
         capabilities: {
@@ -737,8 +719,6 @@ export class MCPClient extends EventEmitter {
     this.clients.delete(serverId);
     this.metrics.activeConnections = Math.max(0, this.metrics.activeConnections - 1);
 
-    // No process cleanup needed in HTTP-only mode
-
     // Remove from tool cache
     this.toolCache.removeServerClient(serverId);
 
@@ -890,9 +870,9 @@ export class MCPClient extends EventEmitter {
   // Legacy methods for backward compatibility with existing API
 
   async addServer(server: Omit<MCPServer, 'id' | 'status'>): Promise<MCPServer> {
-    // Check for stdio in multihost mode
-    if (this.isMultiHost && this.isStdioTransport(server.transport)) {
-      throw new Error('stdio transport not supported in multihost mode');
+    // Only accept HTTP transports in multihost mode
+    if (!this.isHttpTransport(server.transport)) {
+      throw new Error(`Transport ${server.transport} not supported in multihost mode`);
     }
 
     const id = `mcp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -928,9 +908,9 @@ export class MCPClient extends EventEmitter {
       throw new Error(`Server ${serverId} not found`);
     }
     
-    // Check for stdio in multihost mode
-    if (this.isMultiHost && this.isStdioTransport(server.transport)) {
-      throw new Error('stdio transport not supported in multihost mode');
+    // Validate HTTP transport in multihost mode
+    if (!this.isHttpTransport(server.transport)) {
+      throw new Error(`Transport ${server.transport} not supported in multihost mode`);
     }
     
     if (server.status === 'running') {
@@ -962,9 +942,9 @@ export class MCPClient extends EventEmitter {
       
       if (config.servers) {
         for (const server of config.servers) {
-          // Filter out stdio servers in multihost mode
-          if (this.isMultiHost && this.isStdioTransport(server.transport)) {
-            logger.warn(`⚠️ [MCP Client] Skipping stdio server ${server.name} in multihost mode`);
+          // Filter out non-HTTP servers in multihost mode
+          if (!this.isHttpTransport(server.transport)) {
+            logger.warn(`⚠️ [MCP Client] Skipping non-HTTP server ${server.name} in multihost mode`);
             continue;
           }
           this.servers.set(server.id, server);
@@ -980,7 +960,7 @@ export class MCPClient extends EventEmitter {
       version: '1.0',
       servers: Array.from(this.servers.values()),
       lastModified: new Date(),
-      deploymentMode: this.isMultiHost ? 'multihost' : 'standard'
+      deploymentMode: 'multihost'
     };
     
     await fs.writeFile(this.configPath, JSON.stringify(config, null, 2));
@@ -1003,7 +983,7 @@ export class MCPClient extends EventEmitter {
       cache: this.toolCache.getCacheStatus(),
       metrics: this.metrics,
       sessions: Array.from(this.sessions.values()),
-      deploymentMode: this.isMultiHost ? 'multihost' : 'standard'
+      deploymentMode: 'multihost'
     };
   }
 
