@@ -173,7 +173,8 @@ services:
     command: >
       sh -c "
         npm install -g @modelcontextprotocol/server-github@latest &&
-        npx @modelcontextprotocol/server-github --transport http --port 3001
+        echo 'Starting GitHub MCP server on port 3001...' &&
+        npx @modelcontextprotocol/server-github sse
       "
     ports:
       - "3001:3001"
@@ -181,6 +182,7 @@ services:
       GITHUB_PERSONAL_ACCESS_TOKEN: ${GITHUB_PERSONAL_ACCESS_TOKEN:-}
       NODE_ENV: production
       PORT: 3001
+      MCP_PORT: 3001
     networks:
       - olympian-network
     deploy:
@@ -192,11 +194,11 @@ services:
           memory: 256M
           cpus: '0.25'
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3001/health", "||", "exit", "1"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3001/mcp", "||", "exit", "1"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 20s
+      start_period: 30s
 
   # NASA MCP Server - Space data and APIs
   mcp-nasa:
@@ -207,7 +209,8 @@ services:
     command: >
       sh -c "
         npm install -g @programcomputer/nasa-mcp-server@latest &&
-        npx @programcomputer/nasa-mcp-server --transport http --port 3002
+        echo 'Starting NASA MCP server on port 3002...' &&
+        npx @programcomputer/nasa-mcp-server
       "
     ports:
       - "3002:3002"
@@ -215,6 +218,7 @@ services:
       NASA_API_KEY: ${NASA_API_KEY:-DEMO_KEY}
       NODE_ENV: production
       PORT: 3002
+      MCP_PORT: 3002
     networks:
       - olympian-network
     deploy:
@@ -226,11 +230,11 @@ services:
           memory: 256M
           cpus: '0.25'
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3002/health", "||", "exit", "1"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3002/mcp", "||", "exit", "1"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 20s
+      start_period: 30s
 
   # Metropolitan Museum MCP Server - Art and cultural data
   mcp-metmuseum:
@@ -241,13 +245,15 @@ services:
     command: >
       sh -c "
         npm install -g metmuseum-mcp@latest &&
-        npx metmuseum-mcp --transport http --port 3003
+        echo 'Starting Met Museum MCP server on port 3003...' &&
+        npx metmuseum-mcp
       "
     ports:
       - "3003:3003"
     environment:
       NODE_ENV: production
       PORT: 3003
+      MCP_PORT: 3003
     networks:
       - olympian-network
     deploy:
@@ -259,11 +265,11 @@ services:
           memory: 256M
           cpus: '0.25'
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3003/health", "||", "exit", "1"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3003/mcp", "||", "exit", "1"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 20s
+      start_period: 30s
 
   # Context7 MCP Server - Documentation and code assistance
   mcp-context7:
@@ -274,13 +280,15 @@ services:
     command: >
       sh -c "
         npm install -g @upstash/context7-mcp@latest &&
-        npx @upstash/context7-mcp --transport http --port 3004
+        echo 'Starting Context7 MCP server on port 3004...' &&
+        npx @upstash/context7-mcp
       "
     ports:
       - "3004:3004"
     environment:
       NODE_ENV: production
       PORT: 3004
+      MCP_PORT: 3004
     networks:
       - olympian-network
     deploy:
@@ -292,11 +300,11 @@ services:
           memory: 256M
           cpus: '0.25'
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3004/health", "||", "exit", "1"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3004/mcp", "||", "exit", "1"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 20s
+      start_period: 30s
 
   # AppleScript MCP Server - macOS automation
   mcp-applescript:
@@ -307,13 +315,15 @@ services:
     command: >
       sh -c "
         npm install -g @sampullman/applescript-mcp@latest &&
-        npx @sampullman/applescript-mcp --transport http --port 3005
+        echo 'Starting AppleScript MCP server on port 3005...' &&
+        npx @sampullman/applescript-mcp
       "
     ports:
       - "3005:3005"
     environment:
       NODE_ENV: production
       PORT: 3005
+      MCP_PORT: 3005
     networks:
       - olympian-network
     deploy:
@@ -325,13 +335,13 @@ services:
           memory: 256M
           cpus: '0.25'
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3005/health", "||", "exit", "1"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3005/mcp", "||", "exit", "1"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 20s
+      start_period: 30s
 
-  # Web Search MCP Server - Search capabilities
+  # Web Search MCP Server - Search capabilities  
   mcp-websearch:
     image: node:20-alpine
     container_name: olympian-mcp-websearch
@@ -340,7 +350,8 @@ services:
     command: >
       sh -c "
         npm install -g @modelcontextprotocol/server-brave-search@latest &&
-        npx @modelcontextprotocol/server-brave-search --transport http --port 3006
+        echo 'Starting Web Search MCP server on port 3006...' &&
+        npx @modelcontextprotocol/server-brave-search sse
       "
     ports:
       - "3006:3006"
@@ -348,6 +359,7 @@ services:
       BRAVE_API_KEY: ${BRAVE_API_KEY:-}
       NODE_ENV: production
       PORT: 3006
+      MCP_PORT: 3006
     networks:
       - olympian-network
     deploy:
@@ -359,11 +371,11 @@ services:
           memory: 256M
           cpus: '0.25'
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3006/health", "||", "exit", "1"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3006/mcp", "||", "exit", "1"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 20s
+      start_period: 30s
 
   # ===================================
   # CORE INFRASTRUCTURE SERVICES
