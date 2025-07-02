@@ -1,3 +1,9 @@
+// Setup EventSource polyfill for Node.js environment (required for MCP SSE transport)
+import EventSource from 'eventsource';
+if (typeof global !== 'undefined' && !global.EventSource) {
+  (global as any).EventSource = EventSource;
+}
+
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 
@@ -399,13 +405,14 @@ export class MCPClient extends EventEmitter {
   }
 
   /**
-   * Create SSE transport
+   * Create SSE transport with EventSource polyfill support
    */
   private async createSSETransport(server: MCPServer): Promise<SSEClientTransport> {
     if (!server.endpoint) {
       throw new Error('Endpoint required for SSE transport');
     }
 
+    logger.debug(`🔄 [MCP Client] Creating SSE transport for ${server.name} at ${server.endpoint}`);
     return new SSEClientTransport(new URL(server.endpoint));
   }
 
