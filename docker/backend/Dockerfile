@@ -65,31 +65,17 @@ COPY packages/server/package*.json ./packages/server/
 # Install production dependencies for both workspaces
 RUN npm install --production --workspace=packages/shared --workspace=packages/server
 
-# Install MCP server packages globally for stdio subprocess execution
-# These will be available via npx from the backend application
-RUN echo "=== Installing MCP Server Packages for Stdio Transport ===" && \
-    # GitHub MCP Server
-    npm install -g @modelcontextprotocol/server-github@latest && \
-    # NASA MCP Server 
-    npm install -g @modelcontextprotocol/server-nasa@latest && \
-    # Met Museum MCP Server
-    npm install -g @modelcontextprotocol/server-metmuseum@latest && \
-    # Context7 MCP Server
-    npm install -g @modelcontextprotocol/server-context7@latest && \
-    # AppleScript MCP Server
-    npm install -g @modelcontextprotocol/server-applescript@latest && \
-    # Web Search MCP Server
-    npm install -g @modelcontextprotocol/server-websearch@latest && \
-    echo "✓ MCP server packages installed successfully for stdio transport"
-
-# Verify MCP packages are available via npx
-RUN echo "=== Verifying MCP Package Availability ===" && \
-    npx --yes @modelcontextprotocol/server-github --help > /dev/null 2>&1 && echo "✓ GitHub MCP server available" || echo "⚠️ GitHub MCP server not available" && \
-    npx --yes @modelcontextprotocol/server-nasa --help > /dev/null 2>&1 && echo "✓ NASA MCP server available" || echo "⚠️ NASA MCP server not available" && \
-    npx --yes @modelcontextprotocol/server-metmuseum --help > /dev/null 2>&1 && echo "✓ Met Museum MCP server available" || echo "⚠️ Met Museum MCP server not available" && \
-    npx --yes @modelcontextprotocol/server-context7 --help > /dev/null 2>&1 && echo "✓ Context7 MCP server available" || echo "⚠️ Context7 MCP server not available" && \
-    npx --yes @modelcontextprotocol/server-applescript --help > /dev/null 2>&1 && echo "✓ AppleScript MCP server available" || echo "⚠️ AppleScript MCP server not available" && \
-    npx --yes @modelcontextprotocol/server-websearch --help > /dev/null 2>&1 && echo "✓ Web Search MCP server available" || echo "⚠️ Web Search MCP server not available"
+# MCP servers will be run using npx -y on-demand from the backend application
+# No need to globally install them as npx will handle downloading and execution
+RUN echo "=== MCP Configuration for Stdio Transport ===" && \
+    echo "MCP servers will be executed using npx -y for on-demand package resolution" && \
+    echo "Supported MCP servers:" && \
+    echo "- GitHub: npx -y @modelcontextprotocol/server-github" && \
+    echo "- NASA: npx -y @programcomputer/nasa-mcp-server" && \
+    echo "- Met Museum: npx -y metmuseum-mcp" && \
+    echo "- Context7: npx -y @upstash/context7-mcp" && \
+    echo "- Web Search & AppleScript: Available via npx as needed" && \
+    echo "✓ MCP stdio transport configured for on-demand execution"
 
 # Copy built files from build stage
 COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
@@ -101,7 +87,7 @@ COPY --from=builder /tmp/build_info /app/build_info.txt
 # Create config directory
 RUN mkdir -p /config/.olympian-ai-lite
 
-# Verify deployment with enhanced checks including MCP packages
+# Verify deployment with enhanced checks
 RUN echo "=== Final Backend Verification for Subproject 3 ===" && \
     echo "Build Date: ${BUILD_DATE}" && \
     echo "Git Commit: ${GIT_COMMIT}" && \
@@ -111,9 +97,6 @@ RUN echo "=== Final Backend Verification for Subproject 3 ===" && \
     echo "" && \
     echo "Node modules structure:" && \
     ls -la node_modules/@olympian/ || echo "No @olympian scope found" && \
-    echo "" && \
-    echo "Global MCP packages:" && \
-    npm list -g --depth=0 | grep -E "(server-github|server-nasa|server-metmuseum|server-context7|server-applescript|server-websearch)" || echo "MCP packages verification" && \
     echo "" && \
     echo "NPX binary location:" && \
     which npx && \
