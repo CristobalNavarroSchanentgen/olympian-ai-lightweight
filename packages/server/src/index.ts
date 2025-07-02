@@ -13,9 +13,11 @@ import { modelProgressiveLoader } from './services/ModelProgressiveLoader';
 import { ArtifactService } from './services/ArtifactService';
 // NEW: Phase 3 Multi-host Services
 import { multiHostInit } from './services/MultiHostInitializationService';
-// NEW: MCP Services (Optional)
+// NEW: MCP Services (Optional) - with subproject 3 stdio support
 import { MCPConfigParser } from './services/MCPConfigParser';
 import { MCPClient } from './services/MCPClient';
+import { MCPConfigParserStdio } from './services/MCPConfigParserStdio';
+import { MCPClientStdio } from './services/MCPClientStdio';
 
 import apiRoutes from './api/routes';
 import { errorHandler } from './middleware/errorHandler';
@@ -35,6 +37,10 @@ const DEPLOYMENT_MODE = process.env.DEPLOYMENT_MODE || 'development';
 const REDIS_URL = process.env.REDIS_URL;
 const INSTANCE_ID = process.env.INSTANCE_ID || `server-${Date.now()}`;
 const HOSTNAME = process.env.HOSTNAME || 'localhost';
+
+// NEW: Subproject detection - detect subproject 3 for stdio MCP mode
+const SUBPROJECT = process.env.SUBPROJECT || '1'; // Default to subproject 1
+const IS_SUBPROJECT_3 = SUBPROJECT === '3' || DEPLOYMENT_MODE === 'docker-multi-host';
 
 // NEW: MCP Configuration - Default to optional in production
 const MCP_OPTIONAL = process.env.MCP_OPTIONAL !== 'false'; // Default to true
@@ -81,6 +87,8 @@ app.get('/health', (req, res) => {
     hostname: HOSTNAME,
     multiHost: ENABLE_MULTI_HOST,
     deploymentMode: DEPLOYMENT_MODE,
+    subproject: SUBPROJECT,
+    mcpMode: IS_SUBPROJECT_3 ? 'stdio' : 'http',
     mcpEnabled: MCP_ENABLED,
     mcpOptional: MCP_OPTIONAL
   });
@@ -97,52 +105,100 @@ app.use('*', (req, res) => {
   });
 });
 
-// NEW: Optional MCP services initialization with proper error handling
-async function initializeMCPServices(): Promise<{ success: boolean; error?: string; serverCount?: number }> {
+// NEW: MCP services initialization with subproject 3 stdio support
+async function initializeMCPServices(): Promise<{ success: boolean; error?: string; serverCount?: number; mode?: string }> {
   if (!MCP_ENABLED) {
     console.log('ℹ️ [Server] MCP services disabled via configuration');
-    return { success: true, serverCount: 0 };
+    return { success: true, serverCount: 0, mode: 'disabled' };
   }
 
   try {
-    console.log('🔧 [Server] Initializing MCP services (optional)...');
+    // Determine MCP mode based on subproject
+    const mcpMode = IS_SUBPROJECT_3 ? 'stdio' : 'http';
+    console.log(`🔧 [Server] Initializing MCP services (${mcpMode} mode for subproject ${SUBPROJECT})...`);
     
-    // Parse MCP configuration
-    const mcpParser = MCPConfigParser.getInstance();
-    const mcpConfig = await mcpParser.parseConfiguration();
-    
-    const stats = mcpParser.getConfigurationStats();
-    console.log(`📊 [Server] MCP configuration loaded:`, {
-      totalEndpoints: stats.totalEndpoints,
-      serverEndpoints: stats.serverEndpoints,
-      discoveryChannels: stats.discoveryChannels,
-      registries: stats.registries
-    });
-    
-    // Initialize MCP client if we have servers configured
-    if (stats.serverEndpoints > 0) {
-      console.log('🚀 [Server] Initializing MCP clients...');
+    if (IS_SUBPROJECT_3) {
+      // Subproject 3: Use stdio-based MCP services
+      console.log('📡 [Server] Using stdio transport for MCP servers (subproject 3)');
       
-      const mcpServers = await mcpParser.createServersFromConfig();
-      const mcpClient = MCPClient.getInstance();
+      // Parse stdio MCP configuration
+      const mcpParser = MCPConfigParserStdio.getInstance();
+      const mcpConfig = await mcpParser.parseConfiguration();
       
-      // Initialize the MCP client with the parsed servers
-      await mcpClient.initialize(mcpServers);
+      const stats = mcpParser.getConfigurationStats();
+      console.log(`📊 [Server] Stdio MCP configuration loaded:`, {
+        totalEndpoints: stats.totalEndpoints,
+        serverEndpoints: stats.serverEndpoints,
+        stdioMode: stats.stdioMode
+      });
       
-      console.log(`✅ [Server] MCP services initialized with ${mcpServers.length} servers`);
-      
-      // Perform initial health check
-      const healthStats = await mcpClient.getHealthStats();
-      console.log(`📊 [Server] MCP Health: ${healthStats.healthy}/${healthStats.total} servers healthy`);
-      
-      if (healthStats.total > healthStats.healthy) {
-        console.warn(`⚠️ [Server] Some MCP servers are unhealthy. Check logs for details.`);
-      }
+      // Initialize stdio MCP client if we have servers configured
+      if (stats.serverEndpoints > 0) {
+        console.log('🚀 [Server] Initializing stdio MCP clients...');
+        
+        const mcpServers = await mcpParser.createServersFromConfig();
+        const mcpClient = MCPClientStdio.getInstance();
+        
+        // Initialize the stdio MCP client with the parsed servers
+        await mcpClient.initialize(mcpServers);
+        
+        console.log(`✅ [Server] Stdio MCP services initialized with ${mcpServers.length} servers`);
+        
+        // Perform initial health check
+        const healthStats = await mcpClient.getHealthStats();
+        console.log(`📊 [Server] Stdio MCP Health: ${healthStats.healthy}/${healthStats.total} servers healthy`);
+        
+        if (healthStats.total > healthStats.healthy) {
+          console.warn(`⚠️ [Server] Some stdio MCP servers are unhealthy. Check logs for details.`);
+        }
 
-      return { success: true, serverCount: healthStats.total };
+        return { success: true, serverCount: healthStats.total, mode: 'stdio' };
+      } else {
+        console.log('ℹ️ [Server] No stdio MCP servers configured, skipping stdio MCP client initialization');
+        return { success: true, serverCount: 0, mode: 'stdio' };
+      }
+      
     } else {
-      console.log('ℹ️ [Server] No MCP servers configured, skipping MCP client initialization');
-      return { success: true, serverCount: 0 };
+      // Subprojects 1 & 2: Use HTTP-based MCP services
+      console.log('🌐 [Server] Using HTTP transport for MCP servers (subproject 1/2)');
+      
+      // Parse HTTP MCP configuration
+      const mcpParser = MCPConfigParser.getInstance();
+      const mcpConfig = await mcpParser.parseConfiguration();
+      
+      const stats = mcpParser.getConfigurationStats();
+      console.log(`📊 [Server] HTTP MCP configuration loaded:`, {
+        totalEndpoints: stats.totalEndpoints,
+        serverEndpoints: stats.serverEndpoints,
+        discoveryChannels: stats.discoveryChannels,
+        registries: stats.registries
+      });
+      
+      // Initialize HTTP MCP client if we have servers configured
+      if (stats.serverEndpoints > 0) {
+        console.log('🚀 [Server] Initializing HTTP MCP clients...');
+        
+        const mcpServers = await mcpParser.createServersFromConfig();
+        const mcpClient = MCPClient.getInstance();
+        
+        // Initialize the HTTP MCP client with the parsed servers
+        await mcpClient.initialize(mcpServers);
+        
+        console.log(`✅ [Server] HTTP MCP services initialized with ${mcpServers.length} servers`);
+        
+        // Perform initial health check
+        const healthStats = await mcpClient.getHealthStats();
+        console.log(`📊 [Server] HTTP MCP Health: ${healthStats.healthy}/${healthStats.total} servers healthy`);
+        
+        if (healthStats.total > healthStats.healthy) {
+          console.warn(`⚠️ [Server] Some HTTP MCP servers are unhealthy. Check logs for details.`);
+        }
+
+        return { success: true, serverCount: healthStats.total, mode: 'http' };
+      } else {
+        console.log('ℹ️ [Server] No HTTP MCP servers configured, skipping HTTP MCP client initialization');
+        return { success: true, serverCount: 0, mode: 'http' };
+      }
     }
     
   } catch (error) {
@@ -151,7 +207,7 @@ async function initializeMCPServices(): Promise<{ success: boolean; error?: stri
     
     if (MCP_OPTIONAL) {
       console.warn('⚠️ [Server] Continuing without MCP services (MCP_OPTIONAL=true)');
-      return { success: false, error: errorMessage, serverCount: 0 };
+      return { success: false, error: errorMessage, serverCount: 0, mode: IS_SUBPROJECT_3 ? 'stdio' : 'http' };
     } else {
       // Re-throw if MCP is not optional
       throw error;
@@ -255,6 +311,7 @@ async function initializeServices() {
     console.log(`📍 [Server] Instance: ${INSTANCE_ID} on ${HOSTNAME}`);
     console.log(`🌐 [Server] Multi-host mode: ${ENABLE_MULTI_HOST ? 'ENABLED' : 'DISABLED'}`);
     console.log(`🚀 [Server] Deployment mode: ${DEPLOYMENT_MODE}`);
+    console.log(`📡 [Server] Subproject: ${SUBPROJECT} (MCP mode: ${IS_SUBPROJECT_3 ? 'stdio' : 'http'})`);
     console.log(`🔧 [Server] MCP services: ${MCP_ENABLED ? 'ENABLED' : 'DISABLED'} (optional: ${MCP_OPTIONAL})`);
 
     // Step 1: Initialize core services (database, artifacts, Ollama health)
@@ -263,7 +320,7 @@ async function initializeServices() {
     // Step 2: Initialize multi-host services (optional but important for subproject 3)
     const multiHostResult = await initializeMultiHostServices();
     
-    // Step 3: Initialize MCP services (completely optional)
+    // Step 3: Initialize MCP services (with subproject-specific transport)
     const mcpResult = await initializeMCPServices();
 
     // Step 4: Initialize WebSocket and model loading (dependent on core services)
@@ -294,7 +351,7 @@ async function initializeServices() {
     console.log('\n📊 [Server] Service initialization summary:');
     console.log(`   ✅ Core services: Ready`);
     console.log(`   ${multiHostResult.success ? '✅' : '⚠️ '} Multi-host: ${multiHostResult.success ? 'Ready' : 'Limited (' + (multiHostResult.error || 'Unknown') + ')'}`);
-    console.log(`   ${mcpResult.success ? '✅' : '⚠️ '} MCP services: ${mcpResult.success ? 'Ready (' + (mcpResult.serverCount || 0) + ' servers)' : 'Disabled (' + (mcpResult.error || 'Unknown') + ')'}`);
+    console.log(`   ${mcpResult.success ? '✅' : '⚠️ '} MCP services: ${mcpResult.success ? 'Ready (' + (mcpResult.mode || 'unknown') + ' mode, ' + (mcpResult.serverCount || 0) + ' servers)' : 'Disabled (' + (mcpResult.error || 'Unknown') + ')'}`);
 
   } catch (error) {
     console.error('❌ [Server] Failed to initialize core services:', error);
@@ -310,17 +367,25 @@ async function initializeServices() {
   }
 }
 
-// NEW: Enhanced graceful cleanup with multi-host and MCP support
+// NEW: Enhanced graceful cleanup with multi-host and subproject-specific MCP support
 async function gracefulCleanup() {
   console.log('🧹 [Server] Starting cleanup...');
   
   try {
-    // Cleanup MCP services first (optional service)
+    // Cleanup MCP services first (optional service) - use correct client based on subproject
     if (MCP_ENABLED) {
       try {
-        const mcpClient = MCPClient.getInstance();
-        await mcpClient.cleanup();
-        console.log('✅ [Server] MCP services cleaned up');
+        if (IS_SUBPROJECT_3) {
+          console.log('🧹 [Server] Cleaning up stdio MCP services...');
+          const mcpClient = MCPClientStdio.getInstance();
+          await mcpClient.cleanup();
+          console.log('✅ [Server] Stdio MCP services cleaned up');
+        } else {
+          console.log('🧹 [Server] Cleaning up HTTP MCP services...');
+          const mcpClient = MCPClient.getInstance();
+          await mcpClient.cleanup();
+          console.log('✅ [Server] HTTP MCP services cleaned up');
+        }
       } catch (mcpError) {
         console.warn('⚠️ [Server] MCP cleanup failed:', mcpError);
       }
@@ -398,14 +463,20 @@ async function startServer() {
         console.log(`🌐 [Server] Multi-host coordination: ${REDIS_URL ? 'ENABLED' : 'LIMITED (no Redis)'}`);
       }
       
-      // NEW: MCP status
+      // NEW: MCP status with subproject-specific mode
       if (MCP_ENABLED) {
         try {
-          const mcpClient = MCPClient.getInstance();
-          const mcpStats = mcpClient.getHealthStats();
-          console.log(`🔧 [Server] MCP services: ${mcpStats.healthy}/${mcpStats.total} servers healthy`);
+          if (IS_SUBPROJECT_3) {
+            const mcpClient = MCPClientStdio.getInstance();
+            const mcpStats = mcpClient.getHealthStats();
+            console.log(`🔧 [Server] Stdio MCP services: ${mcpStats.healthy}/${mcpStats.total} servers healthy`);
+          } else {
+            const mcpClient = MCPClient.getInstance();
+            const mcpStats = mcpClient.getHealthStats();
+            console.log(`🔧 [Server] HTTP MCP services: ${mcpStats.healthy}/${mcpStats.total} servers healthy`);
+          }
         } catch (mcpError) {
-          console.log('🔧 [Server] MCP services: Not initialized');
+          console.log(`🔧 [Server] MCP services (${IS_SUBPROJECT_3 ? 'stdio' : 'http'}): Not initialized`);
         }
       } else {
         console.log('🔧 [Server] MCP services: Disabled');
@@ -425,7 +496,7 @@ async function startServer() {
       console.log('   🏥 Health: /api/health');
       
       if (MCP_ENABLED) {
-        console.log('   🔧 MCP: /api/mcp');
+        console.log(`   🔧 MCP (${IS_SUBPROJECT_3 ? 'stdio' : 'http'}): /api/mcp`);
       }
       
       // NEW: Multi-host endpoints
@@ -439,12 +510,14 @@ async function startServer() {
       
       console.log('\n✨ [Server] Ready to accept connections!');
       
-      // NEW: Log multi-host status for monitoring
+      // NEW: Log subproject-specific status for monitoring
+      console.log(`\n📍 [Server] Subproject ${SUBPROJECT} instance ready:`)
+      console.log(`   Instance ID: ${INSTANCE_ID}`);
+      console.log(`   Hostname: ${HOSTNAME}`);
+      console.log(`   Deployment Mode: ${DEPLOYMENT_MODE}`);
+      console.log(`   MCP Transport: ${IS_SUBPROJECT_3 ? 'stdio (child processes)' : 'http (containers)'}`);
+      
       if (ENABLE_MULTI_HOST) {
-        console.log(`\n📍 [Server] Multi-host instance ready:`)
-        console.log(`   Instance ID: ${INSTANCE_ID}`);
-        console.log(`   Hostname: ${HOSTNAME}`);
-        console.log(`   Deployment Mode: ${DEPLOYMENT_MODE}`);
         console.log(`   Redis: ${REDIS_URL ? '✅ Connected' : '❌ Not configured'}`);
         console.log(`   Coordination: ${multiHostInit.getStatus().services.coordination ? '✅' : '❌'}`);
         console.log(`   Monitoring: ${multiHostInit.getStatus().services.monitoring ? '✅' : '❌'}`);
