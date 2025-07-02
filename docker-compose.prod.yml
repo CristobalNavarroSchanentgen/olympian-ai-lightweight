@@ -1,4 +1,5 @@
-# Production docker-compose configuration for multi-host deployment
+# Production docker-compose configuration for multi-host deployment (SUBPROJECT 3)
+# Self-reliant setup with integrated MCP servers - No external dependencies
 # Uses external MongoDB and Ollama services configured in .env
 
 # This compose file automatically generates build arguments to ensure
@@ -58,7 +59,6 @@ services:
         CACHE_BUST: ${CACHE_BUST:-$(date +%s)}
     container_name: olympian-backend
     restart: unless-stopped
-    # Remove host networking to enable Docker service discovery
     ports:
       - "4000:4000"  # Expose backend port to host if needed
     networks:
@@ -87,24 +87,27 @@ services:
       # Model capability configuration - CRITICAL for subproject 3
       MODEL_CAPABILITY_MODE: ${MODEL_CAPABILITY_MODE:-automatic}
       
-      # MCP Configuration - NEW for subproject 3 with proper defaults
+      # MCP Configuration - Self-reliant container endpoints
       MCP_ENABLED: ${MCP_ENABLED:-true}
       MCP_OPTIONAL: ${MCP_OPTIONAL:-true}
-      MCP_TRANSPORT: ${MCP_TRANSPORT:-sse}
+      MCP_TRANSPORT: ${MCP_TRANSPORT:-http}
       MCP_CONFIG_PATH: ${MCP_CONFIG_PATH:-/app/mcp-config.multihost.json}
       
-      # MCP Server Authentication - Multi-host deployment specific
+      # MCP Server Authentication
       GITHUB_PERSONAL_ACCESS_TOKEN: ${GITHUB_PERSONAL_ACCESS_TOKEN:-}
       NASA_API_KEY: ${NASA_API_KEY:-DEMO_KEY}
+      BRAVE_API_KEY: ${BRAVE_API_KEY:-}
       
-      # MCP Server Endpoints - Host-based connections
-      MCP_GITHUB_ENDPOINT: ${MCP_GITHUB_ENDPOINT:-http://host.docker.internal:3001/sse}
-      MCP_NASA_ENDPOINT: ${MCP_NASA_ENDPOINT:-http://host.docker.internal:3002/sse}
-      MCP_METMUSEUM_ENDPOINT: ${MCP_METMUSEUM_ENDPOINT:-http://host.docker.internal:3003/sse}
-      MCP_CONTEXT7_ENDPOINT: ${MCP_CONTEXT7_ENDPOINT:-http://host.docker.internal:3004/sse}
+      # MCP Server Endpoints - Container-based (self-reliant)
+      MCP_GITHUB_ENDPOINT: ${MCP_GITHUB_ENDPOINT:-http://mcp-github:3001/mcp}
+      MCP_NASA_ENDPOINT: ${MCP_NASA_ENDPOINT:-http://mcp-nasa:3002/mcp}
+      MCP_METMUSEUM_ENDPOINT: ${MCP_METMUSEUM_ENDPOINT:-http://mcp-metmuseum:3003/mcp}
+      MCP_CONTEXT7_ENDPOINT: ${MCP_CONTEXT7_ENDPOINT:-http://mcp-context7:3004/mcp}
+      MCP_APPLESCRIPT_ENDPOINT: ${MCP_APPLESCRIPT_ENDPOINT:-http://mcp-applescript:3005/mcp}
+      MCP_WEBSEARCH_ENDPOINT: ${MCP_WEBSEARCH_ENDPOINT:-http://mcp-websearch:3006/mcp}
       
       # Redis Configuration - Optional for multi-host coordination
-      REDIS_URL: ${REDIS_URL:-}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
       REDIS_OPTIONAL: ${REDIS_OPTIONAL:-true}
       
       # Application settings
@@ -124,13 +127,26 @@ services:
     volumes:
       - config-data:/config/.olympian-ai-lite
       - logs:/app/logs
-      # NEW: Mount MCP configuration for subproject 3
+      # Mount MCP configuration for subproject 3
       - ./mcp-config.multihost.json:/app/mcp-config.multihost.json:ro
       # Alternative mount path for container-based config loading
       - ./mcp-config.multihost.json:/config/mcp-config.json:ro
     depends_on:
       mongodb-replica-init:
         condition: service_completed_successfully
+      # MCP servers are optional dependencies
+      mcp-github:
+        condition: service_started
+      mcp-nasa:
+        condition: service_started
+      mcp-metmuseum:
+        condition: service_started
+      mcp-context7:
+        condition: service_started
+      mcp-applescript:
+        condition: service_started
+      mcp-websearch:
+        condition: service_started
     # Resource limits for backend (increased for vision processing)
     deploy:
       resources:
@@ -143,6 +159,215 @@ services:
     # Add extra_hosts to allow backend to access host services and custom DNS
     extra_hosts:
       - "host.docker.internal:host-gateway"
+
+  # ===================================
+  # MCP SERVERS - Self-Reliant Container Setup
+  # ===================================
+
+  # GitHub MCP Server - Repository access, issues, PRs
+  mcp-github:
+    image: node:20-alpine
+    container_name: olympian-mcp-github
+    restart: unless-stopped
+    working_dir: /app
+    command: >
+      sh -c "
+        npm install -g @modelcontextprotocol/server-github@latest &&
+        npx @modelcontextprotocol/server-github --transport http --port 3001
+      "
+    ports:
+      - "3001:3001"
+    environment:
+      GITHUB_PERSONAL_ACCESS_TOKEN: ${GITHUB_PERSONAL_ACCESS_TOKEN:-}
+      NODE_ENV: production
+      PORT: 3001
+    networks:
+      - olympian-network
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3001/health", "||", "exit", "1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # NASA MCP Server - Space data and APIs
+  mcp-nasa:
+    image: node:20-alpine
+    container_name: olympian-mcp-nasa
+    restart: unless-stopped
+    working_dir: /app
+    command: >
+      sh -c "
+        npm install -g @programcomputer/nasa-mcp-server@latest &&
+        npx @programcomputer/nasa-mcp-server --transport http --port 3002
+      "
+    ports:
+      - "3002:3002"
+    environment:
+      NASA_API_KEY: ${NASA_API_KEY:-DEMO_KEY}
+      NODE_ENV: production
+      PORT: 3002
+    networks:
+      - olympian-network
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3002/health", "||", "exit", "1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # Metropolitan Museum MCP Server - Art and cultural data
+  mcp-metmuseum:
+    image: node:20-alpine
+    container_name: olympian-mcp-metmuseum
+    restart: unless-stopped
+    working_dir: /app
+    command: >
+      sh -c "
+        npm install -g metmuseum-mcp@latest &&
+        npx metmuseum-mcp --transport http --port 3003
+      "
+    ports:
+      - "3003:3003"
+    environment:
+      NODE_ENV: production
+      PORT: 3003
+    networks:
+      - olympian-network
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3003/health", "||", "exit", "1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # Context7 MCP Server - Documentation and code assistance
+  mcp-context7:
+    image: node:20-alpine
+    container_name: olympian-mcp-context7
+    restart: unless-stopped
+    working_dir: /app
+    command: >
+      sh -c "
+        npm install -g @upstash/context7-mcp@latest &&
+        npx @upstash/context7-mcp --transport http --port 3004
+      "
+    ports:
+      - "3004:3004"
+    environment:
+      NODE_ENV: production
+      PORT: 3004
+    networks:
+      - olympian-network
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3004/health", "||", "exit", "1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # AppleScript MCP Server - macOS automation
+  mcp-applescript:
+    image: node:20-alpine
+    container_name: olympian-mcp-applescript
+    restart: unless-stopped
+    working_dir: /app
+    command: >
+      sh -c "
+        npm install -g @sampullman/applescript-mcp@latest &&
+        npx @sampullman/applescript-mcp --transport http --port 3005
+      "
+    ports:
+      - "3005:3005"
+    environment:
+      NODE_ENV: production
+      PORT: 3005
+    networks:
+      - olympian-network
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3005/health", "||", "exit", "1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # Web Search MCP Server - Search capabilities
+  mcp-websearch:
+    image: node:20-alpine
+    container_name: olympian-mcp-websearch
+    restart: unless-stopped
+    working_dir: /app
+    command: >
+      sh -c "
+        npm install -g @modelcontextprotocol/server-brave-search@latest &&
+        npx @modelcontextprotocol/server-brave-search --transport http --port 3006
+      "
+    ports:
+      - "3006:3006"
+    environment:
+      BRAVE_API_KEY: ${BRAVE_API_KEY:-}
+      NODE_ENV: production
+      PORT: 3006
+    networks:
+      - olympian-network
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3006/health", "||", "exit", "1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # ===================================
+  # CORE INFRASTRUCTURE SERVICES
+  # ===================================
 
   # MongoDB configured as single-node replica set for transaction support
   mongodb:
@@ -231,8 +456,7 @@ services:
         }
       '
 
-  # Optional Redis service for multi-host coordination
-  # This service is completely optional and will not prevent the backend from starting
+  # Redis service for multi-host coordination (optional)
   redis:
     image: redis:7-alpine
     container_name: olympian-redis
@@ -257,41 +481,6 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
-    # Redis is optional - backend should not depend on it
-    profiles:
-      - redis
-      - full
-
-  # Example MCP server (optional and disabled by default)
-  mcp-filesystem:
-    image: node:20-alpine
-    container_name: olympian-mcp-filesystem
-    restart: unless-stopped
-    working_dir: /app
-    command: npx -y @modelcontextprotocol/server-filesystem /data
-    volumes:
-      - mcp-data:/data
-    networks:
-      - olympian-network
-    # Resource limits for MCP server
-    deploy:
-      resources:
-        limits:
-          memory: 256M
-          cpus: '0.5'
-        reservations:
-          memory: 128M
-          cpus: '0.25'
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000", "||", "exit", "1"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 15s
-    # MCP services are optional
-    profiles:
-      - mcp
-      - full
 
 volumes:
   config-data:
@@ -299,7 +488,6 @@ volumes:
   mongodb-data:
   mongodb-config:
   redis-data:
-  mcp-data:
 
 networks:
   olympian-network:
