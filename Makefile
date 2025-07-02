@@ -796,7 +796,7 @@ fix-mongo-uri: ## Fix MongoDB URI for Docker deployment
 	@chmod +x scripts/fix-mongo-uri.sh
 	@./scripts/fix-mongo-uri.sh
 
-env-docker-multi-interactive: ## Interactive multi-host environment configuration
+env-docker-multi-interactive: ## Interactive multi-host environment configuration with MCP token setup
 	@echo "$(CYAN)🔧 Interactive Docker multi-host configuration setup...$(RESET)"
 	@echo ""
 	@if [ ! -f .env ]; then cp .env.example .env; fi
@@ -869,7 +869,7 @@ env-docker-multi-interactive: ## Interactive multi-host environment configuratio
 	@printf "Use default MongoDB setup? (y/N): "; \
 	read use_default_mongo; \
 	if [ "$$use_default_mongo" = "y" ] || [ "$$use_default_mongo" = "Y" ]; then \
-		sed -i.bak 's|^MONGODB_URI=.*|MONGODB_URI=mongodb://mongodb:27017/olympian_ai_lite|' .env; \
+		sed -i.bak 's|^MONGODB_URI=.*|MONGODB_URI=mongodb://mongodb:27017/olympian_ai_lite?replicaSet=rs0|' .env; \
 		echo "$(GREEN)✅ Using containerized MongoDB (accessible via Docker service name)$(RESET)"; \
 	else \
 		printf "Enter MongoDB host (IP address or DNS name, or press Enter to use containerized MongoDB): "; \
@@ -880,16 +880,75 @@ env-docker-multi-interactive: ## Interactive multi-host environment configuratio
 			if [ -n "$$mongo_user" ]; then \
 				printf "Enter MongoDB password: "; \
 				read -s mongo_pass; echo; \
-				mongo_uri="mongodb://$$mongo_user:$$mongo_pass@$$mongo_host:27017/olympian_ai_lite?authSource=admin"; \
+				mongo_uri="mongodb://$$mongo_user:$$mongo_pass@$$mongo_host:27017/olympian_ai_lite?replicaSet=rs0&authSource=admin"; \
 			else \
-				mongo_uri="mongodb://$$mongo_host:27017/olympian_ai_lite"; \
+				mongo_uri="mongodb://$$mongo_host:27017/olympian_ai_lite?replicaSet=rs0"; \
 			fi; \
 			sed -i.bak 's|^MONGODB_URI=.*|MONGODB_URI='"$$mongo_uri"'|' .env; \
 			echo "$(GREEN)✅ MongoDB configured for external host: $$mongo_host$(RESET)"; \
 		else \
-			sed -i.bak 's|^MONGODB_URI=.*|MONGODB_URI=mongodb://mongodb:27017/olympian_ai_lite|' .env; \
+			sed -i.bak 's|^MONGODB_URI=.*|MONGODB_URI=mongodb://mongodb:27017/olympian_ai_lite?replicaSet=rs0|' .env; \
 			echo "$(GREEN)✅ Using containerized MongoDB (accessible via Docker service name)$(RESET)"; \
 		fi; \
+	fi
+	@echo ""
+	@echo "$(CYAN)🔐 MCP Server Authentication Setup$(RESET)"
+	@echo "$(YELLOW)Self-reliant multi-host deployment includes integrated MCP servers that require authentication$(RESET)"
+	@echo "$(YELLOW)for enhanced functionality. You can configure these tokens now or later.$(RESET)"
+	@echo ""
+	@echo "$(CYAN)🐙 GitHub MCP Server Configuration$(RESET)"
+	@echo "$(YELLOW)The GitHub MCP server provides repository access, issue management, and PR capabilities.$(RESET)"
+	@echo "$(YELLOW)To get a token: https://github.com/settings/tokens$(RESET)"
+	@echo "$(YELLOW)Required scopes: repo, read:user, read:org$(RESET)"
+	@printf "Enter your GitHub Personal Access Token (or press Enter to skip): "; \
+	read -s github_token; echo; \
+	if [ -n "$$github_token" ]; then \
+		if echo "$$github_token" | grep -E '^ghp_[a-zA-Z0-9]{36}$$' >/dev/null || echo "$$github_token" | grep -E '^github_pat_[a-zA-Z0-9_]{82}$$' >/dev/null; then \
+			sed -i.bak 's|^GITHUB_PERSONAL_ACCESS_TOKEN=.*|GITHUB_PERSONAL_ACCESS_TOKEN='"$$github_token"'|' .env; \
+			echo "$(GREEN)✅ GitHub token configured$(RESET)"; \
+		else \
+			echo "$(YELLOW)⚠️  Token format doesn't match expected pattern, but will be saved anyway$(RESET)"; \
+			sed -i.bak 's|^GITHUB_PERSONAL_ACCESS_TOKEN=.*|GITHUB_PERSONAL_ACCESS_TOKEN='"$$github_token"'|' .env; \
+		fi; \
+	else \
+		if grep -q "^GITHUB_PERSONAL_ACCESS_TOKEN=" .env; then \
+			sed -i.bak 's|^GITHUB_PERSONAL_ACCESS_TOKEN=.*|# GITHUB_PERSONAL_ACCESS_TOKEN=your_github_token_here|' .env; \
+		else \
+			echo "# GITHUB_PERSONAL_ACCESS_TOKEN=your_github_token_here" >> .env; \
+		fi; \
+		echo "$(YELLOW)⚠️  GitHub token not configured - some MCP features will be limited$(RESET)"; \
+	fi
+	@echo ""
+	@echo "$(CYAN)🚀 NASA MCP Server Configuration$(RESET)"
+	@echo "$(YELLOW)The NASA MCP server provides space data and APIs.$(RESET)"
+	@echo "$(YELLOW)Get a free API key: https://api.nasa.gov/$(RESET)"
+	@echo "$(YELLOW)Note: DEMO_KEY provides limited functionality$(RESET)"
+	@printf "Enter your NASA API Key (or press Enter for DEMO_KEY): "; \
+	read nasa_key; \
+	if [ -n "$$nasa_key" ]; then \
+		sed -i.bak 's|^NASA_API_KEY=.*|NASA_API_KEY='"$$nasa_key"'|' .env; \
+		echo "$(GREEN)✅ NASA API key configured$(RESET)"; \
+	else \
+		sed -i.bak 's|^NASA_API_KEY=.*|NASA_API_KEY=DEMO_KEY|' .env; \
+		echo "$(GREEN)✅ Using NASA DEMO_KEY (limited functionality)$(RESET)"; \
+	fi
+	@echo ""
+	@echo "$(CYAN)🔍 Web Search MCP Server Configuration$(RESET)"
+	@echo "$(YELLOW)The Web Search MCP server provides search capabilities via Brave Search.$(RESET)"
+	@echo "$(YELLOW)Get a free API key: https://brave.com/search/api/$(RESET)"
+	@echo "$(YELLOW)Note: Limited functionality without API key$(RESET)"
+	@printf "Enter your Brave Search API Key (or press Enter to skip): "; \
+	read -s brave_key; echo; \
+	if [ -n "$$brave_key" ]; then \
+		sed -i.bak 's|^BRAVE_API_KEY=.*|BRAVE_API_KEY='"$$brave_key"'|' .env; \
+		echo "$(GREEN)✅ Brave Search API key configured$(RESET)"; \
+	else \
+		if grep -q "^BRAVE_API_KEY=" .env; then \
+			sed -i.bak 's|^BRAVE_API_KEY=.*|# BRAVE_API_KEY=your_brave_api_key_here|' .env; \
+		else \
+			echo "# BRAVE_API_KEY=your_brave_api_key_here" >> .env; \
+		fi; \
+		echo "$(YELLOW)⚠️  Brave Search API key not configured - web search will have limited functionality$(RESET)"; \
 	fi
 	@echo ""
 	@echo "$(CYAN)🤖 Model Capability Configuration:$(RESET)"
@@ -912,10 +971,19 @@ env-docker-multi-interactive: ## Interactive multi-host environment configuratio
 	fi
 	@echo ""
 	@echo "$(CYAN)🔐 Generating secure secrets...$(RESET)"
-	@JWT_SECRET=$$(openssl rand -base64 32); \
-	SESSION_SECRET=$$(openssl rand -base64 32); \
+	@JWT_SECRET=$$(openssl rand -base64 32 2>/dev/null || python3 -c "import secrets; print(secrets.token_urlsafe(32))" 2>/dev/null || echo "$$(date +%s)-$$(shuf -i 1000-9999 -n 1)-jwt-secret"); \
+	SESSION_SECRET=$$(openssl rand -base64 32 2>/dev/null || python3 -c "import secrets; print(secrets.token_urlsafe(32))" 2>/dev/null || echo "$$(date +%s)-$$(shuf -i 1000-9999 -n 1)-session-secret"); \
 	sed -i.bak "s|^JWT_SECRET=.*|JWT_SECRET=$$JWT_SECRET|" .env; \
 	sed -i.bak "s|^SESSION_SECRET=.*|SESSION_SECRET=$$SESSION_SECRET|" .env
+	@echo ""
+	@echo "$(CYAN)🌐 Setting up multi-host specific configuration...$(RESET)"
+	@sed -i.bak 's|^ENABLE_MULTI_HOST=.*|ENABLE_MULTI_HOST=true|' .env
+	@sed -i.bak 's|^MCP_ENABLED=.*|MCP_ENABLED=true|' .env
+	@sed -i.bak 's|^MCP_OPTIONAL=.*|MCP_OPTIONAL=true|' .env
+	@sed -i.bak 's|^MCP_TRANSPORT=.*|MCP_TRANSPORT=http|' .env
+	@sed -i.bak 's|^MCP_CONFIG_PATH=.*|MCP_CONFIG_PATH=/app/mcp-config.multihost.json|' .env
+	@sed -i.bak 's|^REDIS_URL=.*|REDIS_URL=redis://redis:6379|' .env
+	@sed -i.bak 's|^REDIS_OPTIONAL=.*|REDIS_OPTIONAL=true|' .env
 	@echo ""
 	@echo "$(CYAN)🌐 Setting up CORS for multi-host...$(RESET)"
 	@APP_PORT=$$(grep "^APP_PORT=" .env 2>/dev/null | cut -d'=' -f2 || echo "8080"); \
@@ -933,6 +1001,23 @@ env-docker-multi-interactive: ## Interactive multi-host environment configuratio
 	@grep "^MODEL_CAPABILITY_MODE=" .env | sed 's/^/  /'
 	@grep "^ALLOWED_ORIGINS=" .env | sed 's/^/  /'
 	@echo ""
+	@echo "$(CYAN)🔐 MCP Authentication Summary:$(RESET)"
+	@if grep -q "^GITHUB_PERSONAL_ACCESS_TOKEN=" .env && ! grep -q "^# GITHUB_PERSONAL_ACCESS_TOKEN=" .env; then \
+		echo "  $(GREEN)✅ GitHub token configured$(RESET)"; \
+	else \
+		echo "  $(YELLOW)⚠️  GitHub token not configured$(RESET)"; \
+	fi
+	@grep "^NASA_API_KEY=" .env | sed 's/^/  /'
+	@if grep -q "^BRAVE_API_KEY=" .env && ! grep -q "^# BRAVE_API_KEY=" .env; then \
+		echo "  $(GREEN)✅ Brave Search API key configured$(RESET)"; \
+	else \
+		echo "  $(YELLOW)⚠️  Brave Search API key not configured$(RESET)"; \
+	fi
+	@echo ""
 	@echo "$(CYAN)📚 Development Mode Available:$(RESET)"
 	@echo "  For development with hot reloading, use: $(CYAN)make dev-multi$(RESET)"
 	@echo "  This allows you to edit React components and see changes immediately!"
+	@echo ""
+	@echo "$(CYAN)🐳 Self-Reliant MCP Containers:$(RESET)"
+	@echo "  All MCP servers will run as containers - no external setup required!"
+	@echo "  GitHub, NASA, Met Museum, Context7, AppleScript, and Web Search included."
