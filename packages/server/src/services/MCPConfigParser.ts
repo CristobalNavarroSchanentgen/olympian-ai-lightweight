@@ -223,10 +223,13 @@ export class MCPConfigParser {
     try {
       const url = new URL(endpoint.url);
       // Check for Docker service names or container hostnames
+      // Fixed: Use Boolean() to convert regex match result to boolean
+      const isDockerNetworkIP = Boolean(url.hostname.match(/^172\.\d+\.\d+\.\d+$/));
+      
       return url.hostname.includes('mcp-') || 
              url.hostname === 'backend' ||
              url.hostname === 'localhost' ||
-             url.hostname.match(/^172\.\d+\.\d+\.\d+$/); // Docker network IPs
+             isDockerNetworkIP; // Docker network IPs
     } catch {
       return false;
     }
