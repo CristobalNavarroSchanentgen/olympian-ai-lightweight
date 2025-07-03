@@ -80,7 +80,7 @@ RUN echo "=== NPM Cache Cleanup & Configuration for MCP Servers ===" && \
     npm config set fetch-retry-mintimeout 20000 && \
     npm config set fetch-retry-maxtimeout 120000 && \
     npm config set fetch-retries 5 && \
-    npm config set cache-max 0 && \
+    npm config set prefer-online true && \
     npm config set prefer-offline false && \
     npm config set audit false && \
     npm config set fund false && \
