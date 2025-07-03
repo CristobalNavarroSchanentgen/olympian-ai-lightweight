@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import { MCPClientService } from '../services/MCPClient';
 import { MCPClientStdio } from '../services/MCPClientStdio';
 import { getDeploymentConfig } from '../config/deployment';
 import { AppError } from '../middleware/errorHandler';
@@ -15,32 +14,50 @@ const isSubproject3 = deploymentConfig.mode === 'docker-multi-host' || deploymen
 // MCP client instance (deployment-aware)
 let mcpClient: any = null;
 
-if (isSubproject3) {
-  // Subproject 3: Use stdio-based MCP client with npx subprocess execution
-  logger.info('🔧 [MCP API] Subproject 3 detected - using MCPClientStdio with npx subprocess execution');
-  mcpClient = MCPClientStdio.getInstance();
-  
-  // Initialize the stdio client
-  mcpClient.initialize().catch((error: Error) => {
-    logger.error('❌ [MCP API] Failed to initialize stdio MCP client:', error);
-  });
-} else {
-  // Subprojects 1 & 2: Use legacy HTTP-based MCP client (deprecated)
-  logger.warn('⚠️ [MCP API] Using legacy HTTP MCP client for subproject ' + deploymentConfig.mode);
-  logger.warn('⚠️ [MCP API] Consider migrating to stdio transport for better performance');
-  
-  try {
-    mcpClient = MCPClientService.getInstance();
+/**
+ * Initialize MCP client based on deployment mode
+ * For subproject 3: Use MCPClientStdio with npx subprocess execution
+ * For subprojects 1 & 2: Dynamically import legacy MCPClientService
+ */
+async function initializeMCPClient() {
+  if (isSubproject3) {
+    // Subproject 3: Use stdio-based MCP client with npx subprocess execution
+    logger.info('🔧 [MCP API] Subproject 3 detected - using MCPClientStdio with npx subprocess execution');
+    mcpClient = MCPClientStdio.getInstance();
     
-    // Initialize the enhanced client
-    mcpClient.initialize().catch((error: Error) => {
-      logger.error('❌ [MCP API] Failed to initialize legacy MCP client:', error);
-    });
-  } catch (error) {
-    logger.error('❌ [MCP API] Failed to create legacy MCP client:', error);
-    mcpClient = null;
+    // Initialize the stdio client
+    try {
+      await mcpClient.initialize();
+    } catch (error) {
+      logger.error('❌ [MCP API] Failed to initialize stdio MCP client:', error);
+    }
+  } else {
+    // Subprojects 1 & 2: Dynamically import legacy HTTP-based MCP client (deprecated)
+    logger.warn('⚠️ [MCP API] Using legacy HTTP MCP client for subproject ' + deploymentConfig.mode);
+    logger.warn('⚠️ [MCP API] Consider migrating to stdio transport for better performance');
+    
+    try {
+      // Dynamic import to avoid loading legacy client in subproject 3
+      const { MCPClientService } = await import('../services/MCPClient');
+      mcpClient = MCPClientService.getInstance();
+      
+      // Initialize the enhanced client
+      try {
+        await mcpClient.initialize();
+      } catch (error) {
+        logger.error('❌ [MCP API] Failed to initialize legacy MCP client:', error);
+      }
+    } catch (error) {
+      logger.error('❌ [MCP API] Failed to dynamically import legacy MCP client:', error);
+      mcpClient = null;
+    }
   }
 }
+
+// Initialize the MCP client on module load
+initializeMCPClient().catch((error) => {
+  logger.error('❌ [MCP API] Failed to initialize MCP client during module load:', error);
+});
 
 // Middleware to check deployment compatibility for HTTP-oriented endpoints
 const requireHttpCompatibility = (req: any, res: any, next: any) => {
