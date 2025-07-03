@@ -2,50 +2,57 @@
   "mcpServers": {
     "github": {
       "command": "npx",
-      "args": ["--yes", "@modelcontextprotocol/server-github"],
+      "args": ["-y", "@modelcontextprotocol/server-github"],
       "env": {
         "GITHUB_PERSONAL_ACCESS_TOKEN": ""
       },
       "timeout": 30000,
       "retries": 3
     },
-    "nasa-mcp": {
+    "filesystem": {
       "command": "npx",
-      "args": ["--yes", "@modelcontextprotocol/server-nasa"],
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/app"],
       "timeout": 30000,
       "retries": 3
     },
-    "met-museum": {
+    "memory": {
       "command": "npx",
-      "args": ["--yes", "@modelcontextprotocol/server-metmuseum"],
-      "timeout": 30000,
-      "retries": 3
-    },
-    "context7": {
-      "command": "npx",
-      "args": ["--yes", "@modelcontextprotocol/server-context7"],
+      "args": ["-y", "@modelcontextprotocol/server-memory"],
       "env": {
-        "CONTEXT7_API_KEY": ""
+        "MEMORY_FILE_PATH": "/config/mcp-memory.json"
       },
       "timeout": 30000,
       "retries": 3
     },
-    "applescript": {
+    "brave-search": {
       "command": "npx",
-      "args": ["--yes", "@modelcontextprotocol/server-applescript"],
-      "timeout": 30000,
-      "retries": 3
-    },
-    "websearch": {
-      "command": "npx",
-      "args": ["--yes", "@modelcontextprotocol/server-websearch"],
+      "args": ["-y", "@modelcontextprotocol/server-brave-search"],
       "env": {
-        "BRAVE_API_KEY": "",
-        "GOOGLE_API_KEY": "",
-        "GOOGLE_CSE_ID": ""
+        "BRAVE_API_KEY": ""
       },
       "timeout": 45000,
       "retries": 3
+    },
+    "slack": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-slack"],
+      "env": {
+        "SLACK_BOT_TOKEN": "",
+        "SLACK_TEAM_ID": ""
+      },
+      "timeout": 30000,
+      "retries": 3,
+      "optional": true
+    },
+    "postgres": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-postgres"],
+      "env": {
+        "DATABASE_URL": ""
+      },
+      "timeout": 30000,
+      "retries": 3,
+      "optional": true
     }
   },
   "cacheTtl": 300000
