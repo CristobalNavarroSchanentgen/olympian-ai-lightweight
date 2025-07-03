@@ -26,6 +26,7 @@ export interface MCPServer {
   maxRetries?: number; // default 3
   timeout?: number; // default 30000ms
   priority?: number; // for fallback ordering, default 0
+  optional?: boolean; // whether the server is optional (won't fail if can't connect)
 }
 
 export interface MCPServerCapabilities {
@@ -151,6 +152,7 @@ export interface MCPConfigEndpoint {
   command?: string;
   args?: string[];
   env?: Record<string, string>;
+  optional?: boolean; // whether the server is optional
 }
 
 export interface MCPDiscoveryConfig {
