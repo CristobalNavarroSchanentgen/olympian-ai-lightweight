@@ -145,10 +145,10 @@ export class MCPConfigParserStdio {
 
   /**
    * Create default stdio configuration for subproject 3
-   * Uses npx with -y flag to auto-install and run MCP servers
+   * Uses npx with -y flag to auto-install and run official MCP servers
    */
   private createDefaultStdioConfig(): MCPDiscoveryConfig {
-    // Default configuration for stdio-based MCP servers
+    // Default configuration for stdio-based MCP servers using official packages
     return {
       mcpServers: {
         'github': {
@@ -188,6 +188,7 @@ export class MCPConfigParserStdio {
           args: ['-y', '@modelcontextprotocol/server-brave-search'],
           timeout: 45000,
           retries: 3,
+          optional: true,
           env: {
             BRAVE_API_KEY: process.env.BRAVE_API_KEY || ''
           }
