@@ -89,11 +89,11 @@ services:
       # Model capability configuration - CRITICAL for subproject 3
       MODEL_CAPABILITY_MODE: ${MODEL_CAPABILITY_MODE:-custom}
       
-      # MCP Configuration - Stdio transport (servers run as child processes)
+      # MCP Configuration - Stdio transport (servers run as child processes via npx)
       MCP_ENABLED: ${MCP_ENABLED:-true}
       MCP_OPTIONAL: ${MCP_OPTIONAL:-true}
       MCP_TRANSPORT: stdio
-      MCP_CONFIG_PATH: ${MCP_CONFIG_PATH:-/app/mcp-config.stdio.json}
+      MCP_CONFIG_PATH: ${MCP_CONFIG_PATH:-/app/mcp-config.multihost.json}
       
       # MCP Server Authentication for stdio processes
       GITHUB_PERSONAL_ACCESS_TOKEN: ${GITHUB_PERSONAL_ACCESS_TOKEN:-}
@@ -119,15 +119,15 @@ services:
       # CORS settings
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:8080}
       
-      # Memory tuning for stdio MCP servers and vision processing
+      # Memory tuning for stdio MCP servers (npx subprocesses) and vision processing
       NODE_OPTIONS: "--max-old-space-size=4096"
     volumes:
       - config-data:/config/.olympian-ai-lite
       - logs:/app/logs
-      # Mount stdio MCP configuration for subproject 3
-      - ./mcp-config.stdio.json:/app/mcp-config.stdio.json:ro
+      # Mount multihost MCP configuration for subproject 3 (stdio transport via npx)
+      - ./mcp-config.multihost.json:/app/mcp-config.multihost.json:ro
       # Alternative mount path for container-based config loading
-      - ./mcp-config.stdio.json:/config/mcp-config.stdio.json:ro
+      - ./mcp-config.multihost.json:/config/mcp-config.multihost.json:ro
     depends_on:
       mongodb-replica-init:
         condition: service_completed_successfully
