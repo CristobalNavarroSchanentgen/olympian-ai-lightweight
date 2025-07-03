@@ -15,6 +15,8 @@ import { ArtifactService } from './services/ArtifactService';
 import { multiHostInit } from './services/MultiHostInitializationService';
 // NEW: Modern MCP Service for subproject 3
 import { MCPService } from './services/MCPService';
+// Import MCP API to set service reference
+import { setMCPServiceReference } from './api/mcp';
 
 import apiRoutes from './api/routes';
 import { errorHandler } from './middleware/errorHandler';
@@ -42,6 +44,9 @@ const IS_SUBPROJECT_3 = SUBPROJECT === '3' || DEPLOYMENT_MODE === 'docker-multi-
 // NEW: MCP Configuration - Default to optional in production
 const MCP_OPTIONAL = process.env.MCP_OPTIONAL !== 'false'; // Default to true
 const MCP_ENABLED = process.env.MCP_ENABLED !== 'false'; // Default to true
+
+// Export MCP service instance for API access
+export let mcpService: MCPService | null = null;
 
 // Security middleware
 app.use(helmet({
@@ -103,8 +108,6 @@ app.use('*', (req, res) => {
 });
 
 // Modern MCP services initialization
-let mcpService: MCPService | null = null;
-
 async function initializeMCPServices(): Promise<{ success: boolean; error?: string; serverCount?: number; mode?: string }> {
   if (!MCP_ENABLED) {
     console.log('ℹ️ [Server] MCP services disabled via configuration');
@@ -118,6 +121,9 @@ async function initializeMCPServices(): Promise<{ success: boolean; error?: stri
       
       mcpService = new MCPService();
       await mcpService.initialize();
+      
+      // Set the service reference in the API module
+      setMCPServiceReference(mcpService);
       
       const serverStatus = mcpService.getServerStatus();
       const runningServers = serverStatus.filter(s => s.status === 'running').length;
