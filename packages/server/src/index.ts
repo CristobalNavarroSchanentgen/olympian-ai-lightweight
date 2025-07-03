@@ -13,9 +13,7 @@ import { modelProgressiveLoader } from './services/ModelProgressiveLoader';
 import { ArtifactService } from './services/ArtifactService';
 // NEW: Phase 3 Multi-host Services
 import { multiHostInit } from './services/MultiHostInitializationService';
-// NEW: MCP Services (Optional) - with subproject 3 stdio support
-import { MCPConfigParser } from './services/MCPConfigParser';
-import { MCPClient } from './services/MCPClient';
+// FIXED: MCP Services - use dynamic imports to prevent legacy constructor from running in subproject 3
 import { MCPConfigParserStdio } from './services/MCPConfigParserStdio';
 import { MCPClientStdio } from './services/MCPClientStdio';
 
@@ -105,7 +103,7 @@ app.use('*', (req, res) => {
   });
 });
 
-// NEW: MCP services initialization with subproject 3 stdio support
+// FIXED: MCP services initialization with dynamic imports to prevent legacy constructor from running in subproject 3
 async function initializeMCPServices(): Promise<{ success: boolean; error?: string; serverCount?: number; mode?: string }> {
   if (!MCP_ENABLED) {
     console.log('ℹ️ [Server] MCP services disabled via configuration');
@@ -159,45 +157,54 @@ async function initializeMCPServices(): Promise<{ success: boolean; error?: stri
       }
       
     } else {
-      // Subprojects 1 & 2: Use HTTP-based MCP services
+      // Subprojects 1 & 2: Dynamically import HTTP-based MCP services
       console.log('🌐 [Server] Using HTTP transport for MCP servers (subproject 1/2)');
       
-      // Parse HTTP MCP configuration
-      const mcpParser = MCPConfigParser.getInstance();
-      const mcpConfig = await mcpParser.parseConfiguration();
-      
-      const stats = mcpParser.getConfigurationStats();
-      console.log(`📊 [Server] HTTP MCP configuration loaded:`, {
-        totalEndpoints: stats.totalEndpoints,
-        serverEndpoints: stats.serverEndpoints,
-        discoveryChannels: stats.discoveryChannels,
-        registries: stats.registries
-      });
-      
-      // Initialize HTTP MCP client if we have servers configured
-      if (stats.serverEndpoints > 0) {
-        console.log('🚀 [Server] Initializing HTTP MCP clients...');
+      try {
+        // FIXED: Dynamic import to prevent legacy constructor from running in subproject 3
+        const { MCPConfigParser } = await import('./services/MCPConfigParser');
+        const { MCPClient } = await import('./services/MCPClient');
         
-        const mcpServers = await mcpParser.createServersFromConfig();
-        const mcpClient = MCPClient.getInstance();
+        // Parse HTTP MCP configuration
+        const mcpParser = MCPConfigParser.getInstance();
+        const mcpConfig = await mcpParser.parseConfiguration();
         
-        // Initialize the HTTP MCP client with the parsed servers
-        await mcpClient.initialize(mcpServers);
+        const stats = mcpParser.getConfigurationStats();
+        console.log(`📊 [Server] HTTP MCP configuration loaded:`, {
+          totalEndpoints: stats.totalEndpoints,
+          serverEndpoints: stats.serverEndpoints,
+          discoveryChannels: stats.discoveryChannels,
+          registries: stats.registries
+        });
         
-        console.log(`✅ [Server] HTTP MCP services initialized with ${mcpServers.length} servers`);
-        
-        // Perform initial health check
-        const healthStats = await mcpClient.getHealthStats();
-        console.log(`📊 [Server] HTTP MCP Health: ${healthStats.healthy}/${healthStats.total} servers healthy`);
-        
-        if (healthStats.total > healthStats.healthy) {
-          console.warn(`⚠️ [Server] Some HTTP MCP servers are unhealthy. Check logs for details.`);
-        }
+        // Initialize HTTP MCP client if we have servers configured
+        if (stats.serverEndpoints > 0) {
+          console.log('🚀 [Server] Initializing HTTP MCP clients...');
+          
+          const mcpServers = await mcpParser.createServersFromConfig();
+          const mcpClient = MCPClient.getInstance();
+          
+          // Initialize the HTTP MCP client with the parsed servers
+          await mcpClient.initialize(mcpServers);
+          
+          console.log(`✅ [Server] HTTP MCP services initialized with ${mcpServers.length} servers`);
+          
+          // Perform initial health check
+          const healthStats = await mcpClient.getHealthStats();
+          console.log(`📊 [Server] HTTP MCP Health: ${healthStats.healthy}/${healthStats.total} servers healthy`);
+          
+          if (healthStats.total > healthStats.healthy) {
+            console.warn(`⚠️ [Server] Some HTTP MCP servers are unhealthy. Check logs for details.`);
+          }
 
-        return { success: true, serverCount: healthStats.total, mode: 'http' };
-      } else {
-        console.log('ℹ️ [Server] No HTTP MCP servers configured, skipping HTTP MCP client initialization');
-        return { success: true, serverCount: 0, mode: 'http' };
+          return { success: true, serverCount: healthStats.total, mode: 'http' };
+        } else {
+          console.log('ℹ️ [Server] No HTTP MCP servers configured, skipping HTTP MCP client initialization');
+          return { success: true, serverCount: 0, mode: 'http' };
+        }
+      } catch (importError) {
+        console.error('❌ [Server] Failed to dynamically import HTTP MCP services:', importError);
+        throw importError;
       }
     }
     
@@ -320,7 +327,7 @@ async function initializeServices() {
     // Step 2: Initialize multi-host services (optional but important for subproject 3)
     const multiHostResult = await initializeMultiHostServices();
     
-    // Step 3: Initialize MCP services (with subproject-specific transport)
+    // Step 3: Initialize MCP services (with subproject-specific transport and dynamic imports)
     const mcpResult = await initializeMCPServices();
 
     // Step 4: Initialize WebSocket and model loading (dependent on core services)
@@ -367,7 +374,7 @@ async function initializeServices() {
   }
 }
 
-// NEW: Enhanced graceful cleanup with multi-host and subproject-specific MCP support
+// FIXED: Enhanced graceful cleanup with dynamic imports for legacy MCP client
 async function gracefulCleanup() {
   console.log('🧹 [Server] Starting cleanup...');
   
@@ -382,6 +389,8 @@ async function gracefulCleanup() {
           console.log('✅ [Server] Stdio MCP services cleaned up');
         } else {
           console.log('🧹 [Server] Cleaning up HTTP MCP services...');
+          // FIXED: Dynamic import for legacy MCP client cleanup
+          const { MCPClient } = await import('./services/MCPClient');
           const mcpClient = MCPClient.getInstance();
           await mcpClient.cleanup();
           console.log('✅ [Server] HTTP MCP services cleaned up');
@@ -447,12 +456,46 @@ process.on('uncaughtException', (error) => {
   gracefulShutdown('UNCAUGHT_EXCEPTION');
 });
 
+// FIXED: Enhanced startup status logging with dynamic MCP client access
+async function getStartupStatusInfo() {
+  const statusInfo: any = {
+    coreServices: '✅ Ready',
+    mcpServices: 'ℹ️ Not initialized'
+  };
+
+  if (MCP_ENABLED) {
+    try {
+      if (IS_SUBPROJECT_3) {
+        const mcpClient = MCPClientStdio.getInstance();
+        const mcpStats = mcpClient.getHealthStats();
+        statusInfo.mcpServices = `✅ Stdio: ${mcpStats.healthy}/${mcpStats.total} servers healthy`;
+      } else {
+        // FIXED: Dynamic import for legacy MCP client status
+        try {
+          const { MCPClient } = await import('./services/MCPClient');
+          const mcpClient = MCPClient.getInstance();
+          const mcpStats = mcpClient.getHealthStats();
+          statusInfo.mcpServices = `✅ HTTP: ${mcpStats.healthy}/${mcpStats.total} servers healthy`;
+        } catch {
+          statusInfo.mcpServices = `ℹ️ HTTP: Not initialized`;
+        }
+      }
+    } catch (mcpError) {
+      statusInfo.mcpServices = `ℹ️ ${IS_SUBPROJECT_3 ? 'Stdio' : 'HTTP'}: Not initialized`;
+    }
+  } else {
+    statusInfo.mcpServices = '❌ Disabled';
+  }
+
+  return statusInfo;
+}
+
 // Start server
 async function startServer() {
   try {
     await initializeServices();
     
-    server.listen(PORT, () => {
+    server.listen(PORT, async () => {
       console.log(`\n🚀 [Server] Olympian AI Lightweight Server running on port ${PORT}`);
       console.log(`📡 [Server] WebSocket server initialized`);
       console.log(`🗄️ [Server] Database connected: ${MONGODB_URI}`);
@@ -463,24 +506,9 @@ async function startServer() {
         console.log(`🌐 [Server] Multi-host coordination: ${REDIS_URL ? 'ENABLED' : 'LIMITED (no Redis)'}`);
       }
       
-      // NEW: MCP status with subproject-specific mode
-      if (MCP_ENABLED) {
-        try {
-          if (IS_SUBPROJECT_3) {
-            const mcpClient = MCPClientStdio.getInstance();
-            const mcpStats = mcpClient.getHealthStats();
-            console.log(`🔧 [Server] Stdio MCP services: ${mcpStats.healthy}/${mcpStats.total} servers healthy`);
-          } else {
-            const mcpClient = MCPClient.getInstance();
-            const mcpStats = mcpClient.getHealthStats();
-            console.log(`🔧 [Server] HTTP MCP services: ${mcpStats.healthy}/${mcpStats.total} servers healthy`);
-          }
-        } catch (mcpError) {
-          console.log(`🔧 [Server] MCP services (${IS_SUBPROJECT_3 ? 'stdio' : 'http'}): Not initialized`);
-        }
-      } else {
-        console.log('🔧 [Server] MCP services: Disabled');
-      }
+      // FIXED: MCP status with dynamic client access
+      const statusInfo = await getStartupStatusInfo();
+      console.log(`🔧 [Server] MCP services: ${statusInfo.mcpServices}`);
       
       console.log(`🌐 [Server] CORS enabled for: ${CLIENT_URL}`);
       console.log(`📊 [Server] API endpoints available at: http://localhost:${PORT}/api`);
