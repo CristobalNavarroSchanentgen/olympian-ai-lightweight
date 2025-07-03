@@ -1,6 +1,16 @@
 import { MCPTool, MCPToolCache as MCPToolCacheType, MCPToolCacheStatus, MCPServer, MCPEvent, MCPEventHandler } from '@olympian/shared';
 import { logger } from '../utils/logger';
 import EventEmitter from 'events';
+import { z } from 'zod';
+
+// Validation schema for MCP tool list response
+const toolListResponseSchema = z.object({
+  tools: z.array(z.object({
+    name: z.string(),
+    description: z.string().optional(),
+    inputSchema: z.record(z.unknown()).optional()
+  })).optional()
+});
 
 /**
  * MCP Tool Cache following best practices from guidelines
@@ -74,10 +84,10 @@ export class MCPToolCache extends EventEmitter {
     logger.debug(`🔍 [MCP Cache] Discovering tools for server ${serverId}...`);
 
     try {
-      // Request tools from server
+      // Request tools from server with proper schema
       const toolsResponse = await client.request(
         { method: 'tools/list' },
-        { tools: [] } // fallback schema
+        toolListResponseSchema
       );
 
       const tools = toolsResponse.tools || [];
