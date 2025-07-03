@@ -11,7 +11,8 @@ const configEndpointSchema = z.object({
   args: z.array(z.string()).optional(),
   env: z.record(z.string()).optional(),
   timeout: z.number().optional(),
-  retries: z.number().optional()
+  retries: z.number().optional(),
+  optional: z.boolean().optional()
 });
 
 const mcpConfigSchema = z.object({
@@ -26,7 +27,7 @@ const mcpConfigSchema = z.object({
  * 1. All MCP servers run as child processes in the main container
  * 2. Communication via stdio transport (stdin/stdout)
  * 3. No external HTTP dependencies 
- * 4. Self-contained server execution
+ * 4. Self-contained server execution using npx
  */
 export class MCPConfigParserStdio {
   private static instance: MCPConfigParserStdio;
@@ -50,7 +51,7 @@ export class MCPConfigParserStdio {
       path.join(os.homedir(), '.olympian-ai-lite', 'mcp_config.stdio.json'),
     ];
 
-    logger.info('🔍 [MCP Config] Initialized for stdio deployment (child processes)');
+    logger.info('🔍 [MCP Config] Initialized for stdio deployment (npx child processes)');
     logger.debug(`🔍 [MCP Config] Config search paths: ${this.configPaths.join(', ')}`);
   }
 
@@ -129,7 +130,8 @@ export class MCPConfigParserStdio {
         args: endpoint.args || [],
         env: endpoint.env,
         timeout: endpoint.timeout || 30000,
-        retries: endpoint.retries || 3
+        retries: endpoint.retries || 3,
+        optional: endpoint.optional
       };
     }
 
@@ -143,6 +145,7 @@ export class MCPConfigParserStdio {
 
   /**
    * Create default stdio configuration for subproject 3
+   * Uses npx with -y flag to auto-install and run MCP servers
    */
   private createDefaultStdioConfig(): MCPDiscoveryConfig {
     // Default configuration for stdio-based MCP servers
@@ -152,59 +155,66 @@ export class MCPConfigParserStdio {
           url: 'stdio://github',
           type: 'server',
           command: 'npx',
-          args: ['--yes', '@modelcontextprotocol/server-github'],
+          args: ['-y', '@modelcontextprotocol/server-github'],
           timeout: 30000,
           retries: 3,
           env: {
             GITHUB_PERSONAL_ACCESS_TOKEN: process.env.GITHUB_PERSONAL_ACCESS_TOKEN || ''
           }
         },
-        'nasa-mcp': {
-          url: 'stdio://nasa-mcp',
+        'filesystem': {
+          url: 'stdio://filesystem',
           type: 'server',
           command: 'npx',
-          args: ['--yes', '@modelcontextprotocol/server-nasa'],
+          args: ['-y', '@modelcontextprotocol/server-filesystem', '/app'],
           timeout: 30000,
           retries: 3
         },
-        'met-museum': {
-          url: 'stdio://met-museum',
+        'memory': {
+          url: 'stdio://memory',
           type: 'server',
           command: 'npx',
-          args: ['--yes', '@modelcontextprotocol/server-metmuseum'],
-          timeout: 30000,
-          retries: 3
-        },
-        'context7': {
-          url: 'stdio://context7',
-          type: 'server',
-          command: 'npx',
-          args: ['--yes', '@modelcontextprotocol/server-context7'],
+          args: ['-y', '@modelcontextprotocol/server-memory'],
           timeout: 30000,
           retries: 3,
           env: {
-            CONTEXT7_API_KEY: process.env.CONTEXT7_API_KEY || ''
+            MEMORY_FILE_PATH: process.env.MEMORY_FILE_PATH || '/config/mcp-memory.json'
           }
         },
-        'applescript': {
-          url: 'stdio://applescript',
+        'brave-search': {
+          url: 'stdio://brave-search',
           type: 'server',
           command: 'npx',
-          args: ['--yes', '@modelcontextprotocol/server-applescript'],
-          timeout: 30000,
-          retries: 3
-        },
-        'websearch': {
-          url: 'stdio://websearch',
-          type: 'server',
-          command: 'npx',
-          args: ['--yes', '@modelcontextprotocol/server-websearch'],
+          args: ['-y', '@modelcontextprotocol/server-brave-search'],
           timeout: 45000,
           retries: 3,
           env: {
-            BRAVE_API_KEY: process.env.BRAVE_API_KEY || '',
-            GOOGLE_API_KEY: process.env.GOOGLE_API_KEY || '',
-            GOOGLE_CSE_ID: process.env.GOOGLE_CSE_ID || ''
+            BRAVE_API_KEY: process.env.BRAVE_API_KEY || ''
+          }
+        },
+        'slack': {
+          url: 'stdio://slack',
+          type: 'server',
+          command: 'npx',
+          args: ['-y', '@modelcontextprotocol/server-slack'],
+          timeout: 30000,
+          retries: 3,
+          optional: true,
+          env: {
+            SLACK_BOT_TOKEN: process.env.SLACK_BOT_TOKEN || '',
+            SLACK_TEAM_ID: process.env.SLACK_TEAM_ID || ''
+          }
+        },
+        'postgres': {
+          url: 'stdio://postgres',
+          type: 'server',
+          command: 'npx',
+          args: ['-y', '@modelcontextprotocol/server-postgres'],
+          timeout: 30000,
+          retries: 3,
+          optional: true,
+          env: {
+            DATABASE_URL: process.env.DATABASE_URL || ''
           }
         }
       },
@@ -238,7 +248,8 @@ export class MCPConfigParserStdio {
           healthCheckInterval: 300000,
           maxRetries: endpoint.retries || 3,
           timeout: endpoint.timeout || 30000,
-          priority: 0
+          priority: 0,
+          optional: endpoint.optional
         };
 
         servers.push(server);
