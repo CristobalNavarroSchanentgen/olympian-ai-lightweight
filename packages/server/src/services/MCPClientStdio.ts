@@ -46,7 +46,7 @@ const toolCallResponseSchema = z.object({
  * 
  * This implementation runs all MCP servers as child processes within the main container:
  * 1. Stdio transport (stdin/stdout communication)
- * 2. Child process management for MCP servers
+ * 2. Child process management for MCP servers using npx
  * 3. Process lifecycle management (start/stop/restart)
  * 4. Tool discovery and caching
  * 5. Health checking and fallback strategies
@@ -117,7 +117,7 @@ export class MCPClientStdio extends EventEmitter {
     this.setupEventListeners();
     this.setupProcessHandlers();
 
-    logger.info('🌐 [MCP Client] Initialized in stdio mode - child process transport');
+    logger.info('🌐 [MCP Client] Initialized in stdio mode - npx child process transport');
   }
 
   /**
@@ -204,9 +204,16 @@ export class MCPClientStdio extends EventEmitter {
       try {
         await this.startServerProcess(server);
       } catch (error) {
-        logger.warn(`⚠️ [MCP Client] Failed to start ${server.name}:`, error);
-        server.status = 'error';
-        server.lastError = error instanceof Error ? error.message : 'Process start failed';
+        // Handle optional servers gracefully
+        if (server.optional) {
+          logger.info(`ℹ️ [MCP Client] Optional server ${server.name} failed to start, continuing...`);
+          server.status = 'stopped';
+          server.lastError = error instanceof Error ? error.message : 'Process start failed';
+        } else {
+          logger.warn(`⚠️ [MCP Client] Failed to start ${server.name}:`, error);
+          server.status = 'error';
+          server.lastError = error instanceof Error ? error.message : 'Process start failed';
+        }
       }
     });
 
@@ -217,7 +224,7 @@ export class MCPClientStdio extends EventEmitter {
   }
 
   /**
-   * Start a specific MCP server process with stdio transport
+   * Start a specific MCP server process with stdio transport using npx
    */
   private async startServerProcess(server: MCPServer): Promise<void> {
     logger.debug(`🚀 [MCP Client] Starting server process ${server.name}...`);
@@ -225,10 +232,18 @@ export class MCPClientStdio extends EventEmitter {
     server.status = 'initializing';
 
     try {
-      // Create stdio transport with command and args (corrected implementation)
+      // Prepare environment with server-specific and global env vars
+      const processEnv = {
+        ...process.env,
+        ...server.env,
+        MCP_TRANSPORT: 'stdio'
+      };
+
+      // Create stdio transport with command and args
       const transport = new StdioClientTransport({
         command: server.command || 'npx',
-        args: server.args || []
+        args: server.args || [],
+        env: processEnv
       });
 
       // Create MCP client with capabilities
@@ -272,7 +287,7 @@ export class MCPClientStdio extends EventEmitter {
 
       this.metrics.activeConnections++;
       
-      logger.info(`✅ [MCP Client] Started ${server.name} (stdio, ${negotiation.serverVersion})`);
+      logger.info(`✅ [MCP Client] Started ${server.name} (stdio via npx, ${negotiation.serverVersion})`);
 
       // Emit connection event
       this.emitEvent('server_connected', server.id, { 
