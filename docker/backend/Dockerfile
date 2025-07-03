@@ -73,12 +73,12 @@ RUN echo "=== MCP Configuration for Stdio Transport ===" && \
     echo "MCP servers will be executed using 'npx -y' for on-demand package resolution" && \
     echo "Supported MCP servers via npx:" && \
     echo "- GitHub: npx -y @modelcontextprotocol/server-github" && \
-    echo "- Filesystem: npx -y @modelcontextprotocol/server-filesystem" && \
-    echo "- Memory: npx -y @modelcontextprotocol/server-memory" && \
+    echo "- NASA: npx -y @programcomputer/nasa-mcp-server" && \
+    echo "- Met Museum: npx -y metmuseum-mcp" && \
+    echo "- Context7: npx -y @upstash/context7-mcp" && \
+    echo "- AppleScript: npx -y @peakmojo/applescript-mcp" && \
     echo "- Brave Search: npx -y @modelcontextprotocol/server-brave-search" && \
-    echo "- Slack: npx -y @modelcontextprotocol/server-slack" && \
-    echo "- PostgreSQL: npx -y @modelcontextprotocol/server-postgres" && \
-    echo "- And any other @modelcontextprotocol/server-* packages" && \
+    echo "- And any other MCP server packages available via npm" && \
     echo "✓ MCP stdio transport configured for on-demand execution"
 
 # Copy built files from build stage
@@ -115,7 +115,7 @@ RUN echo "=== Final Backend Verification for Subproject 3 ===" && \
         echo "ERROR: Backend build missing!" && exit 1; \
     fi
 
-# Environment configuration for subproject 3 (stdio MCP mode)
+# Environment configuration for subproject 3 (stdio MCP mode via npx)
 ENV NODE_ENV=production \
     PORT=4000 \
     # Subproject identification for stdio MCP mode
@@ -125,14 +125,14 @@ ENV NODE_ENV=production \
     # MCP Configuration - stdio transport with child processes via npx
     MCP_ENABLED=true \
     MCP_TRANSPORT=stdio \
-    MCP_CONFIG_PATH=/app/mcp-config.stdio.json \
+    MCP_CONFIG_PATH=/app/mcp-config.multihost.json \
     # Service discovery
     SERVICE_DISCOVERY_ENABLED=true \
     SERVICE_DISCOVERY_NETWORK=bridge \
     # Multi-host defaults
     MONGODB_URI=mongodb://mongodb:27017/olympian_ai_lite?replicaSet=rs0 \
     OLLAMA_HOST=http://ollama-host:11434 \
-    # Memory settings for stdio MCP servers
+    # Memory settings for stdio MCP servers via npx subprocesses
     NODE_OPTIONS="--max-old-space-size=4096"
 
 EXPOSE 4000
