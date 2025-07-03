@@ -52,9 +52,10 @@ ARG GIT_COMMIT
 # Label the production image
 LABEL build_date=${BUILD_DATE}
 LABEL git_commit=${GIT_COMMIT}
-LABEL description="Olympian AI Lightweight Backend - Subproject 3 with Stdio MCP Servers"
+LABEL description="Olympian AI Lightweight Backend - Subproject 3 with Stdio MCP Servers via npx"
 
-# Install curl and python for MCP servers (some may need python)
+# Install system dependencies
+# Note: No need to install MCP packages, npx will handle them on demand
 RUN apk add --no-cache curl python3 py3-pip make g++
 
 # Copy package files - including shared package.json for proper workspace setup
@@ -63,18 +64,21 @@ COPY packages/shared/package*.json ./packages/shared/
 COPY packages/server/package*.json ./packages/server/
 
 # Install production dependencies for both workspaces
-RUN npm install --production --workspace=packages/shared --workspace=packages/server
+RUN npm install --production --workspace=packages/shared --workspace=packages/server && \
+    # Clear npm cache to reduce image size
+    npm cache clean --force
 
-# MCP servers will be run using npx -y on-demand from the backend application
-# No need to globally install them as npx will handle downloading and execution
+# Ensure npx is properly configured for on-demand package execution
 RUN echo "=== MCP Configuration for Stdio Transport ===" && \
-    echo "MCP servers will be executed using npx -y for on-demand package resolution" && \
-    echo "Supported MCP servers:" && \
+    echo "MCP servers will be executed using 'npx -y' for on-demand package resolution" && \
+    echo "Supported MCP servers via npx:" && \
     echo "- GitHub: npx -y @modelcontextprotocol/server-github" && \
-    echo "- NASA: npx -y @programcomputer/nasa-mcp-server" && \
-    echo "- Met Museum: npx -y metmuseum-mcp" && \
-    echo "- Context7: npx -y @upstash/context7-mcp" && \
-    echo "- Web Search & AppleScript: Available via npx as needed" && \
+    echo "- Filesystem: npx -y @modelcontextprotocol/server-filesystem" && \
+    echo "- Memory: npx -y @modelcontextprotocol/server-memory" && \
+    echo "- Brave Search: npx -y @modelcontextprotocol/server-brave-search" && \
+    echo "- Slack: npx -y @modelcontextprotocol/server-slack" && \
+    echo "- PostgreSQL: npx -y @modelcontextprotocol/server-postgres" && \
+    echo "- And any other @modelcontextprotocol/server-* packages" && \
     echo "✓ MCP stdio transport configured for on-demand execution"
 
 # Copy built files from build stage
@@ -98,14 +102,15 @@ RUN echo "=== Final Backend Verification for Subproject 3 ===" && \
     echo "Node modules structure:" && \
     ls -la node_modules/@olympian/ || echo "No @olympian scope found" && \
     echo "" && \
-    echo "NPX binary location:" && \
+    echo "NPX binary location and version:" && \
     which npx && \
+    npx --version && \
     echo "" && \
     echo "Build info:" && \
     cat /app/build_info.txt && \
     echo "" && \
     if [ -f packages/server/dist/index.js ]; then \
-        echo "✓ Backend build confirmed for stdio MCP mode"; \
+        echo "✓ Backend build confirmed for stdio MCP mode with npx"; \
     else \
         echo "ERROR: Backend build missing!" && exit 1; \
     fi
@@ -117,7 +122,7 @@ ENV NODE_ENV=production \
     SUBPROJECT=3 \
     # Deployment mode: docker-multi-host for subproject 3
     DEPLOYMENT_MODE=docker-multi-host \
-    # MCP Configuration - stdio transport with child processes
+    # MCP Configuration - stdio transport with child processes via npx
     MCP_ENABLED=true \
     MCP_TRANSPORT=stdio \
     MCP_CONFIG_PATH=/app/mcp-config.stdio.json \
