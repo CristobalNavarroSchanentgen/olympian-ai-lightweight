@@ -1,155 +1,195 @@
 import { Router } from 'express';
-import { MCPClientStdio } from '../services/MCPClientStdio';
-import { getDeploymentConfig } from '../config/deployment';
+import { MCPService } from '../services/MCPService';
 import { AppError } from '../middleware/errorHandler';
 import { z } from 'zod';
 import { logger } from '../utils/logger';
 
 const router = Router();
 
-// Detect deployment mode to determine MCP client strategy
-const deploymentConfig = getDeploymentConfig();
-const isSubproject3 = deploymentConfig.mode === 'docker-multi-host' || deploymentConfig.mode === 'multi-host';
+// Deployment detection
+const SUBPROJECT = process.env.SUBPROJECT || '1';
+const DEPLOYMENT_MODE = process.env.DEPLOYMENT_MODE || 'development';
+const IS_SUBPROJECT_3 = SUBPROJECT === '3' || DEPLOYMENT_MODE === 'docker-multi-host';
 
-// MCP client instance (deployment-aware)
-let mcpClient: any = null;
+// Modern MCP service instance (subproject 3 only)
+let mcpService: MCPService | null = null;
 
-/**
- * Initialize MCP client based on deployment mode
- * For subproject 3: Use MCPClientStdio with npx subprocess execution
- * For subprojects 1 & 2: Dynamically import legacy MCPClientService
- */
-async function initializeMCPClient() {
-  if (isSubproject3) {
-    // Subproject 3: Use stdio-based MCP client with npx subprocess execution
-    logger.info('🔧 [MCP API] Subproject 3 detected - using MCPClientStdio with npx subprocess execution');
-    mcpClient = MCPClientStdio.getInstance();
-    
-    // Initialize the stdio client
-    try {
-      await mcpClient.initialize();
-    } catch (error) {
-      logger.error('❌ [MCP API] Failed to initialize stdio MCP client:', error);
-    }
-  } else {
-    // Subprojects 1 & 2: Dynamically import legacy HTTP-based MCP client (deprecated)
-    logger.warn('⚠️ [MCP API] Using legacy HTTP MCP client for subproject ' + deploymentConfig.mode);
-    logger.warn('⚠️ [MCP API] Consider migrating to stdio transport for better performance');
-    
-    try {
-      // Dynamic import to avoid loading legacy client in subproject 3
-      const { MCPClientService } = await import('../services/MCPClient');
-      mcpClient = MCPClientService.getInstance();
-      
-      // Initialize the enhanced client
-      try {
-        await mcpClient.initialize();
-      } catch (error) {
-        logger.error('❌ [MCP API] Failed to initialize legacy MCP client:', error);
-      }
-    } catch (error) {
-      logger.error('❌ [MCP API] Failed to dynamically import legacy MCP client:', error);
-      mcpClient = null;
-    }
-  }
-}
-
-// Initialize the MCP client on module load
-initializeMCPClient().catch((error) => {
-  logger.error('❌ [MCP API] Failed to initialize MCP client during module load:', error);
-});
-
-// Middleware to check deployment compatibility for HTTP-oriented endpoints
-const requireHttpCompatibility = (req: any, res: any, next: any) => {
-  if (isSubproject3) {
-    // HTTP-based MCP API is not compatible with stdio transport
-    return res.status(501).json({
-      success: false,
-      error: 'HTTP-based MCP API is not supported in subproject 3',
-      message: 'Subproject 3 uses stdio transport with npx subprocess execution. HTTP/SSE transport endpoints are not available.',
-      deploymentMode: deploymentConfig.mode,
-      transport: 'stdio',
-      timestamp: new Date()
-    });
-  }
-  next();
-};
-
-// Middleware to ensure MCP client is available
-const requireMCPClient = (req: any, res: any, next: any) => {
-  if (!mcpClient) {
-    return res.status(503).json({
-      success: false,
-      error: 'MCP client not available',
-      message: 'MCP client service is not initialized or not compatible with current deployment mode',
-      deploymentMode: deploymentConfig.mode,
-      timestamp: new Date()
-    });
-  }
-  next();
-};
-
-// Enhanced validation schemas for HTTP-only endpoints (disabled in subproject 3)
-const createServerSchema = z.object({
-  name: z.string().min(1),
-  command: z.string().optional(), // Optional for HTTP servers, required for stdio
-  args: z.array(z.string()).optional(),
-  env: z.record(z.string()).optional(),
-  transport: z.enum(['http', 'streamable_http', 'sse', 'stdio']), // Include stdio for subproject 3
-  endpoint: z.string().url().optional(), // Required for HTTP transports, not for stdio
-  healthCheckInterval: z.number().optional(),
-  maxRetries: z.number().optional(),
-  timeout: z.number().optional(),
-  priority: z.number().optional()
-}).refine(
-  (data) => {
-    // For HTTP transports, endpoint is required
-    if (['http', 'streamable_http', 'sse'].includes(data.transport)) {
-      return !!data.endpoint;
-    }
-    // For stdio transport, command is required
-    if (data.transport === 'stdio') {
-      return !!data.command;
-    }
-    return true;
-  },
-  {
-    message: "Endpoint URL is required for HTTP transports, command is required for stdio transport",
-    path: ["endpoint", "command"]
-  }
-);
-
+// Validation schemas
 const invokeToolSchema = z.object({
   serverId: z.string(),
   toolName: z.string(),
-  arguments: z.record(z.unknown()),
-  metadata: z.record(z.unknown()).optional() // Support for _meta field
+  arguments: z.record(z.unknown())
 });
 
-const toolSelectionSchema = z.object({
-  query: z.string().min(1),
-  context: z.record(z.unknown()).optional(),
-  preferredServerId: z.string().optional()
-});
+// Middleware to ensure modern MCP service is available
+const requireModernMCP = (req: any, res: any, next: any) => {
+  if (!IS_SUBPROJECT_3) {
+    return res.status(501).json({
+      success: false,
+      error: 'Modern MCP API only available in subproject 3',
+      message: 'This endpoint uses the modern npx-based MCP service which is only available in subproject 3 (multi-host deployment)',
+      currentSubproject: SUBPROJECT,
+      deploymentMode: DEPLOYMENT_MODE,
+      recommendation: 'Use legacy MCP endpoints for subprojects 1 & 2',
+      timestamp: new Date()
+    });
+  }
+
+  if (!mcpService) {
+    return res.status(503).json({
+      success: false,
+      error: 'Modern MCP service not available',
+      message: 'MCP service is not initialized. This may happen if MCP_ENABLED=false or if initialization failed.',
+      deploymentMode: DEPLOYMENT_MODE,
+      timestamp: new Date()
+    });
+  }
+
+  next();
+};
+
+// Middleware for legacy systems
+const requireLegacyMCP = async (req: any, res: any, next: any) => {
+  if (IS_SUBPROJECT_3) {
+    return res.status(501).json({
+      success: false,
+      error: 'Legacy MCP API not supported in subproject 3',
+      message: 'Subproject 3 uses modern npx-based MCP service. Legacy HTTP/SSE endpoints are not available.',
+      currentSubproject: SUBPROJECT,
+      deploymentMode: DEPLOYMENT_MODE,
+      modernEndpoints: [
+        'GET /api/mcp/status',
+        'GET /api/mcp/servers',
+        'GET /api/mcp/tools',
+        'GET /api/mcp/prompts',
+        'POST /api/mcp/tools/call'
+      ],
+      timestamp: new Date()
+    });
+  }
+
+  // For legacy subprojects, dynamically import legacy services
+  try {
+    const { MCPClient } = await import('../services/MCPClient');
+    req.legacyMcpClient = MCPClient.getInstance();
+    next();
+  } catch (error) {
+    return res.status(503).json({
+      success: false,
+      error: 'Legacy MCP client not available',
+      message: 'Failed to load legacy MCP client services',
+      timestamp: new Date()
+    });
+  }
+};
+
+// Initialize modern MCP service reference
+const initializeMCPServiceReference = () => {
+  if (IS_SUBPROJECT_3) {
+    // Get reference to the service initialized in index.ts
+    // This is set by the main server initialization
+    const serverModule = require('../index');
+    mcpService = serverModule.mcpService || null;
+    
+    if (!mcpService) {
+      logger.warn('⚠️ [MCP API] Modern MCP service reference not found, will try to get from global state');
+    }
+  }
+};
 
 // ====================
-// Core Status Endpoints (Compatible with all subprojects)
+// Modern MCP API (Subproject 3)
 // ====================
 
 /**
- * Get deployment info and MCP status
+ * Get MCP service status
  */
-router.get('/status', requireMCPClient, (_req, res, next) => {
+router.get('/status', (req, res) => {
+  if (IS_SUBPROJECT_3) {
+    if (!mcpService) {
+      return res.status(503).json({
+        success: false,
+        error: 'Modern MCP service not initialized',
+        subproject: SUBPROJECT,
+        deploymentMode: DEPLOYMENT_MODE,
+        timestamp: new Date()
+      });
+    }
+
+    const serverStatus = mcpService.getServerStatus();
+    const runningServers = serverStatus.filter(s => s.status === 'running').length;
+
+    return res.json({
+      success: true,
+      data: {
+        service: 'modern-mcp',
+        subproject: SUBPROJECT,
+        deploymentMode: DEPLOYMENT_MODE,
+        transport: 'stdio-npx',
+        architecture: 'npx-subprocess',
+        servers: {
+          total: serverStatus.length,
+          running: runningServers,
+          stopped: serverStatus.filter(s => s.status === 'stopped').length,
+          error: serverStatus.filter(s => s.status === 'error').length
+        },
+        features: [
+          'NPX-based server launching',
+          'Stdio transport communication',
+          'Modern simplified architecture',
+          'No legacy HTTP/SSE dependencies'
+        ]
+      },
+      timestamp: new Date()
+    });
+  } else {
+    return res.json({
+      success: true,
+      data: {
+        service: 'legacy-mcp',
+        subproject: SUBPROJECT,
+        deploymentMode: DEPLOYMENT_MODE,
+        transport: 'http-sse',
+        architecture: 'legacy-complex',
+        message: 'Use legacy MCP endpoints for this subproject'
+      },
+      timestamp: new Date()
+    });
+  }
+});
+
+/**
+ * Get all MCP servers (modern)
+ */
+router.get('/servers', requireModernMCP, (req, res) => {
+  const serverStatus = mcpService!.getServerStatus();
+  
+  res.json({
+    success: true,
+    data: serverStatus.map(server => ({
+      name: server.name,
+      status: server.status,
+      startTime: server.startTime,
+      transport: 'stdio-npx',
+      architecture: 'modern'
+    })),
+    timestamp: new Date()
+  });
+});
+
+/**
+ * Get all available tools from all servers (modern)
+ */
+router.get('/tools', requireModernMCP, async (req, res, next) => {
   try {
-    const status = mcpClient.getStatus();
+    const tools = await mcpService!.listTools();
+    
     res.json({
       success: true,
       data: {
-        ...status,
-        deploymentMode: deploymentConfig.mode,
-        subproject: isSubproject3 ? '3' : deploymentConfig.mode,
-        transport: isSubproject3 ? 'stdio' : 'http',
-        architecture: isSubproject3 ? 'npx-subprocess' : 'http-based'
+        tools,
+        totalCount: tools.length,
+        servers: [...new Set(tools.map(t => t.serverId))]
       },
       timestamp: new Date()
     });
@@ -159,45 +199,19 @@ router.get('/status', requireMCPClient, (_req, res, next) => {
 });
 
 /**
- * Health check endpoint for load balancers
+ * Get all available prompts from all servers (modern)
  */
-router.get('/ping', (_req, res) => {
-  res.json({
-    success: true,
-    status: 'healthy',
-    service: 'MCP Client Service',
-    deploymentMode: deploymentConfig.mode,
-    subproject: isSubproject3 ? '3' : deploymentConfig.mode,
-    transport: isSubproject3 ? 'stdio' : 'http',
-    timestamp: new Date()
-  });
-});
-
-// ====================
-// Stdio-Compatible Endpoints (All subprojects)
-// ====================
-
-/**
- * Get all MCP servers with deployment-aware filtering
- */
-router.get('/servers', requireMCPClient, (_req, res, next) => {
+router.get('/prompts', requireModernMCP, async (req, res, next) => {
   try {
-    const servers = mcpClient.getServers();
-    
-    // Filter servers based on deployment mode
-    const compatibleServers = isSubproject3 
-      ? servers.filter((server: any) => server.transport === 'stdio')
-      : servers.filter((server: any) => 
-          server.transport === 'http' || 
-          server.transport === 'streamable_http' || 
-          server.transport === 'sse'
-        );
+    const prompts = await mcpService!.listPrompts();
     
     res.json({
       success: true,
-      data: compatibleServers,
-      deploymentMode: deploymentConfig.mode,
-      compatibleTransport: isSubproject3 ? 'stdio' : 'http',
+      data: {
+        prompts,
+        totalCount: prompts.length,
+        servers: [...new Set(prompts.map(p => p.serverId))]
+      },
       timestamp: new Date()
     });
   } catch (error) {
@@ -206,78 +220,26 @@ router.get('/servers', requireMCPClient, (_req, res, next) => {
 });
 
 /**
- * Get specific MCP server with detailed status
+ * Call a tool (modern)
  */
-router.get('/servers/:id', requireMCPClient, (req, res, next) => {
-  try {
-    const server = mcpClient.getServer(req.params.id);
-    if (!server) {
-      throw new AppError(404, 'MCP server not found');
-    }
-
-    // Validate transport compatibility
-    if (isSubproject3 && server.transport !== 'stdio') {
-      throw new AppError(400, `Server ${req.params.id} uses ${server.transport} transport, which is not supported in subproject 3`);
-    }
-
-    if (!isSubproject3 && server.transport === 'stdio') {
-      throw new AppError(400, `Server ${req.params.id} uses stdio transport, which requires subproject 3`);
-    }
-
-    // Enhanced server information (stdio-compatible services)
-    const enhancedServer = {
-      ...server,
-      healthStatus: server.status,
-      isHealthy: server.status === 'running',
-      deploymentCompatible: true
-    };
-
-    res.json({
-      success: true,
-      data: enhancedServer,
-      deploymentMode: deploymentConfig.mode,
-      timestamp: new Date()
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-/**
- * List tools for a server with caching (stdio-compatible)
- */
-router.get('/servers/:id/tools', requireMCPClient, async (req, res, next) => {
-  try {
-    const tools = await mcpClient.listTools(req.params.id);
-    res.json({
-      success: true,
-      data: tools,
-      cached: tools.some((t: any) => t.cachedAt),
-      deploymentMode: deploymentConfig.mode,
-      timestamp: new Date()
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-/**
- * Invoke MCP tool with enhanced error handling (stdio-compatible)
- */
-router.post('/invoke', requireMCPClient, async (req, res, next) => {
+router.post('/tools/call', requireModernMCP, async (req, res, next) => {
   try {
     const validated = invokeToolSchema.parse(req.body);
-    const result = await mcpClient.invokeTool(validated);
+    
+    const result = await mcpService!.callTool(
+      validated.serverId,
+      validated.toolName,
+      validated.arguments
+    );
     
     res.json({
       success: true,
       data: result,
-      deploymentMode: deploymentConfig.mode,
       timestamp: new Date()
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      next(new AppError(400, 'Invalid invoke request', 'VALIDATION_ERROR'));
+      next(new AppError(400, 'Invalid tool call request'));
     } else {
       next(error);
     }
@@ -285,229 +247,181 @@ router.post('/invoke', requireMCPClient, async (req, res, next) => {
 });
 
 /**
- * Start MCP server (stdio-compatible)
+ * Get tools for a specific server (modern)
  */
-router.post('/servers/:id/start', requireMCPClient, async (req, res, next) => {
+router.get('/servers/:serverId/tools', requireModernMCP, async (req, res, next) => {
   try {
-    await mcpClient.startServer(req.params.id);
-    res.json({
-      success: true,
-      message: 'MCP server started successfully',
-      deploymentMode: deploymentConfig.mode,
-      timestamp: new Date()
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-/**
- * Stop MCP server (stdio-compatible)
- */
-router.post('/servers/:id/stop', requireMCPClient, async (req, res, next) => {
-  try {
-    await mcpClient.stopServer(req.params.id);
-    res.json({
-      success: true,
-      message: 'MCP server stopped successfully',
-      deploymentMode: deploymentConfig.mode,
-      timestamp: new Date()
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-// ====================
-// HTTP-Only Endpoints (Subprojects 1 & 2 only)
-// ====================
-
-/**
- * Add MCP server with transport validation
- */
-router.post('/servers', requireMCPClient, requireHttpCompatibility, async (req, res, next) => {
-  try {
-    const validated = createServerSchema.parse(req.body);
+    const allTools = await mcpService!.listTools();
+    const serverTools = allTools.filter(tool => tool.serverId === req.params.serverId);
     
-    // Ensure HTTP-only transport for non-subproject-3
-    if (!isSubproject3 && !['http', 'streamable_http', 'sse'].includes(validated.transport)) {
-      throw new AppError(400, 'Only HTTP transports are supported in this deployment mode');
-    }
-    
-    // For HTTP servers, provide default command since it's not needed
-    const serverConfig = {
-      ...validated,
-      command: validated.command || '' // Provide default empty command for HTTP servers
-    };
-    
-    const server = await mcpClient.addServer(serverConfig);
-    
-    res.status(201).json({
-      success: true,
-      data: server,
-      message: 'MCP server added successfully',
-      deploymentMode: deploymentConfig.mode,
-      timestamp: new Date()
-    });
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      next(new AppError(400, 'Invalid server configuration', 'VALIDATION_ERROR'));
-    } else {
-      next(error);
-    }
-  }
-});
-
-/**
- * Remove MCP server
- */
-router.delete('/servers/:id', requireMCPClient, requireHttpCompatibility, async (req, res, next) => {
-  try {
-    await mcpClient.removeServer(req.params.id);
-    res.json({
-      success: true,
-      message: 'MCP server removed successfully',
-      deploymentMode: deploymentConfig.mode,
-      timestamp: new Date()
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-// ====================
-// Additional HTTP-Only Endpoints (Disabled for Subproject 3)
-// ====================
-
-// Health and monitoring endpoints - HTTP concepts don't apply to stdio
-router.get('/health', requireHttpCompatibility, (req, res) => {
-  res.json({
-    success: true,
-    data: {
-      status: 'legacy_http_mode',
-      deploymentMode: deploymentConfig.mode,
-      transportMode: 'http-only'
-    },
-    timestamp: new Date()
-  });
-});
-
-// Cache management endpoints - handled differently in stdio mode
-router.get('/cache/status', requireHttpCompatibility, (req, res) => {
-  res.json({
-    success: true,
-    data: { status: 'http_cache_not_applicable' },
-    timestamp: new Date()
-  });
-});
-
-// Configuration endpoints - HTTP discovery not applicable in stdio mode
-router.get('/config/discovery', requireHttpCompatibility, (req, res) => {
-  res.json({
-    success: true,
-    data: { discoveryConfig: null, message: 'HTTP discovery not applicable in stdio mode' },
-    timestamp: new Date()
-  });
-});
-
-// Metrics endpoints - different metrics collection in stdio mode
-router.get('/metrics', requireMCPClient, (req, res, next) => {
-  try {
-    const status = mcpClient.getStatus();
-    
-    res.json({
-      success: true,
-      data: {
-        ...status.metrics,
-        deploymentMode: deploymentConfig.mode,
-        transport: isSubproject3 ? 'stdio' : 'http'
-      },
-      timestamp: new Date()
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-// ====================
-// Subproject 3 Information Endpoints
-// ====================
-
-/**
- * Get information about stdio transport and npx usage
- */
-router.get('/stdio-info', (req, res) => {
-  if (!isSubproject3) {
-    return res.status(404).json({
-      success: false,
-      error: 'Stdio information only available in subproject 3',
-      currentMode: deploymentConfig.mode,
-      timestamp: new Date()
-    });
-  }
-
-  res.json({
-    success: true,
-    data: {
-      subproject: 3,
-      transport: 'stdio',
-      architecture: 'npx-subprocess-execution',
-      deployment: deploymentConfig.mode,
-      features: [
-        'NPX-based MCP server launching',
-        'Stdio transport communication',  
-        'Child process management',
-        'No HTTP/SSE endpoints required',
-        'Self-contained execution within container'
-      ],
-      compatibility: {
-        httpEndpoints: false,
-        sseTransport: false,
-        containerBasedServers: false,
-        npxSubprocesses: true,
-        stdioTransport: true
+    if (serverTools.length === 0) {
+      const serverStatus = mcpService!.getServerStatus();
+      const serverExists = serverStatus.some(s => s.name === req.params.serverId);
+      
+      if (!serverExists) {
+        throw new AppError(404, `Server '${req.params.serverId}' not found`);
       }
+    }
+    
+    res.json({
+      success: true,
+      data: serverTools,
+      serverId: req.params.serverId,
+      timestamp: new Date()
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ====================
+// Legacy MCP API (Subprojects 1 & 2)
+// ====================
+
+/**
+ * Legacy server list endpoint
+ */
+router.get('/legacy/servers', requireLegacyMCP, (req: any, res, next) => {
+  try {
+    const servers = req.legacyMcpClient.getServers();
+    res.json({
+      success: true,
+      data: servers,
+      architecture: 'legacy',
+      timestamp: new Date()
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * Legacy tool invocation endpoint
+ */
+router.post('/legacy/invoke', requireLegacyMCP, async (req: any, res, next) => {
+  try {
+    const validated = invokeToolSchema.parse(req.body);
+    const result = await req.legacyMcpClient.invokeTool(validated);
+    
+    res.json({
+      success: true,
+      data: result,
+      architecture: 'legacy',
+      timestamp: new Date()
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      next(new AppError(400, 'Invalid invoke request'));
+    } else {
+      next(error);
+    }
+  }
+});
+
+// ====================
+// Information Endpoints
+// ====================
+
+/**
+ * Get deployment information
+ */
+router.get('/info', (req, res) => {
+  res.json({
+    success: true,
+    data: {
+      subproject: SUBPROJECT,
+      deploymentMode: DEPLOYMENT_MODE,
+      isModern: IS_SUBPROJECT_3,
+      mcpArchitecture: IS_SUBPROJECT_3 ? 'modern-stdio-npx' : 'legacy-http-sse',
+      availableEndpoints: IS_SUBPROJECT_3 ? {
+        modern: [
+          'GET /api/mcp/status',
+          'GET /api/mcp/servers', 
+          'GET /api/mcp/tools',
+          'GET /api/mcp/prompts',
+          'POST /api/mcp/tools/call',
+          'GET /api/mcp/servers/:serverId/tools'
+        ]
+      } : {
+        legacy: [
+          'GET /api/mcp/legacy/servers',
+          'POST /api/mcp/legacy/invoke'
+        ]
+      },
+      features: IS_SUBPROJECT_3 ? [
+        'NPX-based MCP server launching',
+        'Stdio transport communication',
+        'Simplified architecture',
+        'No HTTP/SSE complexity',
+        'Modern error handling'
+      ] : [
+        'HTTP/SSE transport',
+        'Legacy service architecture',
+        'Container-based servers'
+      ]
     },
     timestamp: new Date()
   });
 });
 
 // ====================
-// Error Handling & Fallbacks
+// Health Check
 // ====================
 
 /**
- * Catch-all for unsupported endpoints in subproject 3
+ * Simple health check
+ */
+router.get('/health', (req, res) => {
+  const isHealthy = IS_SUBPROJECT_3 ? (mcpService !== null) : true;
+  
+  res.status(isHealthy ? 200 : 503).json({
+    success: isHealthy,
+    status: isHealthy ? 'healthy' : 'unhealthy',
+    service: IS_SUBPROJECT_3 ? 'modern-mcp' : 'legacy-mcp',
+    subproject: SUBPROJECT,
+    deploymentMode: DEPLOYMENT_MODE,
+    timestamp: new Date()
+  });
+});
+
+// ====================
+// Error Handling
+// ====================
+
+/**
+ * Catch-all for unsupported endpoints
  */
 router.use('*', (req, res) => {
-  if (isSubproject3) {
-    res.status(501).json({
-      success: false,
-      error: 'HTTP-based MCP endpoint not supported in subproject 3',
-      message: 'Subproject 3 uses stdio transport with npx subprocess execution. Use stdio-compatible endpoints instead.',
-      deploymentMode: deploymentConfig.mode,
-      availableEndpoints: [
-        'GET /mcp/status',
-        'GET /mcp/ping', 
-        'GET /mcp/servers',
-        'GET /mcp/servers/:id',
-        'GET /mcp/servers/:id/tools',
-        'POST /mcp/invoke',
-        'POST /mcp/servers/:id/start',
-        'POST /mcp/servers/:id/stop',
-        'GET /mcp/stdio-info',
-        'GET /mcp/metrics'
-      ],
-      timestamp: new Date()
-    });
-  } else {
-    res.status(404).json({
-      success: false,
-      error: 'MCP endpoint not found',
-      deploymentMode: deploymentConfig.mode,
-      timestamp: new Date()
-    });
-  }
+  res.status(404).json({
+    success: false,
+    error: 'MCP endpoint not found',
+    subproject: SUBPROJECT,
+    deploymentMode: DEPLOYMENT_MODE,
+    availableEndpoints: IS_SUBPROJECT_3 ? [
+      'GET /api/mcp/status',
+      'GET /api/mcp/info',
+      'GET /api/mcp/health',
+      'GET /api/mcp/servers',
+      'GET /api/mcp/tools',
+      'GET /api/mcp/prompts',
+      'POST /api/mcp/tools/call'
+    ] : [
+      'GET /api/mcp/legacy/servers',
+      'POST /api/mcp/legacy/invoke',
+      'GET /api/mcp/info',
+      'GET /api/mcp/health'
+    ],
+    timestamp: new Date()
+  });
 });
+
+// Initialize on module load
+initializeMCPServiceReference();
+
+// Export function to set MCP service reference
+export const setMCPServiceReference = (service: MCPService) => {
+  mcpService = service;
+  logger.info('✅ [MCP API] Modern MCP service reference set');
+};
 
 export { router as mcpRouter };
