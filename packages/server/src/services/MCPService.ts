@@ -131,15 +131,15 @@ export class MCPService {
   private async startServer(config: MCPServerConfig): Promise<void> {
     logger.info(`🚀 [MCP] Starting server: ${config.name}`);
 
-    // Prepare environment
-    const env = {
+    // Prepare environment with explicit typing
+    const env: Record<string, string> = {
       ...process.env,
       ...config.env,
       MCP_TRANSPORT: 'stdio'
     };
 
-    // Create stdio transport
-    const transport = new StdioClientTransport({
+    // Create stdio transport with explicit typing
+    const transport: StdioClientTransport = new StdioClientTransport({
       command: config.command,
       args: config.args,
       env
@@ -155,15 +155,15 @@ export class MCPService {
       }
     });
 
-    // Get the underlying process for management
-    const process = (transport as any)._process;
+    // Get the underlying process for management with explicit typing
+    const childProcess: ChildProcess = (transport as any)._process;
 
     // Create server instance
     const serverInstance: MCPServerInstance = {
       config,
       client,
       transport,
-      process,
+      process: childProcess,
       status: 'starting',
       startTime: new Date()
     };
@@ -178,14 +178,14 @@ export class MCPService {
       serverInstance.status = 'running';
       logger.info(`✅ [MCP] Server ${config.name} started successfully`);
 
-      // Setup process event handlers
-      if (process) {
-        process.on('exit', (code) => {
+      // Setup process event handlers with explicit parameter typing
+      if (childProcess) {
+        childProcess.on('exit', (code: number | null) => {
           logger.info(`📤 [MCP] Server ${config.name} exited with code ${code}`);
           serverInstance.status = 'stopped';
         });
 
-        process.on('error', (error) => {
+        childProcess.on('error', (error: Error) => {
           logger.error(`❌ [MCP] Server ${config.name} process error:`, error);
           serverInstance.status = 'error';
         });
