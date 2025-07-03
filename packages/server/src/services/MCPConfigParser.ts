@@ -38,15 +38,19 @@ interface RegistryResponseData {
 }
 
 /**
- * MCP Configuration Parser for HTTP-only multihost deployment
+ * Legacy HTTP-based MCP Configuration Parser - DEPRECATED FOR SUBPROJECT 3
  * 
- * This implementation enforces self-reliant container-based architecture:
- * 1. Configuration extraction from mcp-config.json files
- * 2. HTTP-only endpoint validation (no stdio support)
- * 3. Well-known path resolution (.well-known/mcp)
- * 4. Registry integration for server discovery
- * 5. Container-based server endpoints only
- * 6. Rejection of any external MCP server configurations
+ * ⚠️  WARNING: This HTTP transport implementation is NOT compatible with subproject 3
+ * ⚠️  Subproject 3 MUST use MCPConfigParserStdio with npx subprocess execution
+ * 
+ * This legacy implementation is maintained only for subprojects 1 & 2 compatibility.
+ * The new architecture requires:
+ * 1. No HTTP/SSE transport or container-based servers
+ * 2. Use npx to launch MCP servers as child processes  
+ * 3. Stdio transport only
+ * 4. Self-contained execution within main container
+ * 
+ * For subproject 3, use MCPConfigParserStdio instead.
  */
 export class MCPConfigParser {
   private static instance: MCPConfigParser;
@@ -54,10 +58,33 @@ export class MCPConfigParser {
   private discoveryConfig: MCPDiscoveryConfig | null = null;
   private lastParsed: Date | null = null;
 
-  // Deployment mode - enforced multihost for subproject 3
+  // Deployment mode validation
+  private readonly currentSubproject: string;
+  private readonly isSubproject3: boolean;
+
+  // Configuration
   private readonly isMultiHost: boolean = true;
 
   private constructor() {
+    // Detect current subproject from environment
+    this.currentSubproject = process.env.SUBPROJECT || '1';
+    this.isSubproject3 = this.currentSubproject === '3' || 
+                        process.env.DEPLOYMENT_MODE === 'docker-multi-host';
+    
+    // Block initialization for subproject 3
+    if (this.isSubproject3) {
+      logger.error('❌ [MCP Config] FATAL: HTTP MCP ConfigParser is DEPRECATED and NOT SUPPORTED in subproject 3');
+      logger.error('❌ [MCP Config] Subproject 3 MUST use MCPConfigParserStdio with npx subprocess execution');
+      logger.error('❌ [MCP Config] The new architecture uses stdio transport via child processes, not HTTP');
+      throw new Error(
+        'HTTP MCP ConfigParser is not supported in subproject 3. Use MCPConfigParserStdio instead. ' +
+        'Subproject 3 requires npx subprocess execution with stdio transport only.'
+      );
+    }
+
+    logger.warn('⚠️ [MCP Config] Using LEGACY HTTP transport configuration for subproject ' + this.currentSubproject);
+    logger.warn('⚠️ [MCP Config] Consider migrating to stdio transport (MCPConfigParserStdio) for better performance');
+    
     // Enforce multihost deployment mode for subproject 3
     this.isMultiHost = true;
     
@@ -91,8 +118,17 @@ export class MCPConfigParser {
   /**
    * Parse MCP configuration files from standard locations
    * Enforces HTTP-only configuration for multihost deployment
+   * BLOCKED for subproject 3
    */
   async parseConfiguration(): Promise<MCPDiscoveryConfig> {
+    if (this.isSubproject3) {
+      throw new Error(
+        'HTTP MCP ConfigParser cannot parse configuration in subproject 3. ' +
+        'Use MCPConfigParserStdio.getInstance().parseConfiguration() instead. ' +
+        'Subproject 3 requires npx subprocess execution with stdio transport.'
+      );
+    }
+
     logger.info('🔍 [MCP Config] Parsing MCP configuration files (HTTP-only mode)...');
 
     let foundConfig: MCPDiscoveryConfig | null = null;
@@ -224,7 +260,7 @@ export class MCPConfigParser {
       const url = new URL(endpoint.url);
       // Check for Docker service names or container hostnames
       // Fixed: Use Boolean() to convert regex match result to boolean
-      const isDockerNetworkIP = Boolean(url.hostname.match(/^172\.\d+\.\d+\.\d+$/));
+      const isDockerNetworkIP = Boolean(url.hostname.match(/^172\.\\d+\.\\d+\.\\d+$/));
       
       return url.hostname.includes('mcp-') || 
              url.hostname === 'backend' ||
@@ -297,8 +333,13 @@ export class MCPConfigParser {
 
   /**
    * Create default configuration for multihost deployment
+   * BLOCKED for subproject 3
    */
   private createDefaultConfig(): MCPDiscoveryConfig {
+    if (this.isSubproject3) {
+      throw new Error('Use MCPConfigParserStdio.getInstance().createDefaultConfig() for subproject 3');
+    }
+
     // Default configuration points to container-based MCP servers
     return {
       mcpServers: {
@@ -353,8 +394,13 @@ export class MCPConfigParser {
   /**
    * Enhance configuration with discovery mechanisms
    * Only accepts HTTP endpoints in multihost mode
+   * BLOCKED for subproject 3
    */
   private async enhanceWithDiscovery(config: MCPDiscoveryConfig): Promise<MCPDiscoveryConfig> {
+    if (this.isSubproject3) {
+      throw new Error('Use MCPConfigParserStdio.getInstance().enhanceWithDiscovery() for subproject 3');
+    }
+
     logger.info('🔍 [MCP Config] Enhancing configuration with HTTP-only discovery...');
 
     // Discover from well-known paths
@@ -370,6 +416,10 @@ export class MCPConfigParser {
    * Discover MCP servers from well-known paths
    */
   private async discoverFromWellKnownPaths(config: MCPDiscoveryConfig): Promise<void> {
+    if (this.isSubproject3) {
+      throw new Error('Use MCPConfigParserStdio for subproject 3');
+    }
+
     logger.debug('🔍 [MCP Config] Checking well-known paths for HTTP MCP servers...');
 
     const baseUrls = Object.values(config.mcpServers)
@@ -412,6 +462,10 @@ export class MCPConfigParser {
    * Discover MCP servers from registries
    */
   private async discoverFromRegistries(config: MCPDiscoveryConfig): Promise<void> {
+    if (this.isSubproject3) {
+      throw new Error('Use MCPConfigParserStdio for subproject 3');
+    }
+
     logger.debug('🔍 [MCP Config] Checking registries for HTTP MCP servers...');
 
     for (const registryUrl of config.registryUrls || []) {
@@ -459,6 +513,10 @@ export class MCPConfigParser {
    * Fetch servers from discovery endpoint
    */
   private async fetchDiscoveryEndpoint(url: string): Promise<Array<{ name?: string; url: string }>> {
+    if (this.isSubproject3) {
+      throw new Error('Use MCPConfigParserStdio for subproject 3');
+    }
+
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000);
 
@@ -492,6 +550,10 @@ export class MCPConfigParser {
    * Fetch servers from registry
    */
   private async fetchRegistryServers(registryUrl: string): Promise<Array<{ name?: string; url: string }>> {
+    if (this.isSubproject3) {
+      throw new Error('Use MCPConfigParserStdio for subproject 3');
+    }
+
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 15000);
 
@@ -537,8 +599,17 @@ export class MCPConfigParser {
 
   /**
    * Convert discovery config to MCPServer instances (HTTP-only)
+   * BLOCKED for subproject 3
    */
   async createServersFromConfig(): Promise<MCPServer[]> {
+    if (this.isSubproject3) {
+      throw new Error(
+        'HTTP MCP ConfigParser cannot create servers in subproject 3. ' +
+        'Use MCPConfigParserStdio.getInstance().createServersFromConfig() instead. ' +
+        'Subproject 3 requires npx subprocess execution with stdio transport.'
+      );
+    }
+
     if (!this.discoveryConfig) {
       await this.parseConfiguration();
     }
@@ -597,23 +668,35 @@ export class MCPConfigParser {
 
   /**
    * Get current discovery configuration
+   * BLOCKED for subproject 3
    */
   getDiscoveryConfig(): MCPDiscoveryConfig | null {
+    if (this.isSubproject3) {
+      throw new Error('Use MCPConfigParserStdio.getInstance().getDiscoveryConfig() for subproject 3');
+    }
     return this.discoveryConfig;
   }
 
   /**
    * Check if configuration needs refresh
+   * BLOCKED for subproject 3
    */
   needsRefresh(maxAge: number = 3600000): boolean { // 1 hour default
+    if (this.isSubproject3) {
+      throw new Error('Use MCPConfigParserStdio.getInstance().needsRefresh() for subproject 3');
+    }
     if (!this.lastParsed) return true;
     return Date.now() - this.lastParsed.getTime() > maxAge;
   }
 
   /**
    * Refresh configuration if needed
+   * BLOCKED for subproject 3
    */
   async refreshIfNeeded(maxAge?: number): Promise<MCPDiscoveryConfig> {
+    if (this.isSubproject3) {
+      throw new Error('Use MCPConfigParserStdio.getInstance().refreshIfNeeded() for subproject 3');
+    }
     if (this.needsRefresh(maxAge)) {
       logger.info('🔄 [MCP Config] Configuration refresh needed, re-parsing...');
       return await this.parseConfiguration();
@@ -623,8 +706,13 @@ export class MCPConfigParser {
 
   /**
    * Validate endpoint URL for basic reachability
+   * BLOCKED for subproject 3
    */
   async validateEndpoint(endpoint: MCPConfigEndpoint): Promise<boolean> {
+    if (this.isSubproject3) {
+      throw new Error('Use MCPConfigParserStdio.getInstance().validateEndpoint() for subproject 3');
+    }
+
     try {
       // Only validate HTTP endpoints
       if (!this.isValidHttpEndpoint(endpoint)) {
@@ -653,6 +741,7 @@ export class MCPConfigParser {
 
   /**
    * Get statistics about parsed configuration
+   * BLOCKED for subproject 3
    */
   getConfigurationStats(): {
     totalEndpoints: number;
@@ -664,6 +753,10 @@ export class MCPConfigParser {
     httpOnlyMode: boolean;
     containerEndpoints: number;
   } {
+    if (this.isSubproject3) {
+      throw new Error('Use MCPConfigParserStdio.getInstance().getConfigurationStats() for subproject 3');
+    }
+
     if (!this.discoveryConfig) {
       return {
         totalEndpoints: 0,
@@ -696,13 +789,18 @@ export class MCPConfigParser {
 
   /**
    * Check if running in multihost mode (always true for subproject 3)
+   * BLOCKED for subproject 3
    */
   isMultihostMode(): boolean {
+    if (this.isSubproject3) {
+      throw new Error('Use MCPConfigParserStdio.getInstance().isStdioMode() for subproject 3');
+    }
     return true;
   }
 
   /**
    * Get validation results for HTTP-only enforcement
+   * BLOCKED for subproject 3
    */
   getHttpOnlyValidationResults(): {
     acceptedEndpoints: string[];
@@ -710,6 +808,10 @@ export class MCPConfigParser {
     containerEndpoints: string[];
     externalEndpoints: string[];
   } {
+    if (this.isSubproject3) {
+      throw new Error('Use MCPConfigParserStdio.getInstance().getStdioValidationResults() for subproject 3');
+    }
+
     if (!this.discoveryConfig) {
       return {
         acceptedEndpoints: [],
