@@ -68,16 +68,40 @@ RUN npm install --production --workspace=packages/shared --workspace=packages/se
     # Clear npm cache to reduce image size
     npm cache clean --force
 
+# 🔧 CRITICAL: Configure npm for reliable package resolution and clean cache
+# This fixes the zod dependency issues and TAR_ENTRY_ERROR problems
+RUN echo "=== NPM Cache Cleanup & Configuration for MCP Servers ===" && \
+    # Clear all npm caches completely
+    npm cache clean --force && \
+    rm -rf ~/.npm/_npx && \
+    rm -rf /root/.npm/_npx && \
+    rm -rf /tmp/npm-* && \
+    # Set npm configuration for better reliability in Docker
+    npm config set fetch-retry-mintimeout 20000 && \
+    npm config set fetch-retry-maxtimeout 120000 && \
+    npm config set fetch-retries 5 && \
+    npm config set cache-max 0 && \
+    npm config set prefer-offline false && \
+    npm config set audit false && \
+    npm config set fund false && \
+    # Ensure proper npm permissions
+    mkdir -p /root/.npm && \
+    chmod -R 755 /root/.npm && \
+    # Verify npm and npx are working
+    npm --version && \
+    npx --version && \
+    echo "✓ NPM configuration optimized for reliable MCP server execution"
+
 # Ensure npx is properly configured for on-demand package execution
 RUN echo "=== MCP Configuration for Stdio Transport ===" && \
     echo "MCP servers will be executed using 'npx -y' for on-demand package resolution" && \
     echo "Supported MCP servers via npx:" && \
+    echo "- Memory: npx -y @modelcontextprotocol/server-memory" && \
+    echo "- Filesystem: npx -y @modelcontextprotocol/server-filesystem" && \
     echo "- GitHub: npx -y @modelcontextprotocol/server-github" && \
-    echo "- NASA: npx -y @programcomputer/nasa-mcp-server" && \
-    echo "- Met Museum: npx -y metmuseum-mcp" && \
-    echo "- Context7: npx -y @upstash/context7-mcp" && \
-    echo "- AppleScript: npx -y @peakmojo/applescript-mcp" && \
     echo "- Brave Search: npx -y @modelcontextprotocol/server-brave-search" && \
+    echo "- Postgres: npx -y @modelcontextprotocol/server-postgres" && \
+    echo "- Slack: npx -y @modelcontextprotocol/server-slack" && \
     echo "- And any other MCP server packages available via npm" && \
     echo "✓ MCP stdio transport configured for on-demand execution"
 
@@ -90,6 +114,20 @@ COPY --from=builder /tmp/build_info /app/build_info.txt
 
 # Create config directory
 RUN mkdir -p /config/.olympian-ai-lite
+
+# 🔧 CRITICAL: Final npm cache verification and runtime optimization
+RUN echo "=== Final NPM & MCP Runtime Verification ===" && \
+    # Verify npm cache is clean
+    npm cache verify && \
+    # Pre-warm npx with a simple test (but don't install anything)
+    echo "Testing npx functionality..." && \
+    npx --help > /dev/null 2>&1 && \
+    # Set runtime npm environment variables for optimal performance
+    echo "export NPM_CONFIG_CACHE=/tmp/.npm" >> /etc/profile && \
+    echo "export NPM_CONFIG_UPDATE_NOTIFIER=false" >> /etc/profile && \
+    echo "export NPM_CONFIG_FUND=false" >> /etc/profile && \
+    echo "export NPM_CONFIG_AUDIT=false" >> /etc/profile && \
+    echo "✓ NPM runtime environment optimized for MCP servers"
 
 # Verify deployment with enhanced checks
 RUN echo "=== Final Backend Verification for Subproject 3 ===" && \
@@ -105,6 +143,9 @@ RUN echo "=== Final Backend Verification for Subproject 3 ===" && \
     echo "NPX binary location and version:" && \
     which npx && \
     npx --version && \
+    echo "" && \
+    echo "NPM cache status:" && \
+    npm cache verify && \
     echo "" && \
     echo "Build info:" && \
     cat /app/build_info.txt && \
@@ -132,6 +173,14 @@ ENV NODE_ENV=production \
     # Multi-host defaults
     MONGODB_URI=mongodb://mongodb:27017/olympian_ai_lite?replicaSet=rs0 \
     OLLAMA_HOST=http://ollama-host:11434 \
+    # 🔧 NPM Runtime Configuration for Clean MCP Server Execution
+    NPM_CONFIG_CACHE=/tmp/.npm \
+    NPM_CONFIG_UPDATE_NOTIFIER=false \
+    NPM_CONFIG_FUND=false \
+    NPM_CONFIG_AUDIT=false \
+    NPM_CONFIG_FETCH_RETRIES=5 \
+    NPM_CONFIG_FETCH_RETRY_MINTIMEOUT=20000 \
+    NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT=120000 \
     # Memory settings for stdio MCP servers via npx subprocesses
     NODE_OPTIONS="--max-old-space-size=4096"
 
