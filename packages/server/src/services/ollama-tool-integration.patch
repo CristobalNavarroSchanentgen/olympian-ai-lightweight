@@ -1,0 +1,201 @@
+--- a/packages/server/src/services/OllamaStreamliner.ts
++++ b/packages/server/src/services/OllamaStreamliner.ts
+@@ -4,6 +4,7 @@ import { AppError } from '../middleware/errorHandler';
+ import { getDeploymentConfig, OllamaLoadBalancer } from '../config/deployment';
+ import { ChatMemoryService, MemoryConfig } from './ChatMemoryService';
+ import { customModelCapabilityService } from './CustomModelCapabilityService';
++import { ToolIntegrationService } from './ToolIntegrationService';
+ 
+ interface OllamaModelInfo {
+   modelfile?: string;
+@@ -53,10 +54,12 @@ interface OllamaChatResponse {
+     tool_calls?: Array<{
+       function: {
+         name: string;
+-        arguments: Record<string, any>;
++        arguments: string | Record<string, any>;
+       };
+     }>;\
+   };
++  done?: boolean;
++  done_reason?: string;
+   error?: string;
+ }
+ 
+@@ -72,6 +75,7 @@ export class OllamaStreamliner {
+   private loadBalancer?: OllamaLoadBalancer;
+   private memoryService: ChatMemoryService;
+   private capabilityDetectionInProgress: Set<string> = new Set();
++  private toolIntegrationService: ToolIntegrationService;
+ 
+   constructor() {
+     // Initialize load balancer if multiple hosts are configured
+@@ -86,6 +90,9 @@ export class OllamaStreamliner {
+     // Initialize memory service
+     this.memoryService = ChatMemoryService.getInstance();
+     
++    // Initialize tool integration service
++    this.toolIntegrationService = ToolIntegrationService.getInstance();
++    
+     // Log Ollama configuration for debugging
+     logger.info(`Ollama configuration for Multi-host deployment: ${JSON.stringify({
+       host: this.deploymentConfig.ollama.host,
+@@ -96,6 +103,15 @@ export class OllamaStreamliner {
+     })}`);\
+   }
+ 
++  /**
++   * Set MCP service reference for tool integration
++   */
++  setMCPService(mcpService: any): void {
++    if (mcpService) {
++      this.toolIntegrationService.initialize(mcpService);
++      logger.info('✅ [OllamaStreamliner] MCP service connected for tool integration');
++    }
++  }
++
+   private getOllamaHost(clientIp?: string): string {
+     if (this.loadBalancer && this.deploymentConfig.ollama.hosts.length > 0) {
+       return this.loadBalancer.getNextHost(clientIp);
+@@ -1343,8 +1359,17 @@ export class OllamaStreamliner {
+       throw error;
+     }
+   }
+-
+-  // Standard text handling
++
++  // Standard text handling with tool injection for subproject 3
++  const processedForTools = await this.toolIntegrationService.injectToolsIntoRequest(
++    this.formatTextRequest(request, messages),
++    capabilities.tools
++  );
++  
++  // Check if we need to log tool injection
++  if (capabilities.tools && (processedForTools as any).tools) {
++    logger.info(`🔧 [OllamaStreamliner] Injected ${(processedForTools as any).tools.length} tools for model ${request.model}`);
++  }
++  
+   return this.formatTextRequest(request, messages);
+ }
+ 
+@@ -1416,7 +1441,22 @@ export class OllamaStreamliner {
+     ];
+ 
+     return {
+-      model: request.model,
+-      messages,
+-      stream: true,
+-    };
++    model: request.model,
++    messages,
++    stream: true,
++  };
++}
++
++  // ENHANCED: streamChat method with tool call handling
++  async streamChat(
++    processedRequest: ProcessedRequest,
++    onToken: (token: string) => void,
++    onComplete?: (result: StreamResult) => void,
++    clientIp?: string
++  ): Promise<void> {
++    const ollamaHost = this.getOllamaHost(clientIp);
++    
++    // Check if this model has tool capability
++    const capabilities = await this.detectCapabilities(processedRequest.model);
++    const hasToolCapability = capabilities.tools;
++    
++    logger.info(`Starting stream chat with model: ${processedRequest.model} (Multi-host)${hasToolCapability ? ' [TOOLS ENABLED]' : ''}`);
+@@ -1489,8 +1529,11 @@ export class OllamaStreamliner {
+       const decoder = new TextDecoder();
+       let buffer = '';
+       let tokenCount = 0;
+       let incompleteJsonBuffer = ''; // Buffer for handling incomplete JSON objects
++      let toolCallsDetected = false;
++      let accumulatedToolCalls: any[] = [];
++      let awaitingToolResponse = false;
+ 
+       try {
+         logger.info('Starting to stream response tokens...');
+@@ -1527,6 +1570,30 @@ export class OllamaStreamliner {
+                 throw new Error(`Ollama stream error: ${json.error}`);
+               }
+               
++              // ENHANCED: Check for tool calls in the response
++              if (json.message?.tool_calls && json.message.tool_calls.length > 0) {
++                toolCallsDetected = true;
++                accumulatedToolCalls = json.message.tool_calls;
++                logger.info(`🔧 [OllamaStreamliner] Detected ${json.message.tool_calls.length} tool calls in response`);
++                
++                // Parse and log tool calls
++                const parsedCalls = this.toolIntegrationService.parseToolCalls({ message: json.message });
++                if (parsedCalls.length > 0) {
++                  logger.debug(`🔧 [OllamaStreamliner] Parsed tool calls:`, parsedCalls.map(tc => ({
++                    id: tc.id,
++                    function: tc.function.name
++                  })));
++                  awaitingToolResponse = true;
++                }
++              }
++              
++              // Skip content streaming if we're waiting for tool execution
++              if (awaitingToolResponse && !json.done) {
++                continue;
++              }
++              
+               // Process content if available
+               if (json.message?.content) {
+                 const token = json.message.content;
+@@ -1548,8 +1615,51 @@ export class OllamaStreamliner {
+               }
+               
+               // Check if stream is complete
+               if (json.done) {
+-                logger.info(`Stream marked as done. Total tokens: ${tokenCount}`);\
++                logger.info(`Stream marked as done. Total tokens: ${tokenCount}${toolCallsDetected ? ' (with tool calls)' : ''}`);
+                 if (json.done_reason) {
+                   logger.debug(`Stream done reason: ${json.done_reason}`);
+                 }
++                
++                // ENHANCED: Handle tool execution if tool calls were detected
++                if (toolCallsDetected && accumulatedToolCalls.length > 0 && hasToolCapability) {
++                  logger.info(`🔨 [OllamaStreamliner] Executing ${accumulatedToolCalls.length} tool calls...`);
++                  
++                  try {
++                    // Parse tool calls
++                    const parsedCalls = this.toolIntegrationService.parseToolCalls({ 
++                      message: { tool_calls: accumulatedToolCalls } 
++                    });
++                    
++                    // Execute tool calls
++                    const toolResults = await this.toolIntegrationService.executeToolCalls(parsedCalls);
++                    logger.info(`✅ [OllamaStreamliner] Tool execution complete, ${toolResults.length} results`);
++                    
++                    // Continue conversation with tool results
++                    if (toolResults.length > 0) {
++                      logger.info(`🔄 [OllamaStreamliner] Continuing conversation with tool results...`);
++                      
++                      // Format tool results as messages
++                      const toolMessages = this.toolIntegrationService.formatToolResultsAsMessages(toolResults);
++                      
++                      // Create a new request with tool results
++                      const continuationRequest = {
++                        ...processedRequest,
++                        messages: [
++                          ...processedRequest.messages,
++                          { role: 'assistant', content: fullResponseContent || '', tool_calls: accumulatedToolCalls },
++                          ...toolMessages
++                        ]
++                      };
++                      
++                      // Recursively call streamChat to continue the conversation
++                      await this.streamChat(continuationRequest, onToken, onComplete, clientIp);
++                      return; // Exit this call as we've handed off to the recursive call
++                    }
++                  } catch (toolError) {
++                    logger.error('❌ [OllamaStreamliner] Tool execution failed:', toolError);
++                    // Continue with normal completion even if tools fail
++                  }
++                }
+               }
+             } catch (parseError) {
