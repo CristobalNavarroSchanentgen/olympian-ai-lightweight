@@ -84,11 +84,8 @@ export class MCPToolCache extends EventEmitter {
     logger.debug(`🔍 [MCP Cache] Discovering tools for server ${serverId}...`);
 
     try {
-      // Request tools from server with proper schema
-      const toolsResponse = await client.request(
-        { method: 'tools/list' },
-        toolListResponseSchema
-      );
+      // Request tools from server using client method directly
+      const toolsResponse = await client.listTools();
 
       const tools = toolsResponse.tools || [];
       const mcpTools: MCPTool[] = tools.map((tool: any) => ({
