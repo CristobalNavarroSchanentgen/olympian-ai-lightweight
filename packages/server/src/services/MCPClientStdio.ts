@@ -954,27 +954,36 @@ export class MCPClientStdio extends EventEmitter {
   }
 
   /**
-   * Perform health checks on all servers
+   * Perform health checks on all servers - Fixed to use forEach instead of for...of
    */
   private async performHealthChecks(): Promise<void> {
-    for (const [serverId, server] of this.servers) {
+    const healthCheckPromises: Promise<void>[] = [];
+    
+    this.servers.forEach((server, serverId) => {
       if (server.status === 'running') {
-        try {
-          // Try to list tools as a health check
-          await this.listTools(serverId);
-        } catch (error) {
-          logger.warn(`⚠️ [MCP Client] Health check failed for ${server.name}:`, error);
-          // Consider reconnecting if health check fails
-          if (server.autoReconnect !== false) {
-            try {
-              await this.reconnectServer(serverId);
-            } catch (reconnectError) {
-              logger.error(`❌ [MCP Client] Failed to reconnect ${server.name}:`, reconnectError);
+        const healthCheckPromise = (async () => {
+          try {
+            // Try to list tools as a health check
+            await this.listTools(serverId);
+          } catch (error) {
+            logger.warn(`⚠️ [MCP Client] Health check failed for ${server.name}:`, error);
+            // Consider reconnecting if health check fails
+            if (server.autoReconnect !== false) {
+              try {
+                await this.reconnectServer(serverId);
+              } catch (reconnectError) {
+                logger.error(`❌ [MCP Client] Failed to reconnect ${server.name}:`, reconnectError);
+              }
             }
           }
-        }
+        })();
+        
+        healthCheckPromises.push(healthCheckPromise);
       }
-    }
+    });
+
+    // Wait for all health checks to complete
+    await Promise.allSettled(healthCheckPromises);
   }
 
   /**
@@ -999,11 +1008,11 @@ export class MCPClientStdio extends EventEmitter {
   }
 
   /**
-   * Collect metrics from various sources
+   * Collect metrics from various sources - Fixed to use forEach instead of for...of
    */
   private collectMetrics(): void {
     // Update server metrics
-    for (const [serverId, server] of this.servers) {
+    this.servers.forEach((server, serverId) => {
       if (!this.metrics.serverMetrics[serverId]) {
         this.metrics.serverMetrics[serverId] = {
           requests: 0,
@@ -1018,7 +1027,7 @@ export class MCPClientStdio extends EventEmitter {
         this.metrics.serverMetrics[serverId].requests = session.requestCount;
         this.metrics.serverMetrics[serverId].uptime = Date.now() - session.startTime.getTime();
       }
-    }
+    });
   }
 
   /**
@@ -1062,7 +1071,7 @@ export class MCPClientStdio extends EventEmitter {
   }
 
   /**
-   * Cleanup MCP client service
+   * Cleanup MCP client service - Fixed to avoid problematic iterations
    */
   async cleanup(): Promise<void> {
     logger.info('🧹 [MCP Client] Cleaning up stdio MCP client service...');
@@ -1072,8 +1081,9 @@ export class MCPClientStdio extends EventEmitter {
       await this.toolCache.stop();
       await this.healthChecker.stop();
 
-      // Stop all servers and close transports
-      for (const serverId of this.servers.keys()) {
+      // Stop all servers and close transports - use Array.from to avoid iterator issues
+      const serverIds = Array.from(this.servers.keys());
+      for (const serverId of serverIds) {
         try {
           await this.stopServer(serverId);
         } catch (error) {
@@ -1081,8 +1091,9 @@ export class MCPClientStdio extends EventEmitter {
         }
       }
 
-      // Close all transports
-      for (const [serverId, transport] of this.transports) {
+      // Close all transports - use Array.from to avoid iterator issues
+      const transportEntries = Array.from(this.transports.entries());
+      for (const [serverId, transport] of transportEntries) {
         try {
           await transport.close();
         } catch (error) {
