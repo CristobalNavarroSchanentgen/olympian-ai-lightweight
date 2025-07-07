@@ -1,4 +1,4 @@
-// Enhanced MCP Types following best practices from guidelines
+// Enhanced MCP Types following latest SDK patterns
 
 export interface MCPServer {
   id: string;
@@ -27,21 +27,27 @@ export interface MCPServer {
   timeout?: number; // default 30000ms
   priority?: number; // for fallback ordering, default 0
   optional?: boolean; // whether the server is optional (won't fail if can't connect)
+  autoReconnect?: boolean; // whether to auto-reconnect on disconnect
 }
 
 export interface MCPServerCapabilities {
-  tools?: boolean;
-  prompts?: boolean;
-  resources?: boolean;
-  completion?: boolean;
-  roots?: boolean;
-  sampling?: boolean;
+  tools?: boolean | {};
+  prompts?: boolean | {};
+  resources?: boolean | {};
+  completion?: boolean | {};
+  roots?: boolean | {};
+  sampling?: boolean | {};
 }
 
 export interface MCPTool {
   name: string;
   description: string;
-  inputSchema: Record<string, unknown>;
+  inputSchema: {
+    type?: 'object';
+    properties?: Record<string, any>;
+    required?: string[];
+    additionalProperties?: boolean;
+  } | Record<string, unknown>;
   serverId: string;
   overrides?: ToolOverride;
   
@@ -55,6 +61,25 @@ export interface ToolOverride {
   description?: string;
   parameterDescriptions?: Record<string, string>;
   examples?: string[];
+}
+
+export interface MCPPrompt {
+  name: string;
+  description?: string;
+  arguments?: Array<{
+    name: string;
+    description?: string;
+    required?: boolean;
+  }>;
+  serverId: string;
+}
+
+export interface MCPResource {
+  uri: string;
+  name?: string;
+  description?: string;
+  mimeType?: string;
+  serverId: string;
 }
 
 export interface MCPConfig {
@@ -78,6 +103,10 @@ export interface MCPInvokeRequest {
   
   // Metadata field support (following MCP best practices)
   metadata?: Record<string, unknown>;
+  
+  // Fallback configuration
+  fallbackStrategy?: 'none' | 'any' | 'priority';
+  preferredServerIds?: string[];
 }
 
 export interface MCPInvokeResponse {
@@ -92,6 +121,35 @@ export interface MCPInvokeResponse {
   cachedResult?: boolean;
   retryAttempt?: number;
 }
+
+// Content types for MCP responses
+export interface MCPTextContent {
+  type: 'text';
+  text: string;
+}
+
+export interface MCPImageContent {
+  type: 'image';
+  data: string;
+  mimeType: string;
+}
+
+export interface MCPResourceContent {
+  type: 'resource';
+  uri: string;
+  text?: string;
+  mimeType?: string;
+}
+
+export interface MCPResourceLinkContent {
+  type: 'resource_link';
+  uri: string;
+  name?: string;
+  mimeType?: string;
+  description?: string;
+}
+
+export type MCPContent = MCPTextContent | MCPImageContent | MCPResourceContent | MCPResourceLinkContent;
 
 // Health checking interfaces
 export interface MCPHealthCheck {
@@ -292,3 +350,27 @@ export interface MCPEvent {
 }
 
 export type MCPEventHandler = (event: MCPEvent) => void | Promise<void>;
+
+// Completion types
+export interface MCPCompletionRequest {
+  ref: {
+    type: 'ref/prompt' | 'ref/resource';
+    name?: string;
+    uri?: string;
+  };
+  argument: {
+    name: string;
+    value: string;
+  };
+  context?: {
+    arguments?: Record<string, any>;
+  };
+}
+
+export interface MCPCompletionResponse {
+  completion: {
+    values: string[];
+    total?: number;
+    hasMore?: boolean;
+  };
+}
