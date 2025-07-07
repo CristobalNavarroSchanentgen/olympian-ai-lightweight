@@ -726,7 +726,7 @@ export class MCPClientStdio extends EventEmitter {
    * Get completions for arguments
    */
   async getCompletions(serverId: string, params: {
-    ref: { type: 'ref/prompt' | 'ref/resource'; name?: string; uri?: string };
+    ref: { type: 'ref/prompt'; name: string } | { type: 'ref/resource'; uri: string };
     argument: { name: string; value: string };
     context?: { arguments?: Record<string, any> };
   }): Promise<any> {
@@ -736,7 +736,14 @@ export class MCPClientStdio extends EventEmitter {
         throw new Error(`Server ${serverId} not connected`);
       }
 
-      const response = await client.complete(params);
+      // Create properly typed completion parameters
+      const completionParams = {
+        ref: params.ref,
+        argument: params.argument,
+        _meta: params.context
+      };
+
+      const response = await client.complete(completionParams);
 
       return response;
     } catch (error) {
