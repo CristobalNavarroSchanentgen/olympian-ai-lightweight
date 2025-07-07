@@ -88,6 +88,44 @@ MongoServerError: Authentication failed
   ALLOWED_ORIGINS=http://your-domain:8080,http://localhost:8080
   ```
 
+### 4. Model Loading Fails (API Response Format Issue)
+
+**Symptoms:**
+```
+❌ [API] getModels - API returned success: false
+❌ [API] getModels error: 
+Object { message: "API returned success: false", error: Error }
+```
+
+**Cause:**
+- API response format mismatch between backend and frontend
+- Backend returning `{ models, deploymentMode, modelCapabilityMode }`
+- Frontend expecting `{ success: boolean; data: string[]; timestamp: string }`
+
+**Solution:**
+This has been fixed in the latest version. The `/api/models/list` endpoint now returns the correct format:
+```json
+{
+  "success": true,
+  "data": ["model1", "model2", ...],
+  "timestamp": "2025-07-07T07:11:17Z",
+  "_metadata": {
+    "deploymentMode": "docker-multi-host",
+    "modelCapabilityMode": "automatic"
+  }
+}
+```
+
+**Testing the Fix:**
+```bash
+# Run the test script
+chmod +x scripts/test-model-loading-fix.sh
+./scripts/test-model-loading-fix.sh
+
+# Or manually test:
+curl http://localhost:4000/api/models/list | jq '.'
+```
+
 ## Diagnostic Commands
 
 ### Check Service Status
@@ -208,8 +246,10 @@ If issues persist:
    - Correct Ollama URL format (protocol://host:port)
    - Network connectivity between containers and external services
    - Proper environment variable substitution in docker-compose
+   - API response format compatibility (use test script)
 
 3. Create an issue on GitHub with:
    - Error messages from logs
    - Sanitized configuration (remove secrets)
    - Output of diagnostic commands
+   - Results from test-model-loading-fix.sh script
