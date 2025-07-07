@@ -267,20 +267,20 @@ export class MCPClientStdio extends EventEmitter {
       // Prepare environment with server-specific and global env vars
       const processEnv: Record<string, string> = {};
       
-      // Copy environment safely
-      for (const [key, value] of Object.entries(process.env)) {
+      // Copy environment safely - Fixed: Use forEach instead of for...of
+      Object.entries(process.env).forEach(([key, value]) => {
         if (value !== undefined) {
           processEnv[key] = value;
         }
-      }
+      });
       
-      // Add server-specific environment
+      // Add server-specific environment - Fixed: Use forEach instead of for...of
       if (server.env) {
-        for (const [key, value] of Object.entries(server.env)) {
+        Object.entries(server.env).forEach(([key, value]) => {
           if (value !== undefined) {
             processEnv[key] = value;
           }
-        }
+        });
       }
       
       // Set transport mode
@@ -753,7 +753,7 @@ export class MCPClientStdio extends EventEmitter {
   }
 
   /**
-   * Validate tool arguments
+   * Validate tool arguments - Fixed: Use forEach instead of for...of with proper array handling
    */
   private async validateArguments(request: MCPInvokeRequest): Promise<MCPArgumentValidation> {
     try {
@@ -783,12 +783,14 @@ export class MCPClientStdio extends EventEmitter {
           if (schema.properties) {
             const errors: string[] = [];
             
-            // Check required fields
+            // Check required fields - Fixed: Ensure required is an array before iterating
             const required = schema.required || [];
-            for (const field of required) {
-              if (!request.arguments || !(field in request.arguments)) {
-                errors.push(`Missing required field: ${field}`);
-              }
+            if (Array.isArray(required)) {
+              required.forEach((field: string) => {
+                if (!request.arguments || !(field in request.arguments)) {
+                  errors.push(`Missing required field: ${field}`);
+                }
+              });
             }
 
             if (errors.length > 0) {
