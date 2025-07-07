@@ -7,8 +7,7 @@ import {
   GetPromptRequestSchema,
   ListResourcesRequestSchema,
   ReadResourceRequestSchema,
-  CompleteRequestSchema,
-  isInitializeRequest
+  CompleteRequestSchema
 } from '@modelcontextprotocol/sdk/types.js';
 
 import { 
@@ -266,11 +265,26 @@ export class MCPClientStdio extends EventEmitter {
 
     try {
       // Prepare environment with server-specific and global env vars
-      const processEnv = {
-        ...process.env,
-        ...server.env,
-        MCP_TRANSPORT: 'stdio'
-      };
+      const processEnv: Record<string, string> = {};
+      
+      // Copy environment safely
+      for (const [key, value] of Object.entries(process.env)) {
+        if (value !== undefined) {
+          processEnv[key] = value;
+        }
+      }
+      
+      // Add server-specific environment
+      if (server.env) {
+        for (const [key, value] of Object.entries(server.env)) {
+          if (value !== undefined) {
+            processEnv[key] = value;
+          }
+        }
+      }
+      
+      // Set transport mode
+      processEnv.MCP_TRANSPORT = 'stdio';
 
       // Create stdio transport with command and args
       const transport = new StdioClientTransport({
@@ -425,10 +439,7 @@ export class MCPClientStdio extends EventEmitter {
         throw new Error(`Server ${serverId} not connected`);
       }
 
-      const response = await client.request(
-        ListToolsRequestSchema,
-        {}
-      );
+      const response = await client.listTools();
 
       const tools = response.tools || [];
       return tools.map(tool => ({
@@ -541,19 +552,16 @@ export class MCPClientStdio extends EventEmitter {
     }
 
     try {
-      const response = await client.request(
-        CallToolRequestSchema,
-        {
-          name: request.toolName,
-          arguments: request.arguments || {}
-        }
-      );
+      const response = await client.callTool({
+        name: request.toolName,
+        arguments: request.arguments || {}
+      });
 
       // Handle different content types
       let result: any = response.content;
       if (Array.isArray(response.content) && response.content.length === 1) {
         const content = response.content[0];
-        if (content.type === 'text') {
+        if (content && typeof content === 'object' && 'type' in content && content.type === 'text' && 'text' in content) {
           result = content.text;
         }
       }
@@ -645,10 +653,7 @@ export class MCPClientStdio extends EventEmitter {
         throw new Error(`Server ${serverId} not connected`);
       }
 
-      const response = await client.request(
-        ListPromptsRequestSchema,
-        {}
-      );
+      const response = await client.listPrompts();
 
       return response.prompts || [];
     } catch (error) {
@@ -667,13 +672,10 @@ export class MCPClientStdio extends EventEmitter {
         throw new Error(`Server ${serverId} not connected`);
       }
 
-      const response = await client.request(
-        GetPromptRequestSchema,
-        {
-          name,
-          arguments: args || {}
-        }
-      );
+      const response = await client.getPrompt({
+        name,
+        arguments: args || {}
+      });
 
       return response;
     } catch (error) {
@@ -692,10 +694,7 @@ export class MCPClientStdio extends EventEmitter {
         throw new Error(`Server ${serverId} not connected`);
       }
 
-      const response = await client.request(
-        ListResourcesRequestSchema,
-        {}
-      );
+      const response = await client.listResources();
 
       return response.resources || [];
     } catch (error) {
@@ -714,10 +713,7 @@ export class MCPClientStdio extends EventEmitter {
         throw new Error(`Server ${serverId} not connected`);
       }
 
-      const response = await client.request(
-        ReadResourceRequestSchema,
-        { uri }
-      );
+      const response = await client.readResource({ uri });
 
       return response;
     } catch (error) {
@@ -740,10 +736,7 @@ export class MCPClientStdio extends EventEmitter {
         throw new Error(`Server ${serverId} not connected`);
       }
 
-      const response = await client.request(
-        CompleteRequestSchema,
-        params
-      );
+      const response = await client.complete(params);
 
       return response;
     } catch (error) {
@@ -772,8 +765,10 @@ export class MCPClientStdio extends EventEmitter {
         };
       }
 
-      // Get tool schema from cache
-      const tool = await this.toolCache.getTool(request.serverId, request.toolName);
+      // Get tool schema from cache if available
+      const cachedTools = this.toolCache.getCachedTools(request.serverId);
+      const tool = cachedTools?.find(t => t.name === request.toolName);
+      
       if (tool && tool.inputSchema) {
         // Validate against schema if available
         try {
