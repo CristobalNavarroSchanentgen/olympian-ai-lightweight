@@ -11,12 +11,8 @@ import { ConnectionScanner } from './services/ConnectionScanner';
 import { OllamaHealthCheck } from './services/OllamaHealthCheck';
 import { modelProgressiveLoader } from './services/ModelProgressiveLoader';
 import { ArtifactService } from './services/ArtifactService';
-// NEW: Phase 3 Multi-host Services
 import { multiHostInit } from './services/MultiHostInitializationService';
-// NEW: Modern MCP Service for subproject 3
-import { MCPService } from './services/MCPService';
-// Import MCP API to set service reference
-import { setMCPServiceReference } from './api/mcp';
+import { MCPManager } from './services/MCPManager';
 
 import apiRoutes from './api/routes';
 import { errorHandler } from './middleware/errorHandler';
@@ -30,31 +26,15 @@ const PORT = process.env.PORT || 3001;
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017';
 const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5173';
 
-// NEW: Multi-host environment variables
+// Multi-host environment variables
 const ENABLE_MULTI_HOST = process.env.ENABLE_MULTI_HOST === 'true';
 const DEPLOYMENT_MODE = process.env.DEPLOYMENT_MODE || 'development';
 const REDIS_URL = process.env.REDIS_URL;
 const INSTANCE_ID = process.env.INSTANCE_ID || `server-${Date.now()}`;
 const HOSTNAME = process.env.HOSTNAME || 'localhost';
 
-// NEW: Subproject detection - detect subproject 3 for stdio MCP mode
-const SUBPROJECT = process.env.SUBPROJECT || '1'; // Default to subproject 1
-const IS_SUBPROJECT_3 = SUBPROJECT === '3' || DEPLOYMENT_MODE === 'docker-multi-host';
-
-// NEW: MCP Configuration - Default to optional in production
-const MCP_OPTIONAL = process.env.MCP_OPTIONAL !== 'false'; // Default to true
-const MCP_ENABLED = process.env.MCP_ENABLED !== 'false'; // Default to true
-
-// Export MCP service instance for API access
-export let mcpService: MCPService | null = null;
-
-// IMPROVED: Track service initialization status
-const serviceStatus = {
-  core: { initialized: false, error: null as Error | null },
-  multiHost: { initialized: false, error: null as Error | null },
-  mcp: { initialized: false, error: null as Error | null },
-  models: { initialized: false, error: null as Error | null }
-};
+// MCP Configuration
+const MCP_ENABLED = process.env.MCP_ENABLED !== 'false';
 
 // Security middleware
 app.use(helmet({
@@ -87,9 +67,11 @@ app.use(requestLogger);
 // API routes
 app.use('/api', apiRoutes);
 
-// IMPROVED: Enhanced health check endpoint with detailed service status
+// Health check endpoint
 app.get('/health', async (req, res) => {
-  const healthData: any = { 
+  const mcpStats = MCPManager.getInstance().getStats();
+  
+  res.json({ 
     status: 'healthy', 
     timestamp: new Date().toISOString(),
     version: process.env.npm_package_version || '1.0.0',
@@ -97,33 +79,11 @@ app.get('/health', async (req, res) => {
     hostname: HOSTNAME,
     multiHost: ENABLE_MULTI_HOST,
     deploymentMode: DEPLOYMENT_MODE,
-    subproject: SUBPROJECT,
-    mcpMode: IS_SUBPROJECT_3 ? 'stdio-modern' : 'http-legacy',
-    mcpEnabled: MCP_ENABLED,
-    mcpOptional: MCP_OPTIONAL,
-    services: {
-      core: serviceStatus.core.initialized ? 'ready' : serviceStatus.core.error ? 'error' : 'not_initialized',
-      multiHost: serviceStatus.multiHost.initialized ? 'ready' : serviceStatus.multiHost.error ? 'error' : 'not_initialized',
-      mcp: serviceStatus.mcp.initialized ? 'ready' : serviceStatus.mcp.error ? 'error' : 'not_initialized',
-      models: serviceStatus.models.initialized ? 'ready' : serviceStatus.models.error ? 'error' : 'not_initialized'
+    mcp: {
+      enabled: MCP_ENABLED,
+      ...mcpStats
     }
-  };
-
-  // Add MCP health details if available
-  if (mcpService && serviceStatus.mcp.initialized) {
-    healthData.mcpHealth = mcpService.getHealthSummary();
-  }
-
-  // Determine overall health status
-  const hasErrors = Object.values(serviceStatus).some(s => s.error !== null);
-  const allCoreReady = serviceStatus.core.initialized && serviceStatus.models.initialized;
-  
-  if (!allCoreReady || (hasErrors && !MCP_OPTIONAL)) {
-    res.status(503); // Service Unavailable
-    healthData.status = 'unhealthy';
-  }
-
-  res.json(healthData);
+  });
 });
 
 // Error handling
@@ -137,231 +97,53 @@ app.use('*', (req, res) => {
   });
 });
 
-// Modern MCP services initialization
-async function initializeMCPServices(): Promise<{ success: boolean; error?: string; serverCount?: number; mode?: string }> {
-  if (!MCP_ENABLED) {
-    console.log('ℹ️ [Server] MCP services disabled via configuration');
-    return { success: true, serverCount: 0, mode: 'disabled' };
-  }
-
-  try {
-    if (IS_SUBPROJECT_3) {
-      // Subproject 3: Use modern stdio-based MCP service
-      console.log('📡 [Server] Using modern stdio transport for MCP servers (subproject 3)');
-      
-      mcpService = new MCPService();
-      await mcpService.initialize();
-      
-      // Set the service reference in the API module
-      setMCPServiceReference(mcpService);
-      
-      // IMPROVED: Get health summary for better reporting
-      const healthSummary = mcpService.getHealthSummary();
-      
-      console.log(`✅ [Server] Modern MCP service initialized: ${healthSummary.runningServers}/${healthSummary.totalServers} servers running`);
-      
-      if (healthSummary.failedServers > 0) {
-        console.warn(`⚠️ [Server] ${healthSummary.failedServers} MCP servers failed to start:`);
-        healthSummary.issues.forEach(issue => {
-          console.warn(`   - ${issue.server}: ${issue.error}`);
-        });
-      }
-
-      serviceStatus.mcp.initialized = true;
-      return { 
-        success: true, 
-        serverCount: healthSummary.totalServers, 
-        mode: 'stdio-modern' 
-      };
-      
-    } else {
-      // Subprojects 1 & 2: Use legacy HTTP-based MCP services
-      console.log('🌐 [Server] Using legacy HTTP transport for MCP servers (subproject 1/2)');
-      
-      try {
-        // Dynamic import for legacy services
-        const { MCPConfigParser } = await import('./services/MCPConfigParser');
-        const { MCPClient } = await import('./services/MCPClient');
-        
-        // Parse HTTP MCP configuration
-        const mcpParser = MCPConfigParser.getInstance();
-        const mcpConfig = await mcpParser.parseConfiguration();
-        
-        const stats = mcpParser.getConfigurationStats();
-        console.log(`📊 [Server] Legacy HTTP MCP configuration loaded:`, {
-          totalEndpoints: stats.totalEndpoints,
-          serverEndpoints: stats.serverEndpoints,
-          discoveryChannels: stats.discoveryChannels,
-          registries: stats.registries
-        });
-        
-        // Initialize HTTP MCP client if we have servers configured
-        if (stats.serverEndpoints > 0) {
-          console.log('🚀 [Server] Initializing legacy HTTP MCP clients...');
-          
-          const mcpServers = await mcpParser.createServersFromConfig();
-          const mcpClient = MCPClient.getInstance();
-          
-          // Initialize the HTTP MCP client with the parsed servers
-          await mcpClient.initialize(mcpServers);
-          
-          console.log(`✅ [Server] Legacy HTTP MCP services initialized with ${mcpServers.length} servers`);
-          
-          // Perform initial health check
-          const healthStats = await mcpClient.getHealthStats();
-          console.log(`📊 [Server] Legacy HTTP MCP Health: ${healthStats.healthy}/${healthStats.total} servers healthy`);
-          
-          if (healthStats.total > healthStats.healthy) {
-            console.warn(`⚠️ [Server] Some legacy HTTP MCP servers are unhealthy. Check logs for details.`);
-          }
-
-          serviceStatus.mcp.initialized = true;
-          return { success: true, serverCount: healthStats.total, mode: 'http-legacy' };
-        } else {
-          console.log('ℹ️ [Server] No legacy HTTP MCP servers configured, skipping HTTP MCP client initialization');
-          serviceStatus.mcp.initialized = true;
-          return { success: true, serverCount: 0, mode: 'http-legacy' };
-        }
-      } catch (importError) {
-        console.error('❌ [Server] Failed to dynamically import legacy HTTP MCP services:', importError);
-        throw importError;
-      }
-    }
-    
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown MCP initialization error';
-    console.error('❌ [Server] MCP initialization failed:', errorMessage);
-    
-    serviceStatus.mcp.error = error as Error;
-    
-    if (MCP_OPTIONAL) {
-      console.warn('⚠️ [Server] Continuing without MCP services (MCP_OPTIONAL=true)');
-      return { success: false, error: errorMessage, serverCount: 0, mode: IS_SUBPROJECT_3 ? 'stdio-modern' : 'http-legacy' };
-    } else {
-      // Re-throw if MCP is not optional
-      throw error;
-    }
-  }
-}
-
-// Core services initialization - separated from MCP
-async function initializeCoreServices(): Promise<void> {
-  console.log('🚀 [Server] Initializing core services...');
-
-  try {
-    // Connect to database first - this is essential
-    console.log('🔌 [Server] Connecting to MongoDB...');
-    const db = DatabaseService.getInstance();
-    await db.connect(MONGODB_URI);
-    
-    // Initialize artifacts collection with schema validation
-    console.log('🎨 [Server] Initializing artifacts collection...');
-    await db.initializeArtifactsWithSchema();
-    
-    // Initialize artifact service
-    console.log('🎨 [Server] Initializing artifact service...');
-    const artifactService = ArtifactService.getInstance();
-    
-    // Check artifacts health on startup
-    console.log('🏥 [Server] Checking artifacts health...');
-    const artifactHealth = await artifactService.getArtifactsHealthCheck();
-    if (!artifactHealth.issues || artifactHealth.issues.length === 0) {
-      console.log('✅ [Server] Artifacts collection is healthy');
-    } else {
-      console.warn(`⚠️ [Server] Artifacts health issues detected:`, artifactHealth.issues);
-    }
-
-    // Initialize connection scanner
-    console.log('🔍 [Server] Initializing connection scanner...');
-    const scanner = ConnectionScanner.getInstance();
-    await scanner.initialize();
-
-    // Initialize Ollama health check - this is essential for model access
-    console.log('🏥 [Server] Initializing Ollama health check...');
-    const healthCheck = OllamaHealthCheck.getInstance();
-    await healthCheck.initialize();
-
-    serviceStatus.core.initialized = true;
-    console.log('✅ [Server] Core services initialized successfully');
-  } catch (error) {
-    serviceStatus.core.error = error as Error;
-    throw error;
-  }
-}
-
-// Multi-host services initialization
-async function initializeMultiHostServices(): Promise<{ success: boolean; error?: string }> {
-  if (!ENABLE_MULTI_HOST) {
-    console.log('ℹ️ [Server] Single-host mode - multi-host services disabled');
-    return { success: true };
-  }
-
-  try {
-    console.log('🚀 [Server] Initializing Phase 3 multi-host services...');
-    
-    if (!REDIS_URL) {
-      console.warn('⚠️ [Server] REDIS_URL not configured, multi-host features may be limited');
-    }
-    
-    await multiHostInit.initialize();
-    
-    const status = multiHostInit.getStatus();
-    console.log('✅ [Server] Multi-host services status:', {
-      coordination: status.services.coordination ? '✅' : '❌',
-      performance: status.services.performance ? '✅' : '❌',
-      monitoring: status.services.monitoring ? '✅' : '❌',
-      database: status.services.database ? '✅' : '❌'
-    });
-    
-    // Perform initial health check
-    const healthStatus = await multiHostInit.getHealthStatus();
-    console.log(`📊 [Server] Initial health score: ${healthStatus.overall.score}/100`);
-    
-    if (!healthStatus.overall.healthy) {
-      console.warn('⚠️ [Server] Health issues detected on startup:', 
-        healthStatus.monitoring?.issues?.slice(0, 3)?.map((i: any) => i.type) || 'Unknown');
-    }
-
-    serviceStatus.multiHost.initialized = true;
-    return { success: true };
-    
-  } catch (multiHostError) {
-    const errorMessage = multiHostError instanceof Error ? multiHostError.message : 'Unknown multi-host error';
-    console.error('❌ [Server] Multi-host initialization failed:', errorMessage);
-    
-    serviceStatus.multiHost.error = multiHostError as Error;
-    
-    // Check if Redis is optional
-    const redisOptional = process.env.REDIS_OPTIONAL !== 'false'; // Default to optional
-    if (redisOptional) {
-      console.warn('⚠️ [Server] Continuing without multi-host features (REDIS_OPTIONAL=true)');
-      return { success: false, error: errorMessage };
-    } else {
-      throw multiHostError;
-    }
-  }
-}
-
-// Initialize services with proper error handling and separation of concerns
+// Initialize services
 async function initializeServices() {
   try {
     console.log('🚀 [Server] Initializing Olympian AI Lightweight Server...');
     console.log(`📍 [Server] Instance: ${INSTANCE_ID} on ${HOSTNAME}`);
     console.log(`🌐 [Server] Multi-host mode: ${ENABLE_MULTI_HOST ? 'ENABLED' : 'DISABLED'}`);
     console.log(`🚀 [Server] Deployment mode: ${DEPLOYMENT_MODE}`);
-    console.log(`📡 [Server] Subproject: ${SUBPROJECT} (MCP mode: ${IS_SUBPROJECT_3 ? 'stdio-modern' : 'http-legacy'})`);
-    console.log(`🔧 [Server] MCP services: ${MCP_ENABLED ? 'ENABLED' : 'DISABLED'} (optional: ${MCP_OPTIONAL})`);
 
-    // Step 1: Initialize core services (database, artifacts, Ollama health)
-    await initializeCoreServices();
-
-    // Step 2: Initialize multi-host services (optional but important for subproject 3)
-    const multiHostResult = await initializeMultiHostServices();
+    // Connect to database
+    console.log('🔌 [Server] Connecting to MongoDB...');
+    const db = DatabaseService.getInstance();
+    await db.connect(MONGODB_URI);
     
-    // Step 3: Initialize MCP services (with modern service for subproject 3)
-    const mcpResult = await initializeMCPServices();
+    // Initialize artifacts
+    console.log('🎨 [Server] Initializing artifacts...');
+    await db.initializeArtifactsWithSchema();
+    const artifactService = ArtifactService.getInstance();
+    
+    // Initialize connection scanner
+    console.log('🔍 [Server] Initializing connection scanner...');
+    const scanner = ConnectionScanner.getInstance();
+    await scanner.initialize();
 
-    // Step 4: Initialize WebSocket and model loading (dependent on core services)
+    // Initialize Ollama health check
+    console.log('🏥 [Server] Initializing Ollama health check...');
+    const healthCheck = OllamaHealthCheck.getInstance();
+    await healthCheck.initialize();
+
+    // Initialize multi-host services if enabled
+    if (ENABLE_MULTI_HOST) {
+      console.log('🚀 [Server] Initializing multi-host services...');
+      await multiHostInit.initialize();
+    }
+
+    // Initialize MCP if enabled
+    if (MCP_ENABLED) {
+      console.log('🔧 [Server] Initializing MCP services...');
+      try {
+        const mcp = MCPManager.getInstance();
+        await mcp.initialize();
+      } catch (error) {
+        console.error('❌ [Server] MCP initialization failed:', error);
+        console.warn('⚠️ [Server] Continuing without MCP services');
+      }
+    }
+
+    // Initialize WebSocket
     console.log('🔌 [Server] Initializing WebSocket service...');
     const io = new SocketIOServer(server, {
       cors: {
@@ -377,82 +159,44 @@ async function initializeServices() {
     const wsService = WebSocketService.getInstance();
     wsService.initialize(io);
 
-    // Step 5: Start progressive model loading (essential for AI functionality)
+    // Start progressive model loading
     console.log('⚡ [Server] Starting progressive model loading...');
-    try {
-      await modelProgressiveLoader.startProgressiveLoading();
-      serviceStatus.models.initialized = true;
-    } catch (error) {
-      console.warn('⚠️ [Server] Progressive model loading failed:', error);
-      serviceStatus.models.error = error as Error;
-      // IMPROVED: Don't throw - models might still be accessible through direct API
-    }
+    await modelProgressiveLoader.startProgressiveLoading();
 
     console.log('✅ [Server] All services initialized successfully');
-    
-    // Log summary of service states
-    console.log('\n📊 [Server] Service initialization summary:');
-    console.log(`   ✅ Core services: Ready`);
-    console.log(`   ${multiHostResult.success ? '✅' : '⚠️ '} Multi-host: ${multiHostResult.success ? 'Ready' : 'Limited (' + (multiHostResult.error || 'Unknown') + ')'}`);
-    console.log(`   ${mcpResult.success ? '✅' : '⚠️ '} MCP services: ${mcpResult.success ? 'Ready (' + (mcpResult.mode || 'unknown') + ' mode, ' + (mcpResult.serverCount || 0) + ' servers)' : 'Disabled (' + (mcpResult.error || 'Unknown') + ')'}`);
-    console.log(`   ${serviceStatus.models.initialized ? '✅' : '⚠️ '} Model loading: ${serviceStatus.models.initialized ? 'Ready' : 'Failed (' + (serviceStatus.models.error?.message || 'Unknown') + ')'}`);
-
   } catch (error) {
-    console.error('❌ [Server] Failed to initialize core services:', error);
-    
-    // Cleanup on failure
-    try {
-      await gracefulCleanup();
-    } catch (cleanupError) {
-      console.error('❌ [Server] Cleanup failed:', cleanupError);
-    }
-    
+    console.error('❌ [Server] Failed to initialize services:', error);
+    await gracefulCleanup();
     process.exit(1);
   }
 }
 
-// Enhanced graceful cleanup with modern MCP service
+// Graceful cleanup
 async function gracefulCleanup() {
   console.log('🧹 [Server] Starting cleanup...');
   
   try {
-    // Cleanup MCP services first (optional service)
+    // Cleanup MCP
     if (MCP_ENABLED) {
-      try {
-        if (IS_SUBPROJECT_3 && mcpService) {
-          console.log('🧹 [Server] Cleaning up modern MCP service...');
-          await mcpService.cleanup();
-          console.log('✅ [Server] Modern MCP service cleaned up');
-        } else if (!IS_SUBPROJECT_3) {
-          console.log('🧹 [Server] Cleaning up legacy HTTP MCP services...');
-          // Dynamic import for legacy MCP client cleanup
-          const { MCPClient } = await import('./services/MCPClient');
-          const mcpClient = MCPClient.getInstance();
-          await mcpClient.cleanup();
-          console.log('✅ [Server] Legacy HTTP MCP services cleaned up');
-        }
-      } catch (mcpError) {
-        console.warn('⚠️ [Server] MCP cleanup failed:', mcpError);
-      }
+      const mcp = MCPManager.getInstance();
+      await mcp.cleanup();
     }
 
-    // Cleanup multi-host services (important for subproject 3)
+    // Cleanup multi-host
     if (ENABLE_MULTI_HOST) {
-      console.log('🧹 [Server] Cleaning up multi-host services...');
       await multiHostInit.cleanup();
     }
 
-    // Disconnect from database (essential)
+    // Disconnect from database
     const db = DatabaseService.getInstance();
     await db.disconnect();
 
-    // Stop progressive loading (essential)
+    // Stop progressive loading
     modelProgressiveLoader.stopProgressiveLoading();
 
     console.log('✅ [Server] Cleanup completed');
   } catch (error) {
     console.error('❌ [Server] Error during cleanup:', error);
-    throw error;
   }
 }
 
@@ -461,12 +205,10 @@ async function gracefulShutdown(signal: string) {
   console.log(`\n🛑 [Server] Received ${signal}, starting graceful shutdown...`);
   
   try {
-    // Stop accepting new connections
     server.close(() => {
       console.log('🔌 [Server] HTTP server closed');
     });
 
-    // Perform cleanup
     await gracefulCleanup();
 
     console.log('✅ [Server] Graceful shutdown completed');
@@ -492,122 +234,31 @@ process.on('uncaughtException', (error) => {
   gracefulShutdown('UNCAUGHT_EXCEPTION');
 });
 
-// Enhanced startup status logging with modern MCP service
-async function getStartupStatusInfo() {
-  const statusInfo: any = {
-    coreServices: '✅ Ready',
-    mcpServices: 'ℹ️ Not initialized'
-  };
-
-  if (MCP_ENABLED) {
-    try {
-      if (IS_SUBPROJECT_3 && mcpService) {
-        const healthSummary = mcpService.getHealthSummary();
-        statusInfo.mcpServices = `✅ Modern Stdio: ${healthSummary.runningServers}/${healthSummary.totalServers} servers running (${healthSummary.healthPercentage}% healthy)`;
-      } else if (!IS_SUBPROJECT_3) {
-        // Dynamic import for legacy MCP client status
-        try {
-          const { MCPClient } = await import('./services/MCPClient');
-          const mcpClient = MCPClient.getInstance();
-          const mcpStats = mcpClient.getHealthStats();
-          statusInfo.mcpServices = `✅ Legacy HTTP: ${mcpStats.healthy}/${mcpStats.total} servers healthy`;
-        } catch {
-          statusInfo.mcpServices = `ℹ️ Legacy HTTP: Not initialized`;
-        }
-      }
-    } catch (mcpError) {
-      statusInfo.mcpServices = `ℹ️ ${IS_SUBPROJECT_3 ? 'Modern Stdio' : 'Legacy HTTP'}: Not initialized`;
-    }
-  } else {
-    statusInfo.mcpServices = '❌ Disabled';
-  }
-
-  return statusInfo;
-}
-
 // Start server
 async function startServer() {
   try {
     await initializeServices();
     
-    server.listen(PORT, async () => {
+    server.listen(PORT, () => {
       console.log(`\n🚀 [Server] Olympian AI Lightweight Server running on port ${PORT}`);
       console.log(`📡 [Server] WebSocket server initialized`);
       console.log(`🗄️ [Server] Database connected: ${MONGODB_URI}`);
-      console.log(`🎨 [Server] Artifacts collection initialized with schema validation`);
+      console.log(`🎨 [Server] Artifacts collection initialized`);
       
-      // NEW: Multi-host status
       if (ENABLE_MULTI_HOST) {
-        console.log(`🌐 [Server] Multi-host coordination: ${REDIS_URL ? 'ENABLED' : 'LIMITED (no Redis)'}`);
+        console.log(`🌐 [Server] Multi-host coordination: ENABLED`);
       }
       
-      // MCP status with modern service
-      const statusInfo = await getStartupStatusInfo();
-      console.log(`🔧 [Server] MCP services: ${statusInfo.mcpServices}`);
+      if (MCP_ENABLED) {
+        const mcpStats = MCPManager.getInstance().getStats();
+        console.log(`🔧 [Server] MCP services: ${mcpStats.running}/${mcpStats.total} servers running`);
+      }
       
       console.log(`🌐 [Server] CORS enabled for: ${CLIENT_URL}`);
       console.log(`📊 [Server] API endpoints available at: http://localhost:${PORT}/api`);
       console.log(`🏥 [Server] Health check: http://localhost:${PORT}/health`);
       
-      console.log('\n📋 [Server] Available API endpoints:');
-      console.log('   💬 Chat: /api/chat');
-      console.log('   🔗 Connections: /api/connections');
-      console.log('   ⚙️  Config: /api/config');
-      console.log('   🤖 Models: /api/models');
-      console.log('   📈 Progressive: /api/progressive');
-      console.log('   🎨 Artifacts: /api/artifacts');
-      console.log('   🏥 Health: /api/health');
-      
-      if (MCP_ENABLED) {
-        console.log(`   🔧 MCP (${IS_SUBPROJECT_3 ? 'modern-stdio' : 'legacy-http'}): /api/mcp`);
-      }
-      
-      // NEW: Multi-host endpoints
-      if (ENABLE_MULTI_HOST) {
-        console.log('   🌐 Multi-host: /api/multihost');
-        console.log('     - 🏥 /api/multihost/health (comprehensive health)');
-        console.log('     - 📊 /api/multihost/monitoring/dashboard');
-        console.log('     - ⚡ /api/multihost/performance/metrics');
-        console.log('     - 🔗 /api/multihost/instances');
-      }
-      
       console.log('\n✨ [Server] Ready to accept connections!');
-      
-      // NEW: Log subproject-specific status for monitoring
-      console.log(`\n📍 [Server] Subproject ${SUBPROJECT} instance ready:`)
-      console.log(`   Instance ID: ${INSTANCE_ID}`);
-      console.log(`   Hostname: ${HOSTNAME}`);
-      console.log(`   Deployment Mode: ${DEPLOYMENT_MODE}`);
-      console.log(`   MCP Transport: ${IS_SUBPROJECT_3 ? 'modern stdio (npx processes)' : 'legacy http (containers)'}`);
-      
-      if (ENABLE_MULTI_HOST) {
-        console.log(`   Redis: ${REDIS_URL ? '✅ Connected' : '❌ Not configured'}`);
-        console.log(`   Coordination: ${multiHostInit.getStatus().services.coordination ? '✅' : '❌'}`);
-        console.log(`   Monitoring: ${multiHostInit.getStatus().services.monitoring ? '✅' : '❌'}`);
-      }
-      
-      // IMPROVED: Show critical service status
-      console.log(`\n📊 [Server] Critical Services Status:`);
-      console.log(`   🗄️  Database: ${serviceStatus.core.initialized ? '✅ Connected' : '❌ Failed'}`);
-      console.log(`   🤖 Models: ${serviceStatus.models.initialized ? '✅ Loaded' : '⚠️  Limited (direct API only)'}`);
-      console.log(`   🔧 MCP: ${serviceStatus.mcp.initialized ? '✅ Available' : '⚠️  Disabled (chat still works)'}`);
-      
-      // Show any initialization warnings
-      const warnings: string[] = [];
-      if (!serviceStatus.models.initialized) {
-        warnings.push('Model progressive loading failed - models still accessible via direct API');
-      }
-      if (!serviceStatus.mcp.initialized && MCP_ENABLED) {
-        warnings.push('MCP services unavailable - AI chat functionality unaffected');
-      }
-      if (!serviceStatus.multiHost.initialized && ENABLE_MULTI_HOST) {
-        warnings.push('Multi-host features limited - single instance mode active');
-      }
-      
-      if (warnings.length > 0) {
-        console.log('\n⚠️  [Server] Initialization Warnings:');
-        warnings.forEach(warning => console.log(`   - ${warning}`));
-      }
     });
   } catch (error) {
     console.error('❌ [Server] Failed to start server:', error);
