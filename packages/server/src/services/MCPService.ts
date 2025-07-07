@@ -2,6 +2,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { spawn, ChildProcess } from 'child_process';
 import { logger } from '../utils/logger';
+import { MCPTool } from '@olympian/shared';
 
 /**
  * Modern MCP Service for Subproject 3
@@ -199,10 +200,10 @@ export class MCPService {
   }
 
   /**
-   * List all available tools from all servers
+   * List all available tools from all servers with complete schema information
    */
-  async listTools(): Promise<Array<{ name: string; description?: string; serverId: string }>> {
-    const allTools: Array<{ name: string; description?: string; serverId: string }> = [];
+  async listTools(): Promise<MCPTool[]> {
+    const allTools: MCPTool[] = [];
 
     for (const [serverId, serverInstance] of this.servers) {
       if (serverInstance.status === 'running') {
@@ -211,11 +212,21 @@ export class MCPService {
           const tools = response.tools || [];
           
           tools.forEach(tool => {
-            allTools.push({
+            // Ensure we have all required properties for MCPTool
+            const mcpTool: MCPTool = {
               name: tool.name,
-              description: tool.description,
-              serverId
-            });
+              description: tool.description || `Tool from ${serverId}`,
+              inputSchema: tool.inputSchema || {
+                type: 'object',
+                properties: {},
+                required: []
+              },
+              serverId,
+              cachedAt: new Date(),
+              usageCount: 0
+            };
+            
+            allTools.push(mcpTool);
           });
         } catch (error) {
           logger.warn(`⚠️ [MCP] Failed to list tools from ${serverId}:`, error);
