@@ -1,5 +1,15 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { 
+  ListToolsRequestSchema,
+  CallToolRequestSchema,
+  ListPromptsRequestSchema,
+  GetPromptRequestSchema,
+  ListResourcesRequestSchema,
+  ReadResourceRequestSchema,
+  CompleteRequestSchema,
+  isInitializeRequest
+} from '@modelcontextprotocol/sdk/types.js';
 
 import { 
   MCPServer, 
@@ -28,29 +38,52 @@ import { spawn, ChildProcess } from 'child_process';
 import { z } from 'zod';
 import EventEmitter from 'events';
 
-// Validation schemas for MCP responses
+// Enhanced validation schemas for MCP responses
+const toolSchema = z.object({
+  name: z.string(),
+  description: z.string().optional(),
+  inputSchema: z.object({
+    type: z.literal('object').optional(),
+    properties: z.record(z.any()).optional(),
+    required: z.array(z.string()).optional(),
+    additionalProperties: z.boolean().optional()
+  }).optional()
+});
+
 const toolListResponseSchema = z.object({
-  tools: z.array(z.object({
-    name: z.string(),
-    description: z.string().optional(),
-    inputSchema: z.record(z.unknown()).optional()
-  })).optional()
+  tools: z.array(toolSchema)
 });
 
 const toolCallResponseSchema = z.object({
-  content: z.unknown().optional()
+  content: z.array(z.union([
+    z.object({
+      type: z.literal('text'),
+      text: z.string()
+    }),
+    z.object({
+      type: z.literal('image'),
+      data: z.string(),
+      mimeType: z.string()
+    }),
+    z.object({
+      type: z.literal('resource'),
+      uri: z.string(),
+      text: z.string().optional(),
+      mimeType: z.string().optional()
+    })
+  ])).optional(),
+  isError: z.boolean().optional()
 });
 
 /**
- * Stdio-based MCP Client Service for subproject 3
+ * Enhanced Stdio-based MCP Client Service for subproject 3
  * 
- * This implementation runs all MCP servers as child processes within the main container:
- * 1. Stdio transport (stdin/stdout communication)
- * 2. Child process management for MCP servers using npx
- * 3. Process lifecycle management (start/stop/restart)
- * 4. Tool discovery and caching
- * 5. Health checking and fallback strategies
- * 6. Self-contained execution (no external dependencies)
+ * This implementation follows the latest MCP SDK patterns:
+ * 1. Proper client initialization with capabilities
+ * 2. Enhanced error handling and recovery
+ * 3. Support for prompts, resources, and completions
+ * 4. Better protocol negotiation
+ * 5. Improved transport management
  */
 export class MCPClientStdio extends EventEmitter {
   private static instance: MCPClientStdio;
@@ -58,7 +91,7 @@ export class MCPClientStdio extends EventEmitter {
   private clients: Map<string, Client> = new Map();
   private servers: Map<string, MCPServer> = new Map();
   private sessions: Map<string, MCPSession> = new Map();
-  private processes: Map<string, ChildProcess> = new Map();
+  private transports: Map<string, StdioClientTransport> = new Map();
   private configPath: string;
   private initialized: boolean = false;
 
@@ -246,15 +279,20 @@ export class MCPClientStdio extends EventEmitter {
         env: processEnv
       });
 
-      // Create MCP client with capabilities
+      // Store transport for cleanup
+      this.transports.set(server.id, transport);
+
+      // Create MCP client with full capabilities
       const client = new Client(
         this.CLIENT_INFO,
         {
           capabilities: {
-            tools: true,
-            prompts: true,
-            resources: true,
-            completion: true
+            tools: {},
+            prompts: {},
+            resources: {},
+            completion: {},
+            roots: {},
+            sampling: {}
           }
         }
       );
@@ -262,15 +300,15 @@ export class MCPClientStdio extends EventEmitter {
       // Connect with timeout
       await this.connectWithTimeout(client, transport, server);
 
-      // Perform protocol negotiation
-      const negotiation = await this.negotiateProtocol(client, server);
-      server.protocolVersion = negotiation.serverVersion;
-      server.capabilities = negotiation.capabilities;
-
       // Store client and update server status
       this.clients.set(server.id, client);
       server.status = 'running';
       server.lastConnected = new Date();
+
+      // Get server info after connection
+      const serverInfo = await this.getServerInfo(client);
+      server.protocolVersion = serverInfo.protocolVersion;
+      server.capabilities = serverInfo.capabilities;
 
       // Create session record
       const session: MCPSession = {
@@ -287,18 +325,29 @@ export class MCPClientStdio extends EventEmitter {
 
       this.metrics.activeConnections++;
       
-      logger.info(`✅ [MCP Client] Started ${server.name} (stdio via npx, ${negotiation.serverVersion})`);
+      logger.info(`✅ [MCP Client] Started ${server.name} (stdio via npx, ${serverInfo.protocolVersion || 'unknown'})`);
 
       // Emit connection event
       this.emitEvent('server_connected', server.id, { 
         transport: 'stdio',
-        protocolVersion: negotiation.serverVersion,
-        capabilities: negotiation.capabilities
+        protocolVersion: serverInfo.protocolVersion,
+        capabilities: serverInfo.capabilities
       });
 
     } catch (error) {
       server.status = 'error';
       server.lastError = error instanceof Error ? error.message : 'Unknown error';
+      
+      // Clean up transport on error
+      const transport = this.transports.get(server.id);
+      if (transport) {
+        try {
+          await transport.close();
+        } catch (e) {
+          // Ignore cleanup errors
+        }
+        this.transports.delete(server.id);
+      }
       
       throw error;
     }
@@ -307,7 +356,7 @@ export class MCPClientStdio extends EventEmitter {
   /**
    * Connect with timeout
    */
-  private async connectWithTimeout(client: Client, transport: any, server: MCPServer): Promise<void> {
+  private async connectWithTimeout(client: Client, transport: StdioClientTransport, server: MCPServer): Promise<void> {
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         reject(new Error(`Connection timeout after ${this.CONNECTION_TIMEOUT}ms`));
@@ -326,40 +375,36 @@ export class MCPClientStdio extends EventEmitter {
   }
 
   /**
-   * Perform protocol negotiation
+   * Get server information after connection
    */
-  private async negotiateProtocol(client: Client, server: MCPServer): Promise<MCPProtocolNegotiation> {
+  private async getServerInfo(client: Client): Promise<{
+    protocolVersion?: string;
+    capabilities?: any;
+  }> {
     try {
-      // The SDK handles initialization automatically, but we can get server info
-      const serverInfo = (client as any)._serverInfo || {};
+      // Access server info from client internals if available
+      const clientAny = client as any;
+      if (clientAny._serverInfo) {
+        return {
+          protocolVersion: clientAny._serverInfo.protocolVersion,
+          capabilities: clientAny._serverInfo.capabilities
+        };
+      }
       
+      // Try to get server info through a safe method
+      // The SDK doesn't expose server info directly, so we return defaults
       return {
-        clientVersion: this.PROTOCOL_VERSION,
-        serverVersion: serverInfo.protocolVersion || 'unknown',
-        supportedTransports: ['stdio'],
-        agreedTransport: 'stdio',
+        protocolVersion: this.PROTOCOL_VERSION,
         capabilities: {
           tools: true,
-          prompts: serverInfo.capabilities?.prompts || false,
-          resources: serverInfo.capabilities?.resources || false,
-          completion: serverInfo.capabilities?.completion || false,
-          roots: serverInfo.capabilities?.roots || false,
-          sampling: serverInfo.capabilities?.sampling || false
+          prompts: false,
+          resources: false,
+          completion: false
         }
       };
     } catch (error) {
-      logger.warn(`⚠️ [MCP Client] Protocol negotiation warning for ${server.name}:`, error);
-      
-      // Return minimal negotiation
-      return {
-        clientVersion: this.PROTOCOL_VERSION,
-        serverVersion: 'unknown',
-        supportedTransports: ['stdio'],
-        agreedTransport: 'stdio',
-        capabilities: {
-          tools: true
-        }
-      };
+      logger.debug('📝 [MCP Client] Could not retrieve server info:', error);
+      return {};
     }
   }
 
@@ -381,8 +426,8 @@ export class MCPClientStdio extends EventEmitter {
       }
 
       const response = await client.request(
-        { method: 'tools/list' },
-        toolListResponseSchema
+        ListToolsRequestSchema,
+        {}
       );
 
       const tools = response.tools || [];
@@ -402,7 +447,7 @@ export class MCPClientStdio extends EventEmitter {
   }
 
   /**
-   * Invoke MCP tool with metadata support and fallback strategies
+   * Invoke MCP tool with enhanced error handling and retry logic
    */
   async invokeTool(request: MCPInvokeRequest): Promise<MCPInvokeResponse> {
     const startTime = Date.now();
@@ -418,10 +463,10 @@ export class MCPClientStdio extends EventEmitter {
         throw new Error(`Invalid arguments: ${validation.errors?.join(', ')}`);
       }
 
-      // Try primary server first
-      let response = await this.tryToolInvocation(request, startTime);
+      // Try primary server first with retries
+      let response = await this.tryToolInvocationWithRetries(request, startTime);
       
-      if (!response.success) {
+      if (!response.success && request.fallbackStrategy !== 'none') {
         // Try fallback servers if primary fails
         response = await this.tryFallbackInvocation(request, startTime);
       }
@@ -453,6 +498,40 @@ export class MCPClientStdio extends EventEmitter {
   }
 
   /**
+   * Try tool invocation with retries
+   */
+  private async tryToolInvocationWithRetries(request: MCPInvokeRequest, startTime: number): Promise<MCPInvokeResponse> {
+    let lastError: Error | undefined;
+    
+    for (let attempt = 0; attempt < this.MAX_RETRIES; attempt++) {
+      try {
+        const response = await this.tryToolInvocation(request, startTime);
+        if (response.success) {
+          return response;
+        }
+        lastError = new Error(response.error || 'Unknown error');
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error('Unknown error');
+      }
+
+      // Wait before retry with exponential backoff
+      if (attempt < this.MAX_RETRIES - 1) {
+        const delay = this.RETRY_DELAY_BASE * Math.pow(2, attempt);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+
+    return {
+      success: false,
+      error: lastError?.message || 'All retry attempts failed',
+      duration: Date.now() - startTime,
+      serverId: request.serverId,
+      toolName: request.toolName,
+      retryAttempt: this.MAX_RETRIES
+    };
+  }
+
+  /**
    * Try tool invocation on primary server
    */
   private async tryToolInvocation(request: MCPInvokeRequest, startTime: number): Promise<MCPInvokeResponse> {
@@ -462,25 +541,26 @@ export class MCPClientStdio extends EventEmitter {
     }
 
     try {
-      // Prepare request with metadata support
-      const requestParams: any = {
-        name: request.toolName,
-        arguments: request.arguments
-      };
-
-      // Add metadata field if provided
-      if (request.metadata) {
-        requestParams._meta = request.metadata;
-      }
-
       const response = await client.request(
-        { method: 'tools/call', params: requestParams },
-        toolCallResponseSchema
+        CallToolRequestSchema,
+        {
+          name: request.toolName,
+          arguments: request.arguments || {}
+        }
       );
 
+      // Handle different content types
+      let result: any = response.content;
+      if (Array.isArray(response.content) && response.content.length === 1) {
+        const content = response.content[0];
+        if (content.type === 'text') {
+          result = content.text;
+        }
+      }
+
       return {
-        success: true,
-        result: response.content,
+        success: !response.isError,
+        result,
         duration: Date.now() - startTime,
         serverId: request.serverId,
         toolName: request.toolName
@@ -556,6 +636,123 @@ export class MCPClientStdio extends EventEmitter {
   }
 
   /**
+   * List prompts from a server
+   */
+  async listPrompts(serverId: string): Promise<any[]> {
+    try {
+      const client = this.clients.get(serverId);
+      if (!client) {
+        throw new Error(`Server ${serverId} not connected`);
+      }
+
+      const response = await client.request(
+        ListPromptsRequestSchema,
+        {}
+      );
+
+      return response.prompts || [];
+    } catch (error) {
+      logger.warn(`⚠️ [MCP Client] Failed to list prompts for server ${serverId}:`, error);
+      return [];
+    }
+  }
+
+  /**
+   * Get a specific prompt
+   */
+  async getPrompt(serverId: string, name: string, args?: Record<string, any>): Promise<any> {
+    try {
+      const client = this.clients.get(serverId);
+      if (!client) {
+        throw new Error(`Server ${serverId} not connected`);
+      }
+
+      const response = await client.request(
+        GetPromptRequestSchema,
+        {
+          name,
+          arguments: args || {}
+        }
+      );
+
+      return response;
+    } catch (error) {
+      logger.error(`❌ [MCP Client] Failed to get prompt ${name} from server ${serverId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * List resources from a server
+   */
+  async listResources(serverId: string): Promise<any[]> {
+    try {
+      const client = this.clients.get(serverId);
+      if (!client) {
+        throw new Error(`Server ${serverId} not connected`);
+      }
+
+      const response = await client.request(
+        ListResourcesRequestSchema,
+        {}
+      );
+
+      return response.resources || [];
+    } catch (error) {
+      logger.warn(`⚠️ [MCP Client] Failed to list resources for server ${serverId}:`, error);
+      return [];
+    }
+  }
+
+  /**
+   * Read a specific resource
+   */
+  async readResource(serverId: string, uri: string): Promise<any> {
+    try {
+      const client = this.clients.get(serverId);
+      if (!client) {
+        throw new Error(`Server ${serverId} not connected`);
+      }
+
+      const response = await client.request(
+        ReadResourceRequestSchema,
+        { uri }
+      );
+
+      return response;
+    } catch (error) {
+      logger.error(`❌ [MCP Client] Failed to read resource ${uri} from server ${serverId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get completions for arguments
+   */
+  async getCompletions(serverId: string, params: {
+    ref: { type: 'ref/prompt' | 'ref/resource'; name?: string; uri?: string };
+    argument: { name: string; value: string };
+    context?: { arguments?: Record<string, any> };
+  }): Promise<any> {
+    try {
+      const client = this.clients.get(serverId);
+      if (!client) {
+        throw new Error(`Server ${serverId} not connected`);
+      }
+
+      const response = await client.request(
+        CompleteRequestSchema,
+        params
+      );
+
+      return response;
+    } catch (error) {
+      logger.warn(`⚠️ [MCP Client] Failed to get completions from server ${serverId}:`, error);
+      return { completion: { values: [] } };
+    }
+  }
+
+  /**
    * Validate tool arguments
    */
   private async validateArguments(request: MCPInvokeRequest): Promise<MCPArgumentValidation> {
@@ -568,16 +765,46 @@ export class MCPClientStdio extends EventEmitter {
         };
       }
 
-      if (!request.arguments || typeof request.arguments !== 'object') {
+      if (request.arguments && typeof request.arguments !== 'object') {
         return {
           isValid: false,
           errors: ['Arguments must be an object']
         };
       }
 
+      // Get tool schema from cache
+      const tool = await this.toolCache.getTool(request.serverId, request.toolName);
+      if (tool && tool.inputSchema) {
+        // Validate against schema if available
+        try {
+          const schema = tool.inputSchema;
+          if (schema.properties) {
+            const errors: string[] = [];
+            
+            // Check required fields
+            const required = schema.required || [];
+            for (const field of required) {
+              if (!request.arguments || !(field in request.arguments)) {
+                errors.push(`Missing required field: ${field}`);
+              }
+            }
+
+            if (errors.length > 0) {
+              return {
+                isValid: false,
+                errors
+              };
+            }
+          }
+        } catch (e) {
+          // Schema validation failed, but don't block the request
+          logger.debug('Schema validation failed:', e);
+        }
+      }
+
       return {
         isValid: true,
-        sanitizedArguments: request.arguments
+        sanitizedArguments: request.arguments || {}
       };
 
     } catch (error) {
@@ -610,12 +837,16 @@ export class MCPClientStdio extends EventEmitter {
     this.clients.delete(serverId);
     this.metrics.activeConnections = Math.max(0, this.metrics.activeConnections - 1);
 
-    // Clean up process
-    const process = this.processes.get(serverId);
-    if (process && !process.killed) {
-      process.kill('SIGTERM');
+    // Clean up transport
+    const transport = this.transports.get(serverId);
+    if (transport) {
+      try {
+        transport.close();
+      } catch (e) {
+        // Ignore cleanup errors
+      }
+      this.transports.delete(serverId);
     }
-    this.processes.delete(serverId);
 
     // Remove from tool cache
     this.toolCache.removeServerClient(serverId);
@@ -712,7 +943,57 @@ export class MCPClientStdio extends EventEmitter {
       this.collectMetrics();
     }, 60000); // Every minute
 
+    // Start health checks
+    setInterval(() => {
+      this.performHealthChecks();
+    }, 30000); // Every 30 seconds
+
     logger.debug('📊 [MCP Client] Monitoring and maintenance started');
+  }
+
+  /**
+   * Perform health checks on all servers
+   */
+  private async performHealthChecks(): Promise<void> {
+    for (const [serverId, server] of this.servers) {
+      if (server.status === 'running') {
+        try {
+          // Try to list tools as a health check
+          await this.listTools(serverId);
+        } catch (error) {
+          logger.warn(`⚠️ [MCP Client] Health check failed for ${server.name}:`, error);
+          // Consider reconnecting if health check fails
+          if (server.autoReconnect !== false) {
+            try {
+              await this.reconnectServer(serverId);
+            } catch (reconnectError) {
+              logger.error(`❌ [MCP Client] Failed to reconnect ${server.name}:`, reconnectError);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * Reconnect a server
+   */
+  private async reconnectServer(serverId: string): Promise<void> {
+    const server = this.servers.get(serverId);
+    if (!server) {
+      throw new Error(`Server ${serverId} not found`);
+    }
+
+    logger.info(`🔄 [MCP Client] Reconnecting server ${server.name}...`);
+
+    // Disconnect first
+    this.handleServerDisconnection(serverId);
+
+    // Wait a bit before reconnecting
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    // Reconnect
+    await this.startServerProcess(server);
   }
 
   /**
@@ -789,12 +1070,21 @@ export class MCPClientStdio extends EventEmitter {
       await this.toolCache.stop();
       await this.healthChecker.stop();
 
-      // Stop all servers and processes
+      // Stop all servers and close transports
       for (const serverId of this.servers.keys()) {
         try {
           await this.stopServer(serverId);
         } catch (error) {
           logger.error(`❌ [MCP Client] Failed to stop server ${serverId}:`, error);
+        }
+      }
+
+      // Close all transports
+      for (const [serverId, transport] of this.transports) {
+        try {
+          await transport.close();
+        } catch (error) {
+          logger.error(`❌ [MCP Client] Failed to close transport for ${serverId}:`, error);
         }
       }
 
@@ -807,7 +1097,7 @@ export class MCPClientStdio extends EventEmitter {
     }
   }
 
-  // Legacy methods for backward compatibility
+  // Server management methods
 
   async addServer(server: Omit<MCPServer, 'id' | 'status'>): Promise<MCPServer> {
     // Only accept stdio transport
@@ -923,12 +1213,11 @@ export class MCPClientStdio extends EventEmitter {
     metrics: MCPMetrics;
     sessions: MCPSession[];
     deploymentMode: string;
-    processes: { serverId: string; pid: number | undefined; status: string }[];
+    transports: { serverId: string; connected: boolean }[];
   } {
-    const processInfo = Array.from(this.processes.entries()).map(([serverId, process]) => ({
+    const transportInfo = Array.from(this.transports.entries()).map(([serverId, transport]) => ({
       serverId,
-      pid: process.pid,
-      status: process.killed ? 'killed' : 'running'
+      connected: this.clients.has(serverId)
     }));
 
     return {
@@ -938,7 +1227,7 @@ export class MCPClientStdio extends EventEmitter {
       metrics: this.metrics,
       sessions: Array.from(this.sessions.values()),
       deploymentMode: 'stdio-subproject3',
-      processes: processInfo
+      transports: transportInfo
     };
   }
 
