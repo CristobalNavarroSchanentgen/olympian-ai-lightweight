@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { MCPServer, MCPTool } from '@olympian/shared';
+import { MCPServer, MCPTool, ServerEvents } from '@olympian/shared';
 import { api } from '../services/api';
 import { useToast } from './useToast';
+import { useWebSocket } from './useWebSocket';
 
 interface MCPState {
   servers: MCPServer[];
@@ -19,6 +20,7 @@ export function useMCP() {
   });
 
   const { toast } = useToast();
+  const { on, off, isConnected } = useWebSocket();
   const pollIntervalRef = useRef<NodeJS.Timeout>();
 
   // Fetch servers and their tools
@@ -124,11 +126,50 @@ export function useMCP() {
     return allTools;
   }, [state.servers, state.tools]);
 
+  // WebSocket event handlers
+  useEffect(() => {
+    if (!isConnected) return;
+
+    const handleServerUpdate = (data: ServerEvents['mcp:server:update']) => {
+      fetchServers();
+    };
+
+    const handleServerStatus = (data: ServerEvents['mcp:server:status']) => {
+      setState(prev => ({
+        ...prev,
+        servers: prev.servers.map(server =>
+          server.id === data.serverId
+            ? { ...server, status: data.status, lastError: data.error }
+            : server
+        )
+      }));
+    };
+
+    const handleToolsUpdate = (data: ServerEvents['mcp:tools:update']) => {
+      if (data.tools) {
+        setState(prev => ({
+          ...prev,
+          tools: new Map(prev.tools).set(data.serverId, data.tools!)
+        }));
+      }
+    };
+
+    on('mcp:server:update', handleServerUpdate);
+    on('mcp:server:status', handleServerStatus);
+    on('mcp:tools:update', handleToolsUpdate);
+
+    return () => {
+      off('mcp:server:update', handleServerUpdate);
+      off('mcp:server:status', handleServerStatus);
+      off('mcp:tools:update', handleToolsUpdate);
+    };
+  }, [isConnected, on, off, fetchServers]);
+
   // Initial load and polling
   useEffect(() => {
     fetchServers();
 
-    // Poll for server status updates every 10 seconds
+    // Poll for server status updates every 10 seconds (fallback for non-WebSocket)
     pollIntervalRef.current = setInterval(fetchServers, 10000);
 
     return () => {
