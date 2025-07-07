@@ -8,18 +8,34 @@ import { logger } from '../utils/logger';
 export const modelsRouter = Router();
 const ollamaStreamliner = new OllamaStreamliner();
 
-// Get all available models
+// Get all available models - FIXED RESPONSE FORMAT
 modelsRouter.get('/list', asyncHandler(async (req, res) => {
   logger.info('GET /api/models/list - Fetching available models');
   
-  const models = await ollamaStreamliner.listModels();
-  const deploymentConfig = getDeploymentConfig();
-  
-  res.json({ 
-    models,
-    deploymentMode: deploymentConfig.mode,
-    modelCapabilityMode: deploymentConfig.modelCapability.mode
-  });
+  try {
+    const models = await ollamaStreamliner.listModels();
+    const deploymentConfig = getDeploymentConfig();
+    
+    // Return the expected format: { success: boolean; data: string[]; timestamp: string }
+    res.json({ 
+      success: true,
+      data: models,
+      timestamp: new Date().toISOString(),
+      // Additional metadata for debugging
+      _metadata: {
+        deploymentMode: deploymentConfig.mode,
+        modelCapabilityMode: deploymentConfig.modelCapability.mode
+      }
+    });
+  } catch (error) {
+    logger.error('❌ Failed to list models:', error);
+    res.status(500).json({
+      success: false,
+      data: [],
+      timestamp: new Date().toISOString(),
+      error: error instanceof Error ? error.message : 'Failed to fetch models'
+    });
+  }
 }));
 
 // Get model capabilities for all models - WITH INCREASED TIMEOUT AND PROGRESSIVE FALLBACK
@@ -106,7 +122,7 @@ modelsRouter.get('/capabilities', asyncHandler(async (req, res) => {
   }
 }));
 
-// Get capabilities for a specific model
+// Get capabilities for a specific model - FIXED RESPONSE FORMAT
 modelsRouter.get('/capabilities/:modelName', asyncHandler(async (req, res) => {
   const { modelName } = req.params;
   logger.info(`GET /api/models/capabilities/${modelName} - Fetching capabilities for model`);
@@ -125,7 +141,9 @@ modelsRouter.get('/capabilities/:modelName', asyncHandler(async (req, res) => {
     if (cachedCapability) {
       logger.info(`✅ Using cached capability for model '${modelName}' from progressive loader`);
       res.json({ 
-        capability: cachedCapability,
+        success: true,
+        data: cachedCapability,
+        timestamp: new Date().toISOString(),
         cached: true,
         source: 'progressive_loader',
         deploymentMode: deploymentConfig.mode,
@@ -140,7 +158,9 @@ modelsRouter.get('/capabilities/:modelName', asyncHandler(async (req, res) => {
     const capability = await ollamaStreamliner.detectCapabilities(modelName);
     
     res.json({ 
-      capability,
+      success: true,
+      data: capability,
+      timestamp: new Date().toISOString(),
       cached: false,
       source: 'direct_detection',
       deploymentMode: deploymentConfig.mode,
@@ -150,11 +170,16 @@ modelsRouter.get('/capabilities/:modelName', asyncHandler(async (req, res) => {
     
   } catch (error) {
     logger.error(`❌ Failed to get capabilities for model '${modelName}':`, error);
-    throw error;
+    res.status(500).json({
+      success: false,
+      data: null,
+      timestamp: new Date().toISOString(),
+      error: error instanceof Error ? error.message : 'Failed to detect model capabilities'
+    });
   }
 }));
 
-// Get vision-capable models - WITH INCREASED TIMEOUT AND PROGRESSIVE FALLBACK
+// Get vision-capable models - FIXED RESPONSE FORMAT
 modelsRouter.get('/vision', asyncHandler(async (req, res) => {
   logger.info('GET /api/models/vision - Fetching vision-capable models');
   
@@ -171,12 +196,16 @@ modelsRouter.get('/vision', asyncHandler(async (req, res) => {
       logger.info(`✅ Using cached vision models from progressive loader (${visionModels.length} models)`);
       
       res.json({ 
-        models: visionModels,
+        success: true,
+        data: visionModels,
+        timestamp: new Date().toISOString(),
         cached: true,
         source: 'progressive_loader',
-        deploymentMode: deploymentConfig.mode,
-        modelCapabilityMode: deploymentConfig.modelCapability.mode,
-        message: `Using cached vision models from progressive loader (${deploymentConfig.modelCapability.mode} mode)`
+        _metadata: {
+          deploymentMode: deploymentConfig.mode,
+          modelCapabilityMode: deploymentConfig.modelCapability.mode,
+          message: `Using cached vision models from progressive loader (${deploymentConfig.modelCapability.mode} mode)`
+        }
       });
       return;
     }
@@ -187,13 +216,17 @@ modelsRouter.get('/vision', asyncHandler(async (req, res) => {
       logger.info(`⏳ Progressive loading in progress, returning partial vision models (${visionModels.length} models so far)`);
       
       res.json({ 
-        models: visionModels,
+        success: true,
+        data: visionModels,
+        timestamp: new Date().toISOString(),
         cached: false,
         isLoading: true,
         source: 'progressive_loader_partial',
-        deploymentMode: deploymentConfig.mode,
-        modelCapabilityMode: deploymentConfig.modelCapability.mode,
-        message: `Progressive loading in progress (${deploymentConfig.modelCapability.mode} mode). Use /api/progressive/models/capabilities/stream for real-time updates.`
+        _metadata: {
+          deploymentMode: deploymentConfig.mode,
+          modelCapabilityMode: deploymentConfig.modelCapability.mode,
+          message: `Progressive loading in progress (${deploymentConfig.modelCapability.mode} mode). Use /api/progressive/models/capabilities/stream for real-time updates.`
+        }
       });
       return;
     }
@@ -205,12 +238,16 @@ modelsRouter.get('/vision', asyncHandler(async (req, res) => {
     const visionModels = await ollamaStreamliner.getAvailableVisionModels();
     
     res.json({ 
-      models: visionModels,
+      success: true,
+      data: visionModels,
+      timestamp: new Date().toISOString(),
       cached: false,
       source: 'direct_streamliner',
-      deploymentMode: deploymentConfig.mode,
-      modelCapabilityMode: deploymentConfig.modelCapability.mode,
-      message: `Fetched vision models directly from OllamaStreamliner (${deploymentConfig.modelCapability.mode} mode - may be slow with many models)`
+      _metadata: {
+        deploymentMode: deploymentConfig.mode,
+        modelCapabilityMode: deploymentConfig.modelCapability.mode,
+        message: `Fetched vision models directly from OllamaStreamliner (${deploymentConfig.modelCapability.mode} mode - may be slow with many models)`
+      }
     });
     
   } catch (error) {
@@ -222,19 +259,29 @@ modelsRouter.get('/vision', asyncHandler(async (req, res) => {
       logger.info(`🆘 Returning partial vision models as fallback (${partialVisionModels.length} models)`);
       
       res.json({ 
-        models: partialVisionModels,
+        success: true,
+        data: partialVisionModels,
+        timestamp: new Date().toISOString(),
         cached: true,
         partial: true,
         source: 'progressive_loader_fallback',
-        deploymentMode: deploymentConfig.mode,
-        modelCapabilityMode: deploymentConfig.modelCapability.mode,
-        error: error instanceof Error ? error.message : 'Unknown error',
-        message: `Returning partial cached vision models due to error in full fetch (${deploymentConfig.modelCapability.mode} mode)`
+        _metadata: {
+          deploymentMode: deploymentConfig.mode,
+          modelCapabilityMode: deploymentConfig.modelCapability.mode,
+          error: error instanceof Error ? error.message : 'Unknown error',
+          message: `Returning partial cached vision models due to error in full fetch (${deploymentConfig.modelCapability.mode} mode)`
+        }
       });
       return;
     }
     
-    throw error;
+    // If no partial data available, return error response
+    res.status(500).json({
+      success: false,
+      data: [],
+      timestamp: new Date().toISOString(),
+      error: error instanceof Error ? error.message : 'Failed to fetch vision models'
+    });
   }
 }));
 
