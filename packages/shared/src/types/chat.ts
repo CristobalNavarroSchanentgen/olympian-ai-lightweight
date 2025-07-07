@@ -82,6 +82,8 @@ export interface ProcessedRequest {
   }>;
   stream?: boolean;
   options?: Record<string, unknown>;
+  tools?: any[]; // NEW: MCP tools array for tool-capable models
+  tool_choice?: string; // NEW: Tool choice strategy (e.g., 'auto', 'none', or specific tool)
 }
 
 export interface ModelCapability {
