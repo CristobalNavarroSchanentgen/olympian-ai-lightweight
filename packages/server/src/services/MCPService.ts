@@ -153,11 +153,25 @@ export class MCPService {
     logger.info(`🚀 [MCP] Starting server: ${config.name}`);
 
     // Prepare environment
-    const env: NodeJS.ProcessEnv = {
-      ...process.env,
-      ...config.env,
-      MCP_TRANSPORT: 'stdio'
-    };
+    const env: Record<string, string> = {};
+    
+    // Copy process.env safely
+    for (const [key, value] of Object.entries(process.env)) {
+      if (value !== undefined) {
+        env[key] = value;
+      }
+    }
+    
+    // Add server-specific env
+    if (config.env) {
+      for (const [key, value] of Object.entries(config.env)) {
+        if (value !== undefined) {
+          env[key] = value;
+        }
+      }
+    }
+    
+    env.MCP_TRANSPORT = 'stdio';
 
     // Create stdio transport
     const transport = new StdioClientTransport({
@@ -279,10 +293,7 @@ export class MCPService {
     for (const [serverId, serverInstance] of this.servers) {
       if (serverInstance.status === 'running') {
         try {
-          const response = await serverInstance.client.request(
-            ListToolsRequestSchema,
-            {}
-          );
+          const response = await serverInstance.client.listTools();
           
           const tools = response.tools || [];
           
@@ -326,13 +337,10 @@ export class MCPService {
     }
 
     try {
-      const response = await serverInstance.client.request(
-        CallToolRequestSchema,
-        {
-          name: toolName,
-          arguments: args
-        }
-      );
+      const response = await serverInstance.client.callTool({
+        name: toolName,
+        arguments: args
+      });
 
       // Handle different content types
       if (Array.isArray(response.content)) {
@@ -374,10 +382,7 @@ export class MCPService {
     for (const [serverId, serverInstance] of this.servers) {
       if (serverInstance.status === 'running' && serverInstance.capabilities?.prompts) {
         try {
-          const response = await serverInstance.client.request(
-            ListPromptsRequestSchema,
-            {}
-          );
+          const response = await serverInstance.client.listPrompts();
           
           const prompts = response.prompts || [];
           
@@ -416,13 +421,10 @@ export class MCPService {
     }
 
     try {
-      const response = await serverInstance.client.request(
-        GetPromptRequestSchema,
-        {
-          name,
-          arguments: args || {}
-        }
-      );
+      const response = await serverInstance.client.getPrompt({
+        name,
+        arguments: args || {}
+      });
 
       return response;
     } catch (error) {
@@ -452,10 +454,7 @@ export class MCPService {
     for (const [serverId, serverInstance] of this.servers) {
       if (serverInstance.status === 'running' && serverInstance.capabilities?.resources) {
         try {
-          const response = await serverInstance.client.request(
-            ListResourcesRequestSchema,
-            {}
-          );
+          const response = await serverInstance.client.listResources();
           
           const resources = response.resources || [];
           
@@ -495,10 +494,7 @@ export class MCPService {
     }
 
     try {
-      const response = await serverInstance.client.request(
-        ReadResourceRequestSchema,
-        { uri }
-      );
+      const response = await serverInstance.client.readResource({ uri });
 
       return response;
     } catch (error) {
@@ -567,7 +563,7 @@ export class MCPService {
 
     try {
       // Try to list tools as a health check
-      await serverInstance.client.request(ListToolsRequestSchema, {});
+      await serverInstance.client.listTools();
       return true;
     } catch (error) {
       return false;
