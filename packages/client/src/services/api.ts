@@ -543,7 +543,7 @@ class ApiService {
         }
 
         const chunk = decoder.decode(value);
-        const lines = chunk.split('\n'); // FIXED: Changed from '\\\\n' to '\\n' for proper line splitting
+        const lines = chunk.split('\n'); // FIXED: Changed from '\\\\n' to '\n' for proper line splitting
 
         for (const line of lines) {
           if (line.startsWith('data: ')) {
@@ -787,11 +787,11 @@ class ApiService {
     return { messages: data.data || [], total: data.total };
   }
 
-  // Model API - UPDATED WITH INCREASED TIMEOUTS AND PROGRESSIVE LOADING SUPPORT
+  // Model API - FIXED: Updated to use correct endpoints from models router
   async getModels(): Promise<string[]> {
-    console.log('🌐 [API] getModels called - making request to /chat/models with increased timeout');
+    console.log('🌐 [API] getModels called - making request to /models/list with increased timeout');
     try {
-      const response = await this.client.get<{ success: boolean; data: string[]; timestamp: string }>('/chat/models', {
+      const response = await this.client.get<{ success: boolean; data: string[]; timestamp: string }>('/models/list', {
         timeout: 300000, // 5 minutes for model loading
       });
       console.log('🌐 [API] getModels raw response:', {
@@ -834,9 +834,9 @@ class ApiService {
   }
 
   async getVisionModels(): Promise<string[]> {
-    console.log('🌐 [API] getVisionModels called - making request to /chat/vision-models with increased timeout');
+    console.log('🌐 [API] getVisionModels called - making request to /models/vision with increased timeout');
     try {
-      const response = await this.client.get<{ success: boolean; data: string[]; timestamp: string }>('/chat/vision-models', {
+      const response = await this.client.get<{ success: boolean; data: string[]; timestamp: string }>('/models/vision', {
         timeout: 300000, // 5 minutes for vision model detection
       });
       console.log('🌐 [API] getVisionModels raw response:', {
@@ -880,7 +880,7 @@ class ApiService {
   async getModelCapabilities(model: string): Promise<ModelCapability> {
     console.log('🌐 [API] getModelCapabilities called with model:', model);
     try {
-      const response = await this.client.get<{ success: boolean; data: ModelCapability; timestamp: string }>(`/chat/models/${model}/capabilities`, {
+      const response = await this.client.get<{ success: boolean; data: ModelCapability; timestamp: string }>(`/models/capabilities/${model}`, {
         timeout: 120000, // 2 minutes for individual model capability detection
       });
       console.log('🌐 [API] getModelCapabilities raw response:', {
