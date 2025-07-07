@@ -21,6 +21,11 @@ import { MCPTool } from '@olympian/shared';
  * - Support for prompts, resources, and completions
  * - Improved process management
  * - Better capability negotiation
+ * 
+ * IMPROVED: Enhanced error isolation and resilience
+ * - All servers are optional by default to prevent blocking model availability
+ * - Better error containment and recovery
+ * - More detailed error reporting
  */
 
 interface MCPServerConfig {
@@ -30,13 +35,15 @@ interface MCPServerConfig {
   env?: Record<string, string>;
   optional?: boolean;
   description?: string;
+  retryCount?: number;
+  retryDelay?: number;
 }
 
 interface MCPServerInstance {
   config: MCPServerConfig;
   client: Client;
   transport: StdioClientTransport;
-  status: 'starting' | 'running' | 'stopped' | 'error';
+  status: 'starting' | 'running' | 'stopped' | 'error' | 'failed';
   startTime: Date;
   capabilities?: {
     tools?: boolean;
@@ -45,6 +52,8 @@ interface MCPServerInstance {
     completion?: boolean;
   };
   lastError?: string;
+  failureCount: number;
+  lastFailureTime?: Date;
 }
 
 export class MCPService {
@@ -53,9 +62,15 @@ export class MCPService {
     name: 'olympian-ai-subproject3',
     version: '1.0.0'
   };
+  
+  // IMPROVED: Make connection timeout configurable
+  private readonly CONNECTION_TIMEOUT = parseInt(process.env.MCP_CONNECTION_TIMEOUT || '15000');
+  private readonly RETRY_DELAY = parseInt(process.env.MCP_RETRY_DELAY || '5000');
+  private readonly MAX_RETRIES = parseInt(process.env.MCP_MAX_RETRIES || '3');
 
   /**
    * Default MCP server configuration following npx philosophy
+   * IMPROVED: All servers are now optional by default to prevent blocking
    */
   private readonly DEFAULT_SERVERS: MCPServerConfig[] = [
     {
@@ -63,6 +78,7 @@ export class MCPService {
       command: 'npx',
       args: ['-y', '@modelcontextprotocol/server-github'],
       description: 'GitHub API integration for repositories, issues, and PRs',
+      optional: true, // IMPROVED: Made optional by default
       env: {
         GITHUB_PERSONAL_ACCESS_TOKEN: process.env.GITHUB_PERSONAL_ACCESS_TOKEN || ''
       }
@@ -72,12 +88,14 @@ export class MCPService {
       command: 'npx',
       args: ['-y', '@modelcontextprotocol/server-filesystem', '/app'],
       description: 'File system access within the container',
+      optional: true, // IMPROVED: Made optional by default
     },
     {
       name: 'memory',
       command: 'npx',
       args: ['-y', '@modelcontextprotocol/server-memory'],
       description: 'In-memory key-value storage',
+      optional: true, // IMPROVED: Made optional by default
     },
     {
       name: 'brave-search',
@@ -114,43 +132,92 @@ export class MCPService {
 
   /**
    * Initialize MCP service
+   * IMPROVED: Better error handling and reporting
    */
   async initialize(): Promise<void> {
-    logger.info('🚀 [MCP] Initializing modern MCP service (npx-based)...');
+    logger.info('🚀 [MCP] Initializing modern MCP service (npx-based) with enhanced error isolation...');
+    logger.info(`⚙️  [MCP] Configuration: CONNECTION_TIMEOUT=${this.CONNECTION_TIMEOUT}ms, MAX_RETRIES=${this.MAX_RETRIES}`);
 
     // Setup cleanup handlers
     this.setupCleanupHandlers();
 
-    // Start all servers
+    // Start all servers with better error isolation
     await this.startServers();
 
-    logger.info(`✅ [MCP] Modern MCP service initialized: ${this.servers.size} servers`);
+    const serverStatus = this.getServerStatus();
+    const runningCount = serverStatus.filter(s => s.status === 'running').length;
+    const failedCount = serverStatus.filter(s => s.status === 'error' || s.status === 'failed').length;
+
+    logger.info(`✅ [MCP] Modern MCP service initialized: ${runningCount}/${this.DEFAULT_SERVERS.length} servers running`);
+    
+    if (failedCount > 0) {
+      logger.warn(`⚠️  [MCP] ${failedCount} servers failed to start. Check logs for details.`);
+      logger.warn(`⚠️  [MCP] Failed servers:`, serverStatus.filter(s => s.status === 'error' || s.status === 'failed').map(s => ({
+        name: s.name,
+        error: s.lastError
+      })));
+    }
   }
 
   /**
    * Start all MCP servers using npx
+   * IMPROVED: Better error isolation and parallel startup
    */
   private async startServers(): Promise<void> {
     const startPromises = this.DEFAULT_SERVERS.map(async (config) => {
       try {
-        await this.startServer(config);
+        await this.startServerWithRetry(config);
       } catch (error) {
-        if (config.optional) {
-          logger.info(`ℹ️ [MCP] Optional server ${config.name} failed to start: ${error}`);
-        } else {
-          logger.error(`❌ [MCP] Required server ${config.name} failed to start:`, error);
-        }
+        // IMPROVED: Log error but continue with other servers
+        const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+        logger.error(`❌ [MCP] Server ${config.name} failed after ${this.MAX_RETRIES} retries: ${errorMsg}`);
+        
+        // Still track the failed server in the map
+        this.servers.set(config.name, {
+          config,
+          client: null as any,
+          transport: null as any,
+          status: 'failed',
+          startTime: new Date(),
+          lastError: errorMsg,
+          failureCount: this.MAX_RETRIES,
+          lastFailureTime: new Date()
+        });
       }
     });
 
-    await Promise.allSettled(startPromises);
+    // IMPROVED: Use allSettled to ensure all promises complete
+    const results = await Promise.allSettled(startPromises);
+    
+    // Log summary of results
+    const succeeded = results.filter(r => r.status === 'fulfilled').length;
+    const failed = results.filter(r => r.status === 'rejected').length;
+    
+    logger.info(`📊 [MCP] Server startup complete: ${succeeded} succeeded, ${failed} failed`);
+  }
+
+  /**
+   * IMPROVED: Start a server with retry logic
+   */
+  private async startServerWithRetry(config: MCPServerConfig, retryCount = 0): Promise<void> {
+    try {
+      await this.startServer(config);
+    } catch (error) {
+      if (retryCount < this.MAX_RETRIES && config.optional) {
+        logger.warn(`⚠️  [MCP] Server ${config.name} failed to start (attempt ${retryCount + 1}/${this.MAX_RETRIES}), retrying in ${this.RETRY_DELAY}ms...`);
+        await new Promise(resolve => setTimeout(resolve, this.RETRY_DELAY));
+        return this.startServerWithRetry(config, retryCount + 1);
+      }
+      throw error;
+    }
   }
 
   /**
    * Start a single MCP server
+   * IMPROVED: Better error handling and process isolation
    */
   private async startServer(config: MCPServerConfig): Promise<void> {
-    logger.info(`🚀 [MCP] Starting server: ${config.name}`);
+    logger.info(`🚀 [MCP] Starting server: ${config.name} (optional: ${config.optional})`);
 
     // Prepare environment
     const env: Record<string, string> = {};
@@ -198,7 +265,8 @@ export class MCPService {
       client,
       transport,
       status: 'starting',
-      startTime: new Date()
+      startTime: new Date(),
+      failureCount: 0
     };
 
     // Store instance
@@ -206,7 +274,7 @@ export class MCPService {
 
     try {
       // Connect to server with timeout
-      await this.connectWithTimeout(client, transport, 30000);
+      await this.connectWithTimeout(client, transport, this.CONNECTION_TIMEOUT);
       
       serverInstance.status = 'running';
       
@@ -220,6 +288,8 @@ export class MCPService {
         logger.error(`❌ [MCP] Server ${config.name} transport error:`, error);
         serverInstance.status = 'error';
         serverInstance.lastError = error.message;
+        serverInstance.failureCount++;
+        serverInstance.lastFailureTime = new Date();
       };
 
       transport.onclose = () => {
@@ -230,18 +300,26 @@ export class MCPService {
     } catch (error) {
       serverInstance.status = 'error';
       serverInstance.lastError = error instanceof Error ? error.message : 'Unknown error';
-      this.servers.delete(config.name);
+      serverInstance.failureCount++;
+      serverInstance.lastFailureTime = new Date();
+      
+      // IMPROVED: Only remove from map if it's a required server
+      if (!config.optional) {
+        this.servers.delete(config.name);
+      }
+      
       throw error;
     }
   }
 
   /**
    * Connect with timeout
+   * IMPROVED: Better error messages
    */
   private async connectWithTimeout(client: Client, transport: StdioClientTransport, timeout: number): Promise<void> {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
-        reject(new Error(`Connection timeout after ${timeout}ms`));
+        reject(new Error(`Connection timeout after ${timeout}ms - server may be unavailable or slow to start`));
       }, timeout);
 
       client.connect(transport)
@@ -258,6 +336,7 @@ export class MCPService {
 
   /**
    * Get server capabilities
+   * IMPROVED: Better error handling
    */
   private async getServerCapabilities(client: Client): Promise<any> {
     try {
@@ -275,6 +354,7 @@ export class MCPService {
         completion: false
       };
     } catch (error) {
+      logger.warn(`⚠️  [MCP] Failed to get server capabilities:`, error);
       return {
         tools: true,
         prompts: false,
@@ -286,6 +366,7 @@ export class MCPService {
 
   /**
    * List all available tools from all servers with complete schema information
+   * IMPROVED: Only query running servers
    */
   async listTools(): Promise<MCPTool[]> {
     const allTools: MCPTool[] = [];
@@ -316,6 +397,12 @@ export class MCPService {
           });
         } catch (error) {
           logger.warn(`⚠️ [MCP] Failed to list tools from ${serverId}:`, error);
+          // IMPROVED: Update server status if it's failing
+          if (serverInstance.failureCount++ > 3) {
+            serverInstance.status = 'error';
+            serverInstance.lastError = 'Multiple tool listing failures';
+            serverInstance.lastFailureTime = new Date();
+          }
         }
       }
     }
@@ -325,15 +412,16 @@ export class MCPService {
 
   /**
    * Call a tool on a specific server
+   * IMPROVED: Better error messages
    */
   async callTool(serverId: string, toolName: string, args: Record<string, any>): Promise<any> {
     const serverInstance = this.servers.get(serverId);
     if (!serverInstance) {
-      throw new Error(`Server ${serverId} not found`);
+      throw new Error(`Server ${serverId} not found. Available servers: ${Array.from(this.servers.keys()).join(', ')}`);
     }
 
     if (serverInstance.status !== 'running') {
-      throw new Error(`Server ${serverId} is not running (status: ${serverInstance.status})`);
+      throw new Error(`Server ${serverId} is not running (status: ${serverInstance.status}). ${serverInstance.lastError ? `Last error: ${serverInstance.lastError}` : ''}`);
     }
 
     try {
@@ -351,6 +439,9 @@ export class MCPService {
       return response.content;
     } catch (error) {
       logger.error(`❌ [MCP] Tool call failed on ${serverId}.${toolName}:`, error);
+      // IMPROVED: Track failures
+      serverInstance.failureCount++;
+      serverInstance.lastFailureTime = new Date();
       throw error;
     }
   }
@@ -505,6 +596,7 @@ export class MCPService {
 
   /**
    * Get server status with detailed information
+   * IMPROVED: More detailed status reporting
    */
   getServerStatus(): Array<{
     name: string;
@@ -513,6 +605,8 @@ export class MCPService {
     description?: string;
     capabilities?: any;
     lastError?: string;
+    failureCount?: number;
+    lastFailureTime?: Date;
   }> {
     return Array.from(this.servers.values()).map(server => ({
       name: server.config.name,
@@ -520,12 +614,15 @@ export class MCPService {
       startTime: server.startTime,
       description: server.config.description,
       capabilities: server.capabilities,
-      lastError: server.lastError
+      lastError: server.lastError,
+      failureCount: server.failureCount,
+      lastFailureTime: server.lastFailureTime
     }));
   }
 
   /**
    * Restart a specific server
+   * IMPROVED: Better error handling
    */
   async restartServer(serverName: string): Promise<void> {
     const serverInstance = this.servers.get(serverName);
@@ -549,11 +646,17 @@ export class MCPService {
     this.servers.delete(serverName);
 
     // Restart with same config
-    await this.startServer(serverInstance.config);
+    try {
+      await this.startServerWithRetry(serverInstance.config);
+    } catch (error) {
+      logger.error(`❌ [MCP] Failed to restart server ${serverName}:`, error);
+      throw error;
+    }
   }
 
   /**
    * Check if a server is healthy
+   * IMPROVED: More comprehensive health check
    */
   async isServerHealthy(serverName: string): Promise<boolean> {
     const serverInstance = this.servers.get(serverName);
@@ -561,11 +664,21 @@ export class MCPService {
       return false;
     }
 
+    // Check if there have been recent failures
+    if (serverInstance.failureCount > 0 && serverInstance.lastFailureTime) {
+      const timeSinceFailure = Date.now() - serverInstance.lastFailureTime.getTime();
+      // Consider unhealthy if failed in the last minute
+      if (timeSinceFailure < 60000) {
+        return false;
+      }
+    }
+
     try {
       // Try to list tools as a health check
       await serverInstance.client.listTools();
       return true;
     } catch (error) {
+      logger.warn(`⚠️  [MCP] Health check failed for ${serverName}:`, error);
       return false;
     }
   }
@@ -587,14 +700,15 @@ export class MCPService {
 
   /**
    * Setup cleanup handlers
+   * IMPROVED: Don't exit process from cleanup handlers
    */
   private setupCleanupHandlers(): void {
     const cleanup = async () => {
       logger.info('🧹 [MCP] Cleaning up MCP service...');
       await this.cleanup();
-      process.exit(0);
     };
 
+    // IMPROVED: Only register cleanup, don't exit process
     process.on('SIGINT', cleanup);
     process.on('SIGTERM', cleanup);
     process.on('beforeExit', cleanup);
@@ -602,23 +716,30 @@ export class MCPService {
 
   /**
    * Cleanup all servers
+   * IMPROVED: More graceful cleanup
    */
   async cleanup(): Promise<void> {
     logger.info('🧹 [MCP] Stopping all MCP servers...');
 
     const cleanupPromises = Array.from(this.servers.values()).map(async (serverInstance) => {
       try {
+        // Set status to stopping
+        serverInstance.status = 'stopped';
+        
         // Close client connection
         if (serverInstance.client) {
-          await serverInstance.client.close();
+          await serverInstance.client.close().catch(err => 
+            logger.warn(`⚠️  [MCP] Error closing client for ${serverInstance.config.name}:`, err)
+          );
         }
 
         // Close transport
         if (serverInstance.transport) {
-          await serverInstance.transport.close();
+          await serverInstance.transport.close().catch(err => 
+            logger.warn(`⚠️  [MCP] Error closing transport for ${serverInstance.config.name}:`, err)
+          );
         }
 
-        serverInstance.status = 'stopped';
         logger.info(`✅ [MCP] Server ${serverInstance.config.name} stopped`);
       } catch (error) {
         logger.error(`❌ [MCP] Failed to stop server ${serverInstance.config.name}:`, error);
@@ -639,7 +760,7 @@ export class MCPService {
     }
 
     try {
-      await this.startServer(config);
+      await this.startServerWithRetry(config);
     } catch (error) {
       logger.error(`❌ [MCP] Failed to add custom server ${config.name}:`, error);
       throw error;
@@ -667,5 +788,35 @@ export class MCPService {
       logger.error(`❌ [MCP] Failed to remove server ${serverName}:`, error);
       throw error;
     }
+  }
+
+  /**
+   * IMPROVED: Get a summary of the service health
+   */
+  getHealthSummary(): {
+    totalServers: number;
+    runningServers: number;
+    failedServers: number;
+    stoppedServers: number;
+    healthPercentage: number;
+    issues: Array<{ server: string; error: string }>;
+  } {
+    const status = this.getServerStatus();
+    const running = status.filter(s => s.status === 'running').length;
+    const failed = status.filter(s => s.status === 'error' || s.status === 'failed').length;
+    const stopped = status.filter(s => s.status === 'stopped').length;
+    
+    const issues = status
+      .filter(s => s.lastError)
+      .map(s => ({ server: s.name, error: s.lastError! }));
+
+    return {
+      totalServers: status.length,
+      runningServers: running,
+      failedServers: failed,
+      stoppedServers: stopped,
+      healthPercentage: status.length > 0 ? Math.round((running / status.length) * 100) : 0,
+      issues
+    };
   }
 }
