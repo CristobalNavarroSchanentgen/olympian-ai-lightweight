@@ -61,29 +61,65 @@ export class MCPManager extends EventEmitter {
 
     // Get WebSocket service if available
     this.ws = WebSocketService.getInstance();
-
-    // Default servers for subproject 3
+    // Updated servers for subproject 3
     const defaultServers: MCPServer[] = [
       {
-        id: 'github',
-        name: 'github',
-        transport: 'stdio',
-        command: 'npx',
-        args: ['-y', '@modelcontextprotocol/server-github'],
-        env: { GITHUB_PERSONAL_ACCESS_TOKEN: process.env.GITHUB_PERSONAL_ACCESS_TOKEN || '' },
+        id: "github",
+        name: "github",
+        transport: "stdio",
+        command: "npx",
+        args: ["-y", "@modelcontextprotocol/server-github"],
+        env: { GITHUB_PERSONAL_ACCESS_TOKEN: process.env.GITHUB_PERSONAL_ACCESS_TOKEN || "" },
         optional: true,
-        status: 'stopped'
+        status: "stopped"
       },
       {
-        id: 'filesystem',
-        name: 'filesystem',
-        transport: 'stdio',
-        command: 'npx',
-        args: ['-y', '@modelcontextprotocol/server-filesystem', '/app'],
+        id: "met-museum",
+        name: "met-museum",
+        transport: "stdio",
+        command: "npx",
+        args: ["-y", "metmuseum-mcp"],
         optional: true,
-        status: 'stopped'
+        status: "stopped"
       },
       {
+        id: "applescript_execute",
+        name: "applescript_execute",
+        transport: "stdio",
+        command: "uv",
+        args: ["--directory", "/Users/cristobalnavarro/Servers/applescript-mcp", "run", "src/applescript_mcp/server.py"],
+        optional: true,
+        status: "stopped"
+      },
+      {
+        id: "nasa-mcp",
+        name: "nasa-mcp",
+        transport: "stdio",
+        command: "npx",
+        args: ["-y", "@programcomputer/nasa-mcp-server@latest"],
+        env: { NASA_API_KEY: process.env.NASA_API_KEY || "" },
+        optional: true,
+        status: "stopped"
+      },
+      {
+        id: "basic-memory",
+        name: "basic-memory",
+        transport: "stdio",
+        command: "uvx",
+        args: ["basic-memory", "mcp"],
+        optional: true,
+        status: "stopped"
+      },
+      {
+        id: "Context7",
+        name: "Context7",
+        transport: "stdio",
+        command: "npx",
+        args: ["-y", "@upstash/context7-mcp"],
+        optional: true,
+        status: "stopped"
+      }
+    ];      {
         id: 'memory',
         name: 'memory',
         transport: 'stdio',

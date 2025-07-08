@@ -17,22 +17,18 @@ export function MCPConfigPanel() {
   const [isSaving, setIsSaving] = useState(false);
   const [activeTab, setActiveTab] = useState('config');
 
+  const [toolOverrides, setToolOverrides] = useState<Record<string, any>>({});
+  const [availableTools, setAvailableTools] = useState<any[]>([]);
+  const [hasChanges, setHasChanges] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [activeTab, setActiveTab] = useState("config");    try {
+      const data = await api.getMCPConfig();
+      setConfig(data);
   useEffect(() => {
     loadConfig();
     loadToolOverrides();
-  }, []);
-
-  const loadConfig = async () => {
-    try {
-      const data = await api.getMCPConfig();
-      setConfig(data);
-    } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'Failed to load MCP configuration',
-        variant: 'destructive',
-      });
-    }
+    loadAvailableTools();
+  }, []);    }
   };
 
   const loadToolOverrides = async () => {
@@ -56,13 +52,17 @@ export function MCPConfigPanel() {
       toast({
         title: 'Success',
         description: 'MCP configuration saved successfully',
-      });
+  };
+
+  const loadAvailableTools = async () => {
+    try {
+      const response = await api.get("/mcp/tools");
+      setAvailableTools(response.data.data.tools || []);
     } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'Failed to save MCP configuration',
-        variant: 'destructive',
-      });
+      console.log("Tools not available:", error);
+      setAvailableTools([]);
+    }
+  };      });
     } finally {
       setIsSaving(false);
     }
@@ -221,12 +221,12 @@ export function MCPConfigPanel() {
             <CardContent>
               <ToolDescriptionEditor
                 overrides={toolOverrides}
+                availableTools={availableTools}
                 onChange={(newOverrides) => {
                   setToolOverrides(newOverrides);
                   setHasChanges(true);
                 }}
-              />
-            </CardContent>
+              />            </CardContent>
           </Card>
         </TabsContent>
 

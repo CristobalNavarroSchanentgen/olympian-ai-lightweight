@@ -14,29 +14,38 @@ const CONFIG_DIR = path.join(os.homedir(), '.olympian-ai-lite');
 const MCP_CONFIG_PATH = path.join(CONFIG_DIR, 'mcp_config.json');
 const TOOL_OVERRIDES_PATH = path.join(CONFIG_DIR, 'tool_overrides.json');
 const BACKUPS_DIR = path.join(CONFIG_DIR, 'backups');
-
-// Ensure config directory exists
-async function ensureConfigDir(): Promise<void> {
-  await fs.mkdir(CONFIG_DIR, { recursive: true });
-  await fs.mkdir(BACKUPS_DIR, { recursive: true });
-}
-
 // Get MCP config
-router.get('/mcp', async (_req, res, next) => {
+router.get("/mcp", async (_req, res, next) => {
   try {
-    await ensureConfigDir();
-    
     let config = {};
+    
+    // Try to load the project mcp-config.multihost.json first
+    const projectConfigPath = path.join(process.cwd(), "mcp-config.multihost.json");
+    
     try {
-      const data = await fs.readFile(MCP_CONFIG_PATH, 'utf-8');
+      const data = await fs.readFile(projectConfigPath, "utf-8");
       config = JSON.parse(data);
     } catch (error) {
-      // File doesn't exist, return empty config
-      config = { servers: [], version: '1.0', lastModified: new Date() };
+      // Fallback to user config directory
+      await ensureConfigDir();
+      try {
+        const data = await fs.readFile(MCP_CONFIG_PATH, "utf-8");
+        config = JSON.parse(data);
+      } catch {
+        // Return empty config if neither exists
+        config = { mcpServers: {}, _meta: { version: "1.0" } };
+      }
     }
 
     res.json({
       success: true,
+      data: config,
+      timestamp: new Date(),
+    });
+  } catch (error) {
+    next(error);
+  }
+});      success: true,
       data: config,
       timestamp: new Date(),
     });

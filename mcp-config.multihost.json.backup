@@ -1,0 +1,127 @@
+{
+  "mcpServers": {
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_PERSONAL_ACCESS_TOKEN}"
+      }
+    },
+    "nasa-mcp": {
+      "command": "npx", 
+      "args": ["-y", "@programcomputer/nasa-mcp-server"],
+      "env": {
+        "NASA_API_KEY": "${NASA_API_KEY}"
+      }
+    },
+    "met-museum": {
+      "command": "npx",
+      "args": ["-y", "metmuseum-mcp"]
+    },
+    "Context7": {
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp"]
+    },
+    "applescript-mcp": {
+      "command": "npx",
+      "args": ["-y", "@peakmojo/applescript-mcp"]
+    },
+    "web-search": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+      "env": {
+        "BRAVE_API_KEY": "${BRAVE_API_KEY}"
+      }
+    }
+  },
+  "_meta": {
+    "version": "3.3.1",
+    "deployment": "multi-host-stdio-subprocesses",
+    "transport_protocol": "stdio_subprocess_only",
+    "description": "Self-reliant MCP configuration for subproject 3 - All MCP servers run as subprocesses within backend container using stdio transport",
+    "schema_compliance": "MCP stdio subprocess pattern",
+    "format_updated": "Updated to use stdio transport with subprocess commands instead of HTTP endpoints",
+    "notes": [
+      "All servers use stdio transport exclusively with subprocess execution",
+      "Self-contained deployment - MCP servers run as subprocesses in backend container",
+      "No separate containers needed - follows MCP best practices",
+      "Uses npx to launch MCP server packages as child processes",
+      "Environment variables are passed to subprocess environments",
+      "Backend container includes all required MCP server npm packages",
+      "Stdio transport allows direct process communication without network overhead",
+      "Supports both single JSON responses and streaming via stdio pipes",
+      "Personal tokens should be replaced with actual tokens from .env file",
+      "Subprocess-based execution provides better resource sharing and management"
+    ],
+    "requirements": {
+      "docker": true,
+      "external_mcp_servers": false,
+      "node": ">=18",
+      "network_access": "not_required_for_stdio",
+      "transport": "stdio_subprocess_only",
+      "stdio_support": true,
+      "self_reliant": true,
+      "subprocess_execution": true
+    },
+    "subprocess_server_configuration": {
+      "github": {
+        "npm_package": "@modelcontextprotocol/server-github",
+        "env_required": ["GITHUB_PERSONAL_ACCESS_TOKEN"],
+        "transport": "stdio",
+        "execution_method": "npx_subprocess"
+      },
+      "nasa-mcp": {
+        "npm_package": "@programcomputer/nasa-mcp-server",
+        "env_optional": ["NASA_API_KEY"],
+        "demo_key_available": true,
+        "transport": "stdio",
+        "execution_method": "npx_subprocess"
+      },
+      "met-museum": {
+        "npm_package": "metmuseum-mcp",
+        "env_required": [],
+        "transport": "stdio",
+        "execution_method": "npx_subprocess"
+      },
+      "Context7": {
+        "npm_package": "@upstash/context7-mcp",
+        "env_required": [],
+        "transport": "stdio",
+        "execution_method": "npx_subprocess"
+      },
+      "applescript-mcp": {
+        "npm_package": "@peakmojo/applescript-mcp",
+        "env_required": [],
+        "transport": "stdio",
+        "execution_method": "npx_subprocess"
+      },
+      "web-search": {
+        "npm_package": "@modelcontextprotocol/server-brave-search",
+        "env_optional": ["BRAVE_API_KEY"],
+        "transport": "stdio",
+        "execution_method": "npx_subprocess"
+      }
+    },
+    "environment_variables": {
+      "DEPLOYMENT_MODE": "multi-host",
+      "ENABLE_MULTI_HOST": "true",
+      "MCP_STDIO_ONLY": "true",
+      "NODE_ENV": "production",
+      "GITHUB_PERSONAL_ACCESS_TOKEN": "replace_with_actual_token",
+      "NASA_API_KEY": "replace_with_actual_key_if_needed",
+      "BRAVE_API_KEY": "replace_with_actual_key_if_needed"
+    },
+    "troubleshooting": {
+      "subprocess_execution": "Ensure MCP server packages are installed in backend container",
+      "stdio_communication": "Verify MCP client can spawn and manage subprocess communications",
+      "package_availability": "Check that npx can find and execute MCP server packages",
+      "environment_variables": "Ensure environment variables are properly passed to subprocesses",
+      "process_management": "Monitor subprocess spawning and cleanup",
+      "memory_usage": "Backend container has sufficient memory for multiple MCP subprocesses",
+      "node_modules": "Verify all MCP packages are available in backend container node_modules",
+      "stdio_pipes": "Ensure stdin/stdout pipes are properly established between client and servers",
+      "package_installation": "Run npm install for MCP packages during container build",
+      "subprocess_errors": "Check container logs for subprocess spawn failures"
+    }
+  }
+}

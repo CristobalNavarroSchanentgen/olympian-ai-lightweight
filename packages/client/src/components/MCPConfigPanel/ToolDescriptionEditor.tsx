@@ -9,11 +9,11 @@ import { Plus, Trash, Edit2, Save, X } from 'lucide-react';
 
 interface ToolDescriptionEditorProps {
   overrides: Record<string, any>;
+interface ToolDescriptionEditorProps {
+  overrides: Record<string, any>;
+  availableTools?: any[];
   onChange: (overrides: Record<string, any>) => void;
-}
-
-export function ToolDescriptionEditor({ overrides, onChange }: ToolDescriptionEditorProps) {
-  const [editingTool, setEditingTool] = useState<string | null>(null);
+export function ToolDescriptionEditor({ overrides, availableTools = [], onChange }: ToolDescriptionEditorProps) {  const [editingTool, setEditingTool] = useState<string | null>(null);
   const [newTool, setNewTool] = useState({ name: '', description: '', examples: [''] });
   const [showNewForm, setShowNewForm] = useState(false);
 
@@ -44,11 +44,49 @@ export function ToolDescriptionEditor({ overrides, onChange }: ToolDescriptionEd
 
   return (
     <div className="space-y-4">
-      {/* Add New Tool Button */}
-      <div className="flex justify-end">
-        <Button
-          onClick={() => setShowNewForm(true)}
-          disabled={showNewForm}
+      {/* Available Tools from MCP Servers */}
+      {availableTools.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Available MCP Tools</CardTitle>
+            <CardDescription>
+              Tools discovered from running MCP servers
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-2">
+              {availableTools.map((tool, index) => (
+                <div key={`${tool.serverId}-${tool.name}-${index}`} className="flex items-center justify-between p-2 border rounded">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline">{tool.serverId}</Badge>
+                      <span className="font-medium">{tool.name}</span>
+                    </div>
+                    <p className="text-sm text-muted-foreground mt-1">{tool.description}</p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      const toolKey = `${tool.serverId}.${tool.name}`;
+                      if (!overrides[toolKey]) {
+                        handleSaveTool(toolKey, {
+                          description: tool.description,
+                          examples: []
+                        });
+                      }
+                    }}
+                  >
+                    {overrides[`${tool.serverId}.${tool.name}`] ? "Configured" : "Configure"}
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Add New Tool Button */}          disabled={showNewForm}
         >
           <Plus className="mr-2 h-4 w-4" />
           Add Tool Override
