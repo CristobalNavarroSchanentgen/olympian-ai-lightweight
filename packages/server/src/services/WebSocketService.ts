@@ -80,6 +80,18 @@ export class WebSocketService {
     });
   }
 
+  /**
+   * Broadcast message to all connected clients (for MCP updates)
+   */
+  public broadcast(message: any): void {
+    if (this.io) {
+      this.io.emit('broadcast', message);
+      logger.debug('🔄 [WebSocket] Broadcasting message to all clients:', message);
+    } else {
+      logger.warn('⚠️ [WebSocket] Cannot broadcast - WebSocket server not initialized');
+    }
+  }
+
   private async handleChatMessage(
     socket: Socket,
     data: ClientEvents['chat:message']
