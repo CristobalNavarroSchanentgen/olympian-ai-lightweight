@@ -211,10 +211,10 @@ export class MCPManager extends EventEmitter {
         arguments: args || {}
       });
 
-      // Update tool usage for caching
+      // Update tool usage for caching - with safe null check
       const tool = server.tools.find(t => t.name === toolName);
       if (tool) {
-        tool.usageCount++;
+        tool.usageCount = (tool.usageCount || 0) + 1;
       }
 
       return response.content;
@@ -290,7 +290,7 @@ export class MCPManager extends EventEmitter {
         inputSchema: tool.inputSchema || {},
         serverId,
         cachedAt: new Date(),
-        usageCount: 0
+        usageCount: 0 // Initialize usageCount
       }));
 
       logger.debug(`📦 [MCP] Discovered ${server.tools.length} tools for ${serverId}`);
@@ -350,7 +350,7 @@ export class MCPManager extends EventEmitter {
    * Broadcast updates via WebSocket
    */
   private broadcastUpdate(type: string, data: any): void {
-    if (this.ws) {
+    if (this.ws && typeof this.ws.broadcast === 'function') {
       this.ws.broadcast({
         type: 'mcp_update',
         data: { type, ...data },
