@@ -1255,44 +1255,21 @@ export class OllamaStreamliner {
     request: ChatRequest,
     history: Array<{ role: string; content: string; images?: string[] }>, availableTools?: any[]
   ): ProcessedRequest {
-    // Build messages with tool descriptions in system prompt
-    let messages = [...history];
-    
-    // NEW: Inject tool descriptions into system prompt for tool-capable models
-    if (availableTools && availableTools.length > 0) {
-      const toolDescriptions = availableTools.map(tool => 
-        `- ${tool.name}: ${tool.description}`
-      ).join('\n');
-      
-      const toolSystemPrompt = `You have access to the following tools:\n\n${toolDescriptions}\n\nWhen you need to use a tool, respond with the appropriate tool call.`;
-      
-      // Check if there's already a system message
-      if (messages.length > 0 && messages[0].role === 'system') {
-        // Append to existing system message
-        messages[0].content += `\n\n${toolSystemPrompt}`;
-      } else {
-        // Insert new system message at the beginning
-        messages.unshift({
-          role: 'system',
-          content: toolSystemPrompt
-        });
-      }
-      
-      logger.debug(`🔧 [OllamaStreamliner] Injected ${availableTools.length} tool descriptions into system prompt`);
-    }
-    
     // Add current message to history
-    messages.push({
-      role: 'user',
-      content: request.content
-    });
+    const messages = [
+      ...history,
+      {
+        role: 'user',
+        content: request.content,
+      },
+    ];
 
 
     // NEW: Format tools for Ollama if available
     let formattedTools: any[] = [];
     if (availableTools && availableTools.length > 0) {
       formattedTools = this.toolIntegrationService.formatToolsForOllama(availableTools);
-      logger.debug(`🔧 [OllamaStreamliner] Formatted ${formattedTools.length} tools for Ollama`);
+      logger.debug(\`🔧 [OllamaStreamliner] Formatted \${formattedTools.length} tools for Ollama\`);
     }
 
     return {
