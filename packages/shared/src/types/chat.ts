@@ -1,5 +1,6 @@
 // Import from artifacts.ts instead of redefining
 import type { ArtifactReference } from './artifacts';
+import type { MCPTool } from './mcp';
 
 export interface Conversation {
   _id?: string;
@@ -27,6 +28,30 @@ export interface ThinkingData {
   processedAt: Date; // When thinking was extracted
 }
 
+// NEW: Tool execution data for MCP integration
+export interface ToolCall {
+  id: string;
+  type: 'function';
+  function: {
+    name: string; // Format: "serverId.toolName" or just "toolName"
+    arguments: Record<string, any>;
+  };
+  serverId?: string; // MCP server ID
+  status?: 'pending' | 'executing' | 'completed' | 'failed';
+  startTime?: Date;
+  endTime?: Date;
+}
+
+export interface ToolResult {
+  id: string; // Matches ToolCall.id
+  success: boolean;
+  result?: any;
+  error?: string;
+  duration?: number; // in milliseconds
+  serverId?: string;
+  toolName?: string;
+}
+
 export interface MessageMetadata {
   tokens?: number;
   generationTime?: number;
@@ -37,6 +62,13 @@ export interface MessageMetadata {
   // NEW: Thinking models support
   thinking?: ThinkingData; // Thinking/reasoning content
   originalContentWithThinking?: string; // Original content before thinking extraction
+  
+  // NEW: MCP Tool integration support for subproject 3
+  toolCalls?: ToolCall[]; // Tools that were called during this message
+  toolResults?: ToolResult[]; // Results from tool executions
+  toolsUsed?: string[]; // Simple list of tool names used (for quick lookup)
+  toolExecutionTime?: number; // Total time spent executing tools
+  mcpServersUsed?: string[]; // List of MCP server IDs that were used
   
   // NEW: Multi-artifact support (Phase 1)
   artifacts?: ArtifactReference[]; // Array of artifacts for multi-artifact support
@@ -79,11 +111,12 @@ export interface ProcessedRequest {
     role: string;
     content: string;
     images?: string[];
+    tool_calls?: ToolCall[]; // Tool calls from previous assistant messages
   }>;
   stream?: boolean;
   options?: Record<string, unknown>;
-  tools?: any[]; // NEW: MCP tools array for tool-capable models
-  tool_choice?: string; // NEW: Tool choice strategy (e.g., 'auto', 'none', or specific tool)
+  tools?: any[]; // MCP tools array formatted for Ollama
+  tool_choice?: string; // Tool choice strategy (e.g., 'auto', 'none', or specific tool)
 }
 
 export interface ModelCapability {
@@ -126,6 +159,14 @@ export interface ThinkingProcessingResult {
   thinkingData?: ThinkingData;
 }
 
+// NEW: Tool-related streaming events for WebSocket communication
+export interface ToolExecutionEvent {
+  type: 'tool_start' | 'tool_end' | 'tool_error';
+  toolCall: ToolCall;
+  result?: ToolResult;
+  timestamp: Date;
+}
+
 // Helper functions for backward compatibility
 export function hasMultipleArtifacts(metadata?: MessageMetadata): boolean {
   return !!(metadata?.artifacts && metadata.artifacts.length > 1);
@@ -155,6 +196,73 @@ export function getFirstArtifact(metadata?: MessageMetadata): ArtifactReference 
 
 export function isLegacyArtifactFormat(metadata?: MessageMetadata): boolean {
   return !!(metadata?.artifactId && !metadata?.artifacts);
+}
+
+// NEW: Tool-related utility functions for MCP integration
+export function hasToolCalls(metadata?: MessageMetadata): boolean {
+  return !!(metadata?.toolCalls && metadata.toolCalls.length > 0);
+}
+
+export function getToolCallCount(metadata?: MessageMetadata): number {
+  return metadata?.toolCalls?.length || 0;
+}
+
+export function getCompletedToolCalls(metadata?: MessageMetadata): ToolCall[] {
+  if (!metadata?.toolCalls) return [];
+  return metadata.toolCalls.filter(call => call.status === 'completed');
+}
+
+export function getFailedToolCalls(metadata?: MessageMetadata): ToolCall[] {
+  if (!metadata?.toolCalls) return [];
+  return metadata.toolCalls.filter(call => call.status === 'failed');
+}
+
+export function getToolResultById(metadata?: MessageMetadata, toolCallId?: string): ToolResult | undefined {
+  if (!metadata?.toolResults || !toolCallId) return undefined;
+  return metadata.toolResults.find(result => result.id === toolCallId);
+}
+
+export function getUniqueToolsUsed(metadata?: MessageMetadata): string[] {
+  if (!metadata?.toolCalls) return [];
+  return Array.from(new Set(metadata.toolCalls.map(call => call.function.name)));
+}
+
+export function getUniqueMCPServersUsed(metadata?: MessageMetadata): string[] {
+  if (!metadata?.toolCalls) return [];
+  return Array.from(new Set(
+    metadata.toolCalls
+      .map(call => call.serverId)
+      .filter(serverId => serverId !== undefined)
+  )) as string[];
+}
+
+// NEW: Tool execution summary
+export interface ToolExecutionSummary {
+  totalCalls: number;
+  completedCalls: number;
+  failedCalls: number;
+  totalDuration: number;
+  toolsUsed: string[];
+  serversUsed: string[];
+}
+
+export function getToolExecutionSummary(metadata?: MessageMetadata): ToolExecutionSummary {
+  const toolCalls = metadata?.toolCalls || [];
+  const toolResults = metadata?.toolResults || [];
+  
+  const completedCalls = toolCalls.filter(call => call.status === 'completed').length;
+  const failedCalls = toolCalls.filter(call => call.status === 'failed').length;
+  
+  const totalDuration = toolResults.reduce((sum, result) => sum + (result.duration || 0), 0);
+  
+  return {
+    totalCalls: toolCalls.length,
+    completedCalls,
+    failedCalls,
+    totalDuration,
+    toolsUsed: getUniqueToolsUsed(metadata),
+    serversUsed: getUniqueMCPServersUsed(metadata)
+  };
 }
 
 // ENHANCED: Thinking utility functions with improved validation
@@ -351,6 +459,22 @@ export function debugThinkingData(metadata?: MessageMetadata): void {
     console.log('Original content with thinking:', !!metadata?.originalContentWithThinking);
     console.log('hasThinking() result:', hasThinking(metadata));
     console.log('getThinkingContent() result length:', getThinkingContent(metadata).length);
+    console.groupEnd();
+  }
+}
+
+// NEW: Debug utility for tool data
+export function debugToolData(metadata?: MessageMetadata): void {
+  if (isBrowserEnvironment() && isDevelopmentMode()) {
+    console.group('🔧 [debugToolData] Tool data analysis');
+    console.log('Metadata:', metadata);
+    console.log('Has tool calls:', hasToolCalls(metadata));
+    console.log('Tool call count:', getToolCallCount(metadata));
+    console.log('Tool calls:', metadata?.toolCalls);
+    console.log('Tool results:', metadata?.toolResults);
+    console.log('Tools used:', getUniqueToolsUsed(metadata));
+    console.log('MCP servers used:', getUniqueMCPServersUsed(metadata));
+    console.log('Execution summary:', getToolExecutionSummary(metadata));
     console.groupEnd();
   }
 }
