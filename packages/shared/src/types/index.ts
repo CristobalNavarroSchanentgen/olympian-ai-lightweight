@@ -6,3 +6,4 @@ export * from './connections';
 export * from './database';
 export * from './mcp';
 export * from './websocket';
+export type { ToolCall, ToolResult, ToolExecutionSummary } from './chat';

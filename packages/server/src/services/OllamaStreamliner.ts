@@ -1,10 +1,11 @@
-import { ChatRequest, ProcessedRequest, ModelCapability, VisionError, parseThinkingFromContent, ThinkingProcessingResult } from '@olympian/shared';
+import { ChatRequest, ProcessedRequest, ModelCapability, VisionError, parseThinkingFromContent, ThinkingProcessingResult, ToolCall, ToolResult } from '@olympian/shared';
 import { logger } from '../utils/logger';
 import { AppError } from '../middleware/errorHandler';
 import { getDeploymentConfig, OllamaLoadBalancer } from '../config/deployment';
 import { ChatMemoryService, MemoryConfig } from './ChatMemoryService';
 import { customModelCapabilityService } from './CustomModelCapabilityService';
-
+import { MCPManager } from './MCPManager';
+import { ToolIntegrationService } from './ToolIntegrationService';
 interface OllamaModelInfo {
   modelfile?: string;
   description?: string;
@@ -97,7 +98,9 @@ export class OllamaStreamliner {
   private loadBalancer?: OllamaLoadBalancer;
   private memoryService: ChatMemoryService;
   private capabilityDetectionInProgress: Set<string> = new Set();
-
+  // NEW: MCP integration services for subproject 3
+  private mcpManager: MCPManager;
+  private toolIntegrationService: ToolIntegrationService;
   constructor() {
     // Initialize load balancer if multiple hosts are configured
     if (this.deploymentConfig.ollama.hosts.length > 0) {
@@ -111,14 +114,32 @@ export class OllamaStreamliner {
     // Initialize memory service
     this.memoryService = ChatMemoryService.getInstance();
     
+    // NEW: Initialize MCP integration services for subproject 3
+    this.mcpManager = MCPManager.getInstance();
+    this.toolIntegrationService = ToolIntegrationService.getInstance();    
     // Log Ollama configuration for debugging
     logger.info(`Ollama configuration for Multi-host deployment: ${JSON.stringify({
       host: this.deploymentConfig.ollama.host,
       deploymentMode: this.deploymentConfig.mode,
       hosts: this.deploymentConfig.ollama.hosts,
       modelCapabilityMode: this.deploymentConfig.modelCapability.mode,
-      subproject: 'Multi-host deployment'
+      subproject: 'Multi-host deployment',      mcpEnabled: true
     })}`);
+  }
+
+  // NEW: Initialize MCP services on startup
+  async initializeMCPServices(): Promise<void> {
+    try {
+      logger.info('🔧 [OllamaStreamliner] Initializing MCP services for subproject 3...');
+      
+      await this.mcpManager.initialize();
+      await this.toolIntegrationService.initialize();
+      
+      logger.info('✅ [OllamaStreamliner] MCP services initialized successfully');
+    } catch (error) {
+      logger.error('❌ [OllamaStreamliner] Failed to initialize MCP services:', error);
+      // Don't throw - continue without MCP if initialization fails
+    }
   }
 
   private getOllamaHost(clientIp?: string): string {
@@ -1098,6 +1119,24 @@ export class OllamaStreamliner {
   ): Promise<ProcessedRequest> {
     const capabilities = await this.detectCapabilities(request.model);
 
+    // NEW: Tool description injection for MCP integration (subproject 3)
+    let availableTools: any[] = [];
+    if (capabilities.tools && !capabilities.vision) {
+      try {
+        logger.info('🔧 [OllamaStreamliner] Detected tool-capable model, injecting MCP tools...');
+        availableTools = await this.toolIntegrationService.getAvailableTools();
+        
+        if (availableTools.length > 0) {
+          logger.info(\`✅ [OllamaStreamliner] Found \${availableTools.length} MCP tools for injection\`);
+        } else {
+          logger.debug('🔧 [OllamaStreamliner] No MCP tools available for injection');
+        }
+      } catch (error) {
+        logger.error('❌ [OllamaStreamliner] Failed to get MCP tools:', error);
+        // Continue without tools if MCP fails
+      }
+    }
+
     // Get conversation history if conversationId is provided
     let messages: Array<{ role: string; content: string; images?: string[] }> = [];
     
@@ -1148,12 +1187,12 @@ export class OllamaStreamliner {
     }
 
     // Standard text handling
-    return this.formatTextRequest(request, messages);
+    return this.formatTextRequest(request, messages, availableTools);
   }
 
   private async formatHybridVisionRequest(
     request: ChatRequest,
-    history: Array<{ role: string; content: string; images?: string[] }>
+    history: Array<{ role: string; content: string; images?: string[] }>, availableTools?: any[]
   ): Promise<ProcessedRequest> {
     logger.info(`Starting hybrid vision processing for request`);
     
@@ -1193,7 +1232,7 @@ export class OllamaStreamliner {
 
   private formatVisionRequest(
     request: ChatRequest,
-    history: Array<{ role: string; content: string; images?: string[] }>
+    history: Array<{ role: string; content: string; images?: string[] }>, availableTools?: any[]
   ): ProcessedRequest {
     // Add current message to history
     const messages = [
@@ -1214,7 +1253,7 @@ export class OllamaStreamliner {
 
   private formatTextRequest(
     request: ChatRequest,
-    history: Array<{ role: string; content: string; images?: string[] }>
+    history: Array<{ role: string; content: string; images?: string[] }>, availableTools?: any[]
   ): ProcessedRequest {
     // Add current message to history
     const messages = [
@@ -1225,10 +1264,20 @@ export class OllamaStreamliner {
       },
     ];
 
+
+    // NEW: Format tools for Ollama if available
+    let formattedTools: any[] = [];
+    if (availableTools && availableTools.length > 0) {
+      formattedTools = this.toolIntegrationService.formatToolsForOllama(availableTools);
+      logger.debug(\`🔧 [OllamaStreamliner] Formatted \${formattedTools.length} tools for Ollama\`);
+    }
+
     return {
       model: request.model,
       messages,
       stream: true,
+      tools: formattedTools.length > 0 ? formattedTools : undefined,
+      tool_choice: formattedTools.length > 0 ? 'auto' : undefined
     };
   }
 
@@ -1341,6 +1390,8 @@ export class OllamaStreamliner {
                 // Send token to client
                 onToken(token);
                 
+                // TODO: Add tool call processing here for MCP integration
+                // Parse json.message.tool_calls and execute via toolIntegrationService                
                 // Log progress
                 if (tokenCount === 1) {
                   logger.info('First token received and sent to client');
@@ -1390,7 +1441,9 @@ export class OllamaStreamliner {
                 tokenCount++;
                 fullResponseContent += token;
                 onToken(token);
-              }
+                
+                // TODO: Add tool call processing here for MCP integration
+                // Parse json.message.tool_calls and execute via toolIntegrationService              }
             } catch (error) {
               logger.debug('Failed to parse final buffered content:', { 
                 content: remainingLine.substring(0, 200),
