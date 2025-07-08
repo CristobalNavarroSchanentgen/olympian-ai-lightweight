@@ -1,6 +1,7 @@
 import { OllamaStreamliner } from './OllamaStreamliner';
 import { ToolIntegrationService } from './ToolIntegrationService';
 import { MCPManager } from './MCPManager';
+import { MCPService } from './MCPService';
 import { ProcessedRequest } from '@olympian/shared';
 import { logger } from '../utils/logger';
 
@@ -13,11 +14,20 @@ import { logger } from '../utils/logger';
 export class ToolEnabledOllamaStreamliner extends OllamaStreamliner {
   private toolIntegrationService: ToolIntegrationService;
   private mcpManager: MCPManager;
+  private mcpService?: MCPService;
 
   constructor() {
     super();
     this.toolIntegrationService = ToolIntegrationService.getInstance();
     this.mcpManager = MCPManager.getInstance();
+  }
+
+  /**
+   * Set MCP service (used by StreamlinerFactory)
+   */
+  setMCPService(mcpService: MCPService): void {
+    this.mcpService = mcpService;
+    logger.info('🔧 [ToolEnabledOllamaStreamliner] MCP service set');
   }
 
   /**
