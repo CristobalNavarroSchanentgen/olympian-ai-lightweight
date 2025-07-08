@@ -99,8 +99,8 @@ export class OllamaStreamliner {
   private memoryService: ChatMemoryService;
   private capabilityDetectionInProgress: Set<string> = new Set();
   // NEW: MCP integration services for subproject 3
-  protected mcpManager: MCPManager;
-  protected toolIntegrationService: ToolIntegrationService;
+  private mcpManager: MCPManager;
+  private toolIntegrationService: ToolIntegrationService;
   constructor() {
     // Initialize load balancer if multiple hosts are configured
     if (this.deploymentConfig.ollama.hosts.length > 0) {
@@ -130,14 +130,14 @@ export class OllamaStreamliner {
   // NEW: Initialize MCP services on startup
   async initializeMCPServices(): Promise<void> {
     try {
-      logger.info('[DEBUG] [OllamaStreamliner] Initializing MCP services for subproject 3...');
+      logger.info('🔧 [OllamaStreamliner] Initializing MCP services for subproject 3...');
       
       await this.mcpManager.initialize();
       await this.toolIntegrationService.initialize();
       
-      logger.info('[SUCCESS] [OllamaStreamliner] MCP services initialized successfully');
+      logger.info('✅ [OllamaStreamliner] MCP services initialized successfully');
     } catch (error) {
-      logger.error('[ERROR] [OllamaStreamliner] Failed to initialize MCP services:', error);
+      logger.error('❌ [OllamaStreamliner] Failed to initialize MCP services:', error);
       // Don't throw - continue without MCP if initialization fails
     }
   }
@@ -182,12 +182,12 @@ export class OllamaStreamliner {
    * Get capability using custom predefined list
    */
   private async getCustomCapability(model: string): Promise<ModelCapability> {
-    logger.debug(`[DEBUG] Getting custom predefined capability for model: ${model}`);
+    logger.debug(`🔧 Getting custom predefined capability for model: ${model}`);
     
     const customCapability = customModelCapabilityService.getModelCapability(model);
     
     if (customCapability) {
-      logger.debug(`[SUCCESS] Found custom capability for model: ${model}`, {
+      logger.debug(`✅ Found custom capability for model: ${model}`, {
         vision: customCapability.vision,
         tools: customCapability.tools,
         reasoning: customCapability.reasoning,
@@ -197,7 +197,7 @@ export class OllamaStreamliner {
     }
 
     // Model not in predefined list, return default base capability
-    logger.debug(`[ERROR] No custom capability defined for model: ${model}, using default base capability`);
+    logger.debug(`❌ No custom capability defined for model: ${model}, using default base capability`);
     const defaultCapability: ModelCapability = {
       name: model,
       vision: false,
@@ -239,11 +239,11 @@ export class OllamaStreamliner {
 
     this.capabilityDetectionInProgress.add(model);
     const startTime = Date.now();
-    logger.info(`[SEARCH] Starting ENHANCED capability detection for model: ${model} (Multi-host deployment)`);
+    logger.info(`🔍 Starting ENHANCED capability detection for model: ${model} (Multi-host deployment)`);
 
     try {
       // Step 1: Get comprehensive model info using official Ollama API
-      logger.debug(`[DATA] Fetching detailed model info for: ${model}`);
+      logger.debug(`📊 Fetching detailed model info for: ${model}`);
       const modelInfo = await this.getModelInfo(model);
       
       let hasVision = false;
@@ -252,7 +252,7 @@ export class OllamaStreamliner {
 
       // STRATEGY 1: Official Capabilities Field (Highest Priority)
       if (modelInfo.capabilities && Array.isArray(modelInfo.capabilities)) {
-        logger.info(`[SUCCESS] Using OFFICIAL capabilities field for '${model}': [${modelInfo.capabilities.join(', ')}]`);
+        logger.info(`✅ Using OFFICIAL capabilities field for '${model}': [${modelInfo.capabilities.join(', ')}]`);
         
         // Check for vision capability
         hasVision = this.parseOfficialVisionCapability(modelInfo.capabilities);
@@ -263,9 +263,9 @@ export class OllamaStreamliner {
         // Check for reasoning capability
         hasReasoning = this.parseOfficialReasoningCapability(modelInfo.capabilities);
         
-        logger.info(`[TARGET] Official capabilities detected - Vision: ${hasVision}, Tools: ${hasTools}, Reasoning: ${hasReasoning}`);
+        logger.info(`🎯 Official capabilities detected - Vision: ${hasVision}, Tools: ${hasTools}, Reasoning: ${hasReasoning}`);
       } else {
-        logger.debug(`[LIST] No official capabilities field found, proceeding with programmatic testing and metadata analysis`);
+        logger.debug(`📋 No official capabilities field found, proceeding with programmatic testing and metadata analysis`);
       }
 
       // STRATEGY 2: Programmatic Testing (Medium Priority) - Test unknown capabilities
@@ -326,7 +326,7 @@ export class OllamaStreamliner {
       const detectionTime = Date.now() - startTime;
       
       // Enhanced logging for capability detection debugging
-      logger.info(`[SUCCESS] ENHANCED capability detection completed for model '${model}' in ${detectionTime}ms:`, {
+      logger.info(`✅ ENHANCED capability detection completed for model '${model}' in ${detectionTime}ms:`, {
         hasVision: capability.vision,
         hasTools: capability.tools,
         hasReasoning: capability.reasoning,
@@ -346,7 +346,7 @@ export class OllamaStreamliner {
 
       // Validation check to ensure capability logic is correct
       if (hasVision && (hasTools || hasReasoning)) {
-        logger.warn(`[WARNING] Logic error: Vision model '${model}' incorrectly detected with tools(${hasTools}) or reasoning(${hasReasoning}). Vision should be exclusive.`);
+        logger.warn(`⚠️ Logic error: Vision model '${model}' incorrectly detected with tools(${hasTools}) or reasoning(${hasReasoning}). Vision should be exclusive.`);
       }
 
       // Cache the result
@@ -355,7 +355,7 @@ export class OllamaStreamliner {
       return capability;
     } catch (error) {
       const detectionTime = Date.now() - startTime;
-      logger.error(`[ERROR] Failed to detect capabilities for model ${model} after ${detectionTime}ms:`, error);
+      logger.error(`❌ Failed to detect capabilities for model ${model} after ${detectionTime}ms:`, error);
       
       // Return default capabilities
       const defaultCapability: ModelCapability = {
@@ -411,7 +411,7 @@ export class OllamaStreamliner {
         this.loadBalancer.reportSuccess(ollamaHost);
       }
       
-      logger.debug(`[LIST] Successfully retrieved comprehensive model info for: ${model}`, {
+      logger.debug(`📋 Successfully retrieved comprehensive model info for: ${model}`, {
         hasCapabilities: !!modelInfo.capabilities,
         capabilitiesCount: modelInfo.capabilities?.length || 0,
         hasModalities: !!modelInfo.modalities,
@@ -475,7 +475,7 @@ export class OllamaStreamliner {
    */
   private async testToolCapabilityProgrammatically(model: string): Promise<boolean> {
     const ollamaHost = this.getOllamaHost();
-    logger.debug(`[DEBUG] PROGRAMMATICALLY testing tool capability for model: ${model}`);
+    logger.debug(`🔧 PROGRAMMATICALLY testing tool capability for model: ${model}`);
     
     try {
       const testToolDefinition = {
@@ -544,7 +544,7 @@ export class OllamaStreamliner {
       const hasToolCalls = result.message?.tool_calls && result.message.tool_calls.length > 0;
       
       if (hasToolCalls) {
-        logger.info(`[SUCCESS] PROGRAMMATIC tool capability confirmed for '${model}' - Model successfully used tools`);
+        logger.info(`✅ PROGRAMMATIC tool capability confirmed for '${model}' - Model successfully used tools`);
         return true;
       } else {
         logger.debug(`✗ PROGRAMMATIC tool test failed for '${model}' - No tool_calls in response`);
@@ -564,7 +564,7 @@ export class OllamaStreamliner {
    */
   private async testReasoningCapabilityProgrammatically(model: string): Promise<boolean> {
     const ollamaHost = this.getOllamaHost();
-    logger.debug(`[BRAIN] PROGRAMMATICALLY testing reasoning capability for model: ${model}`);
+    logger.debug(`🧠 PROGRAMMATICALLY testing reasoning capability for model: ${model}`);
     
     try {
       const requestBody = {
@@ -635,7 +635,7 @@ export class OllamaStreamliner {
       const hasReasoning = reasoningScore >= 3 && hasCorrectAnswer;
       
       if (hasReasoning) {
-        logger.info(`[SUCCESS] PROGRAMMATIC reasoning capability confirmed for '${model}' - Model showed step-by-step thinking (score: ${reasoningScore})`);
+        logger.info(`✅ PROGRAMMATIC reasoning capability confirmed for '${model}' - Model showed step-by-step thinking (score: ${reasoningScore})`);
         return true;
       } else {
         logger.debug(`✗ PROGRAMMATIC reasoning test inconclusive for '${model}' - Score: ${reasoningScore}, Correct answer: ${hasCorrectAnswer}`);
@@ -746,7 +746,7 @@ export class OllamaStreamliner {
    * Enhanced tool detection using metadata analysis (NO hardcoded patterns)
    */
   private async detectToolCapabilityEnhanced(model: string, modelInfo: OllamaModelInfo): Promise<boolean> {
-    logger.debug(`[DEBUG] Enhanced tool detection for model: ${model}`);
+    logger.debug(`🔧 Enhanced tool detection for model: ${model}`);
     
     // Method 1: Check modelfile for tool indicators
     const modelfile = modelInfo.modelfile || '';
@@ -798,7 +798,7 @@ export class OllamaStreamliner {
    * Enhanced reasoning detection using metadata analysis (NO hardcoded patterns)
    */
   private async detectReasoningCapabilityEnhanced(model: string, modelInfo: OllamaModelInfo): Promise<boolean> {
-    logger.debug(`[BRAIN] Enhanced reasoning detection for model: ${model}`);
+    logger.debug(`🧠 Enhanced reasoning detection for model: ${model}`);
     
     // Method 1: Check description for explicit reasoning indicators
     if (modelInfo.description) {
@@ -994,7 +994,7 @@ export class OllamaStreamliner {
     // Check if we're in custom mode
     if (this.deploymentConfig.modelCapability.mode === 'custom') {
       const customVisionModels = customModelCapabilityService.getCustomVisionModels();
-      logger.info(`[DEBUG] Using custom predefined vision models: [${customVisionModels.join(', ')}]`);
+      logger.info(`🔧 Using custom predefined vision models: [${customVisionModels.join(', ')}]`);
       return customVisionModels;
     }
 
@@ -1003,7 +1003,7 @@ export class OllamaStreamliner {
       const models = await this.listModels();
       const visionModels: string[] = [];
       
-      logger.info(`[SEARCH] Checking ${models.length} models for vision capabilities using ENHANCED detection...`);
+      logger.info(`🔍 Checking ${models.length} models for vision capabilities using ENHANCED detection...`);
       
       // Check each model for vision capabilities using our enhanced detection
       for (const model of models) {
@@ -1021,7 +1021,7 @@ export class OllamaStreamliner {
         }
       }
       
-      logger.info(`[SUCCESS] ENHANCED vision capability detection complete: Found ${visionModels.length} vision-capable models out of ${models.length} total models`);
+      logger.info(`✅ ENHANCED vision capability detection complete: Found ${visionModels.length} vision-capable models out of ${models.length} total models`);
       logger.info(`Vision models: [${visionModels.join(', ')}]`);
       
       return visionModels;
@@ -1037,7 +1037,7 @@ export class OllamaStreamliner {
       const customCapabilities = customModelCapabilityService.getAllCustomCapabilities();
       const stats = customModelCapabilityService.getCapabilityStats();
       
-      logger.info(`[DEBUG] Using custom predefined model capabilities for subproject 3:`, {
+      logger.info(`🔧 Using custom predefined model capabilities for subproject 3:`, {
         totalModels: stats.total,
         visionModels: stats.vision,
         toolsModels: stats.tools,
@@ -1056,7 +1056,7 @@ export class OllamaStreamliner {
       const models = await this.listModels();
       const capabilities: ModelCapability[] = [];
       
-      logger.info(`[SEARCH] Getting ENHANCED capabilities for ${models.length} models using programmatic testing...`);
+      logger.info(`🔍 Getting ENHANCED capabilities for ${models.length} models using programmatic testing...`);
       
       // Process models in parallel with limited concurrency for better performance in multi-host
       const concurrencyLimit = 2; // Reduced for multi-host to avoid overwhelming servers
@@ -1094,7 +1094,7 @@ export class OllamaStreamliner {
       const reasoningCount = capabilities.filter(c => c.reasoning).length;
       const bothToolsAndReasoningCount = capabilities.filter(c => c.tools && c.reasoning).length;
       
-      logger.info(`[SUCCESS] Retrieved ENHANCED capabilities for ${capabilities.length} models (Multi-host deployment):`, {
+      logger.info(`✅ Retrieved ENHANCED capabilities for ${capabilities.length} models (Multi-host deployment):`, {
         visionModels: visionCount,
         toolsModels: toolsCount,
         reasoningModels: reasoningCount,
@@ -1123,16 +1123,16 @@ export class OllamaStreamliner {
     let availableTools: any[] = [];
     if (capabilities.tools && !capabilities.vision) {
       try {
-        logger.info('[DEBUG] [OllamaStreamliner] Detected tool-capable model, injecting MCP tools...');
+        logger.info('🔧 [OllamaStreamliner] Detected tool-capable model, injecting MCP tools...');
         availableTools = await this.toolIntegrationService.getAvailableTools();
         
         if (availableTools.length > 0) {
-          logger.info(`[SUCCESS] [OllamaStreamliner] Found ${availableTools.length} MCP tools for injection`);
+          logger.info(\`✅ [OllamaStreamliner] Found \${availableTools.length} MCP tools for injection\`);
         } else {
-          logger.debug('[DEBUG] [OllamaStreamliner] No MCP tools available for injection');
+          logger.debug('🔧 [OllamaStreamliner] No MCP tools available for injection');
         }
       } catch (error) {
-        logger.error('[ERROR] [OllamaStreamliner] Failed to get MCP tools:', error);
+        logger.error('❌ [OllamaStreamliner] Failed to get MCP tools:', error);
         // Continue without tools if MCP fails
       }
     }
@@ -1278,7 +1278,7 @@ export class OllamaStreamliner {
         });
       }
       
-      logger.debug(`[DEBUG] [OllamaStreamliner] Injected ${availableTools.length} tool descriptions into system prompt`);
+      logger.debug(`🔧 [OllamaStreamliner] Injected ${availableTools.length} tool descriptions into system prompt`);
     }
     
     // Add current message to history
@@ -1292,7 +1292,7 @@ export class OllamaStreamliner {
     let formattedTools: any[] = [];
     if (availableTools && availableTools.length > 0) {
       formattedTools = this.toolIntegrationService.formatToolsForOllama(availableTools);
-      logger.debug(`[DEBUG] [OllamaStreamliner] Formatted ${formattedTools.length} tools for Ollama`);
+      logger.debug(`🔧 [OllamaStreamliner] Formatted ${formattedTools.length} tools for Ollama`);
     }
 
     return {
@@ -1466,8 +1466,8 @@ export class OllamaStreamliner {
                 onToken(token);
                 
                 // TODO: Add tool call processing here for MCP integration
-                // Parse json.message.tool_calls and execute via toolIntegrationService
-              }            } catch (error) {
+                // Parse json.message.tool_calls and execute via toolIntegrationService              }
+            } catch (error) {
               logger.debug('Failed to parse final buffered content:', { 
                 content: remainingLine.substring(0, 200),
                 error: error instanceof Error ? error.message : 'Unknown error'
@@ -1480,13 +1480,13 @@ export class OllamaStreamliner {
         
         // ENHANCED: Process thinking content after stream completion
         if (fullResponseContent && onComplete) {
-          logger.debug('[BRAIN] Processing thinking content from completed response...');
+          logger.debug('🧠 Processing thinking content from completed response...');
           
           try {
             const thinkingResult = parseThinkingFromContent(fullResponseContent);
             
             if (thinkingResult.hasThinking) {
-              logger.info(`[SUCCESS] Thinking content detected and parsed (${thinkingResult.thinkingContent.length} chars)`);
+              logger.info(`✅ Thinking content detected and parsed (${thinkingResult.thinkingContent.length} chars)`);
               logger.debug(`Thinking preview: ${thinkingResult.thinkingContent.substring(0, 100)}...`);
               
               // ENHANCED: Ensure thinking data has correct structure
@@ -1496,14 +1496,14 @@ export class OllamaStreamliner {
                 thinkingResult.thinkingData.content = thinkingResult.thinkingContent;
                 thinkingResult.thinkingData.processedAt = new Date();
                 
-                logger.debug('[BRAIN] Enhanced thinking data structure:', {
+                logger.debug('🧠 Enhanced thinking data structure:', {
                   hasThinking: thinkingResult.thinkingData.hasThinking,
                   contentLength: thinkingResult.thinkingData.content.length,
                   processedAt: thinkingResult.thinkingData.processedAt
                 });
               }
             } else {
-              logger.debug('[BRAIN] No thinking content detected in response');
+              logger.debug('🧠 No thinking content detected in response');
             }
             
             const streamResult: StreamResult = {
@@ -1559,7 +1559,7 @@ export class OllamaStreamliner {
     // CRITICAL: In custom mode, return predefined model list WITHOUT any API calls
     if (this.deploymentConfig.modelCapability.mode === 'custom') {
       const customModels = customModelCapabilityService.getAvailableModelNames();
-      logger.info(`[DEBUG] Using custom predefined model list (NO API calls): [${customModels.join(', ')}]`);
+      logger.info(`🔧 Using custom predefined model list (NO API calls): [${customModels.join(', ')}]`);
       return customModels;
     }
 
@@ -1567,7 +1567,7 @@ export class OllamaStreamliner {
     const ollamaHost = this.getOllamaHost();
     
     try {
-      logger.debug(`[SEARCH] Attempting to fetch models from ${ollamaHost}/api/tags (Multi-host deployment)`);
+      logger.debug(`🔍 Attempting to fetch models from ${ollamaHost}/api/tags (Multi-host deployment)`);
       
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 15000); // Increased timeout for multi-host
@@ -1643,7 +1643,7 @@ export class OllamaStreamliner {
           ]
         });
       } else {
-        logger.error('[ERROR] Failed to list Ollama models (Multi-host):', errorDetails);
+        logger.error('❌ Failed to list Ollama models (Multi-host):', errorDetails);
       }
       
       if (this.loadBalancer) {

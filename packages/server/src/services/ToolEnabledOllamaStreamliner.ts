@@ -12,14 +12,10 @@ import { logger } from '../utils/logger';
  * using the simplified MCPManager
  */
 export class ToolEnabledOllamaStreamliner extends OllamaStreamliner {
-  private toolIntegrationService: ToolIntegrationService;
-  private mcpManager: MCPManager;
   private mcpService?: MCPService;
 
   constructor() {
     super();
-    this.toolIntegrationService = ToolIntegrationService.getInstance();
-    this.mcpManager = MCPManager.getInstance();
   }
 
   /**
