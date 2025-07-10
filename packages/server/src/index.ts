@@ -13,6 +13,7 @@ import { modelProgressiveLoader } from './services/ModelProgressiveLoader';
 import { ArtifactService } from './services/ArtifactService';
 import { multiHostInit } from './services/MultiHostInitializationService';
 import { MCPManager } from './services/MCPManager';
+import { MCPStreamliner } from "./services/MCPStreamliner";
 
 import apiRoutes from './api/routes';
 import { errorHandler } from './middleware/errorHandler';
@@ -136,6 +137,8 @@ async function initializeServices() {
       console.log('🔧 [Server] Initializing MCP services...');
       try {
         const mcp = MCPManager.getInstance();
+        const mcpStreamliner = MCPStreamliner.getInstance();
+        await mcpStreamliner.initialize();
         await mcp.initialize();
       } catch (error) {
         console.error('❌ [Server] MCP initialization failed:', error);
@@ -179,6 +182,8 @@ async function gracefulCleanup() {
     // Cleanup MCP
     if (MCP_ENABLED) {
       const mcp = MCPManager.getInstance();
+        const mcpStreamliner = MCPStreamliner.getInstance();
+        await mcpStreamliner.initialize();
       await mcp.cleanup();
     }
 

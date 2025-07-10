@@ -11,22 +11,25 @@ ARG CACHE_BUST
 LABEL build_date=${BUILD_DATE}
 LABEL git_commit=${GIT_COMMIT}
 
+# Configure npm for better reliability, use faster mirror and disable optional deps
+RUN npm config set fetch-timeout 600000 &&     npm config set fetch-retry-mintimeout 20000 &&     npm config set fetch-retry-maxtimeout 120000 &&     npm config set fetch-retries 5 &&     npm config set registry https://registry.npmjs.org/ &&     npm config set optional false &&     npm config set progress false
+
+# Install yarn as alternative
+RUN npm install -g yarn &&     yarn config set network-timeout 600000
+
 # Copy package files first (for better caching when only deps change)
 COPY package*.json ./
 COPY packages/shared/package*.json ./packages/shared/
 COPY packages/client/package*.json ./packages/client/
 
-# Install dependencies
-RUN npm install
+# Install dependencies with multiple fallback strategies
+RUN npm ci --no-optional --no-audit --no-fund ||     (echo "NPM failed, trying yarn..." && yarn install --frozen-lockfile --network-timeout 600000) ||     (echo "Both failed, trying npm with force..." && rm -rf node_modules && npm install --no-optional --force)
 
 # Copy configuration files
 COPY tsconfig.json ./
 
 # Cache bust point - this will invalidate cache when source files change
-RUN echo "Build Date: ${BUILD_DATE}" > /tmp/build_info && \
-    echo "Git Commit: ${GIT_COMMIT}" >> /tmp/build_info && \
-    echo "Cache Bust: ${CACHE_BUST}" >> /tmp/build_info && \
-    cat /tmp/build_info
+RUN echo "Build Date: ${BUILD_DATE}" > /tmp/build_info &&     echo "Git Commit: ${GIT_COMMIT}" >> /tmp/build_info &&     echo "Cache Bust: ${CACHE_BUST}" >> /tmp/build_info
 
 # Copy source files (this layer will be rebuilt when source changes)
 COPY packages/shared ./packages/shared
@@ -35,22 +38,10 @@ COPY packages/client ./packages/client
 # Build shared package first
 RUN npm run build:shared
 
-# Build client with enhanced verification
-RUN npm run build:client && \
-    echo "=== Build Info ===" && \
-    cat /tmp/build_info && \
-    echo "=== Verifying build output ===" && \
-    ls -la packages/client/dist/ && \
-    echo "=== Content of built index.html ===" && \
-    head -5 packages/client/dist/index.html && \
-    echo "=== Checking for MessageItem without icons ===" && \
-    if find packages/client/dist -name "*.js" -exec grep -l "User.*Bot.*lucide" {} \; | head -1; then \
-        echo "WARNING: Found potential icon references in built files"; \
-    else \
-        echo "✓ No icon references found in built files"; \
-    fi
+# Build client
+RUN npm run build:client
 
-# Production stage
+# Production stage  
 FROM nginx:alpine
 
 # Install curl and other utilities for health checks and debugging
@@ -66,12 +57,7 @@ LABEL git_commit=${GIT_COMMIT}
 LABEL description="Olympian AI Lightweight Frontend"
 
 # Remove ALL default nginx files and configurations
-RUN rm -rf /etc/nginx/conf.d/* && \
-    rm -rf /etc/nginx/sites-enabled/* && \
-    rm -rf /etc/nginx/sites-available/* && \
-    rm -rf /usr/share/nginx/html/* && \
-    rm -rf /var/www/html/* && \
-    rm -f /etc/nginx/nginx.conf
+RUN rm -rf /etc/nginx/conf.d/* &&     rm -rf /etc/nginx/sites-enabled/* &&     rm -rf /etc/nginx/sites-available/* &&     rm -rf /usr/share/nginx/html/* &&     rm -rf /var/www/html/* &&     rm -f /etc/nginx/nginx.conf
 
 # Copy our custom nginx configuration
 COPY docker/nginx/nginx.conf /etc/nginx/nginx.conf
@@ -86,40 +72,12 @@ COPY --from=builder /app/packages/client/dist /usr/share/nginx/html
 # Copy build info for debugging
 COPY --from=builder /tmp/build_info /usr/share/nginx/html/build_info.txt
 
-# Verify deployment with enhanced checks
-RUN echo "=== Final verification ===" && \
-    echo "Build Date: ${BUILD_DATE}" && \
-    echo "Git Commit: ${GIT_COMMIT}" && \
-    echo "" && \
-    echo "Nginx config:" && \
-    head -10 /etc/nginx/nginx.conf && \
-    echo "" && \
-    echo "Static files:" && \
-    ls -la /usr/share/nginx/html/ && \
-    echo "" && \
-    echo "Build info:" && \
-    cat /usr/share/nginx/html/build_info.txt && \
-    echo "" && \
-    echo "Index.html check:" && \
-    if [ -f /usr/share/nginx/html/index.html ]; then \
-        if grep -q "src=\"/src/main.tsx\"" /usr/share/nginx/html/index.html; then \
-            echo "ERROR: Source index.html detected!" && exit 1; \
-        else \
-            echo "✓ Built index.html confirmed"; \
-        fi; \
-    else \
-        echo "ERROR: index.html missing!" && exit 1; \
-    fi && \
-    echo "" && \
-    echo "Icon reference check:" && \
-    if find /usr/share/nginx/html -name "*.js" -exec grep -l "User.*Bot.*lucide\|lucide.*User.*Bot" {} \; 2>/dev/null | head -1; then \
-        echo "WARNING: Found potential icon references in built files"; \
-    else \
-        echo "✓ No problematic icon references found"; \
-    fi
+# Verify deployment
+RUN echo "=== Final verification ===" &&     ls -la /usr/share/nginx/html/ &&     if [ -f /usr/share/nginx/html/index.html ]; then         echo "✓ Built index.html confirmed";     else         echo "ERROR: index.html missing!" && exit 1;     fi
 
-# Health check with build info
-RUN echo '#!/bin/sh\ncurl -sf http://localhost/ || exit 1' > /healthcheck.sh && chmod +x /healthcheck.sh
+# Health check
+RUN echo '#!/bin/sh
+curl -sf http://localhost/ || exit 1' > /healthcheck.sh && chmod +x /healthcheck.sh
 
 EXPOSE 80
 

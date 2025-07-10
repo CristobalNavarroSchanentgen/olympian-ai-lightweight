@@ -1,5 +1,6 @@
 import { OllamaStreamliner } from '../services/OllamaStreamliner';
 import { ToolEnabledOllamaStreamliner } from '../services/ToolEnabledOllamaStreamliner';
+import { MCPStreamliner } from "../services/MCPStreamliner";
 import { MCPService } from '../services/MCPService';
 
 /**
@@ -16,6 +17,7 @@ export function createStreamlinerForDeployment(mcpService?: MCPService | null): 
   if (isSubproject3 && mcpService) {
     console.log('🔧 [StreamlinerFactory] Creating tool-enabled streamliner for subproject 3');
     const toolEnabledStreamliner = new ToolEnabledOllamaStreamliner();
+            await toolEnabledStreamliner.initialize();
     toolEnabledStreamliner.setMCPService(mcpService);
     return toolEnabledStreamliner;
   }

@@ -180,3 +180,52 @@ router.get('/health', (req, res) => {
 });
 
 export { router as mcpRouter };
+
+// Add debug endpoints for MCPStreamliner
+router.get('/debug/tool-calls', async (req, res) => {
+  try {
+    const mcpStreamliner = require('../services/MCPStreamliner').MCPStreamliner.getInstance();
+    const limit = parseInt(req.query.limit as string) || 10;
+    
+    const recentCalls = mcpStreamliner.getRecentCalls(limit);
+    
+    res.json({
+      success: true,
+      data: {
+        recentCalls,
+        totalCalls: recentCalls.length
+      }
+    });
+  } catch (error) {
+    logger.error('Failed to get tool call debug info:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get tool call debug information'
+    });
+  }
+});
+
+router.get('/debug/tool-registry', async (req, res) => {
+  try {
+    const mcpStreamliner = require('../services/MCPStreamliner').MCPStreamliner.getInstance();
+    
+    const registry = Array.from(mcpStreamliner.getToolRegistry().entries());
+    
+    res.json({
+      success: true,
+      data: {
+        tools: registry.map(([name, info]) => ({
+          name,
+          ...info
+        })),
+        totalTools: registry.length
+      }
+    });
+  } catch (error) {
+    logger.error('Failed to get tool registry:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get tool registry'
+    });
+  }
+});

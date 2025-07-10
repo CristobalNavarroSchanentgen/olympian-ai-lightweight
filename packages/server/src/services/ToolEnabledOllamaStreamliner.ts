@@ -1,29 +1,45 @@
 import { OllamaStreamliner } from './OllamaStreamliner';
-import { ToolIntegrationService } from './ToolIntegrationService';
-import { MCPManager } from './MCPManager';
-import { MCPService } from './MCPService';
+import { MCPStreamliner } from './MCPStreamliner';
 import { ProcessedRequest } from '@olympian/shared';
 import { logger } from '../utils/logger';
+import { v4 as uuidv4 } from 'uuid';
 
 /**
- * Tool-enabled Ollama Streamliner
+ * Tool-enabled Ollama Streamliner for Subproject 3
  * 
  * Extends OllamaStreamliner to add MCP tool integration
- * using the simplified MCPManager
+ * using the new MCPStreamliner for simplified tool use
  */
 export class ToolEnabledOllamaStreamliner extends OllamaStreamliner {
-  private mcpService?: MCPService;
+  private mcpStreamliner: MCPStreamliner;
+  private initialized = false;
 
   constructor() {
     super();
+    this.mcpStreamliner = MCPStreamliner.getInstance();
   }
 
   /**
-   * Set MCP service (used by StreamlinerFactory)
+   * Initialize the tool-enabled streamliner
    */
-  setMCPService(mcpService: MCPService): void {
-    this.mcpService = mcpService;
-    logger.info('🔧 [ToolEnabledOllamaStreamliner] MCP service set');
+  async initialize(): Promise<void> {
+    if (this.initialized) return;
+
+    logger.info('🔧 [ToolEnabledOllamaStreamliner] Initializing...');
+    
+    try {
+      // Initialize base streamliner
+      await super.initialize();
+      
+      // Initialize MCP streamliner
+      await this.mcpStreamliner.initialize();
+      
+      this.initialized = true;
+      logger.info('✅ [ToolEnabledOllamaStreamliner] Initialized successfully');
+    } catch (error) {
+      logger.error('❌ [ToolEnabledOllamaStreamliner] Initialization failed:', error);
+      throw error;
+    }
   }
 
   /**
@@ -41,20 +57,31 @@ export class ToolEnabledOllamaStreamliner extends OllamaStreamliner {
     
     // If model has tool capability, inject tools
     if (capabilities.tools) {
-      const tools = await this.mcpManager.listTools();
+      const correlationId = uuidv4();
+      
+      logger.info(`🛠️ [ToolEnabledOllamaStreamliner] Processing tool-capable request ${correlationId}`, {
+        model: request.model,
+        hasTools: true
+      });
+      
+      // Get available tools from MCPStreamliner
+      const tools = await this.mcpStreamliner.getToolsForModel(request.model);
       
       if (tools.length > 0) {
-        // Add tools to the request
+        // Add tools to the request in Ollama format
         baseRequest.tools = tools.map(tool => ({
           type: 'function',
           function: {
-            name: `${tool.serverId}.${tool.name}`,
+            name: tool.name,
             description: tool.description,
-            parameters: tool.inputSchema
+            parameters: tool.inputSchema || {}
           }
         }));
         
-        logger.info(`🔧 [ToolEnabledOllamaStreamliner] Injected ${tools.length} tools for model ${request.model}`);
+        logger.debug(`📋 [ToolEnabledOllamaStreamliner] Added ${tools.length} tools to request`);
+        
+        // Store correlation ID for tracking
+        (baseRequest as any)._correlationId = correlationId;
       }
     }
     
@@ -62,130 +89,67 @@ export class ToolEnabledOllamaStreamliner extends OllamaStreamliner {
   }
 
   /**
-   * Override streamChat to handle tool calls
+   * Override stream method to handle tool calls
    */
-  async streamChat(
-    processedRequest: ProcessedRequest,
-    onToken: (token: string) => void,
-    onComplete?: (result: any) => void,
-    clientIp?: string
-  ): Promise<void> {
-    const capabilities = await this.detectCapabilities(processedRequest.model);
+  async *stream(
+    request: any,
+    memoryConfig?: any
+  ): AsyncGenerator<any, void, unknown> {
+    const correlationId = (request as any)._correlationId || uuidv4();
     
-    if (!capabilities.tools) {
-      // No tool capability, use parent implementation
-      return super.streamChat(processedRequest, onToken, onComplete, clientIp);
-    }
-
-    // Enhanced streamChat with tool handling
-    logger.info(`🔧 [ToolEnabledOllamaStreamliner] Starting tool-enabled stream for ${processedRequest.model}`);
-    
-    let fullResponseContent = '';
-    let isWaitingForToolCalls = false;
-    
-    // Create a wrapper for onToken to intercept tool calls
-    const wrappedOnToken = (token: string) => {
-      fullResponseContent += token;
-      
-      // Check if this looks like the start of tool calls
-      if (token.includes('"tool_calls"') || token.includes('"function"')) {
-        isWaitingForToolCalls = true;
-        logger.debug('🔧 [ToolEnabledOllamaStreamliner] Detected potential tool call in stream');
-      }
-      
-      // Only forward non-tool tokens to client
-      if (!isWaitingForToolCalls) {
-        onToken(token);
-      }
-    };
-    
-    // Create enhanced onComplete handler
-    const wrappedOnComplete = async (result: any) => {
-      try {
-        // Parse the full response to check for tool calls
-        const toolCallMatch = fullResponseContent.match(/"tool_calls"\s*:\s*(\[[^\]]*\])/);
-        
-        if (toolCallMatch) {
-          logger.info('🔧 [ToolEnabledOllamaStreamliner] Processing tool calls from response');
+    try {
+      // Stream from base implementation
+      for await (const chunk of super.stream(request, memoryConfig)) {
+        // Check if chunk contains tool call
+        if (chunk.message?.tool_calls) {
+          logger.info(`🔧 [ToolEnabledOllamaStreamliner] Tool calls detected in stream`);
           
-          try {
-            const toolCalls = JSON.parse(toolCallMatch[1]);
+          // Process each tool call
+          for (const toolCall of chunk.message.tool_calls) {
+            const toolResponse = await this.mcpStreamliner.processToolCall({
+              model: request.model,
+              toolName: toolCall.function.name,
+              args: toolCall.function.arguments,
+              correlationId: `${correlationId}-${toolCall.id || uuidv4()}`
+            });
             
-            if (toolCalls && toolCalls.length > 0) {
-              logger.info(`🔨 [ToolEnabledOllamaStreamliner] Executing ${toolCalls.length} tool calls`);
+            // Inject tool response back into the stream
+            if (toolResponse.success) {
+              // Format response for Ollama
+              const responseChunk = {
+                ...chunk,
+                tool_response: {
+                  id: toolCall.id,
+                  name: toolCall.function.name,
+                  content: toolResponse.result
+                }
+              };
               
-              // Execute tool calls
-              const toolResults = await Promise.all(
-                toolCalls.map(async (call: any) => {
-                  try {
-                    // Parse server.tool format
-                    const [serverId, toolName] = call.function.name.split('.');
-                    const result = await this.mcpManager.callTool(
-                      serverId,
-                      toolName,
-                      call.function.arguments
-                    );
-                    
-                    return {
-                      tool_call_id: call.id,
-                      role: 'tool',
-                      name: call.function.name,
-                      content: JSON.stringify(result)
-                    };
-                  } catch (error) {
-                    return {
-                      tool_call_id: call.id,
-                      role: 'tool',
-                      name: call.function.name,
-                      content: JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' })
-                    };
-                  }
-                })
-              );
-              
-              if (toolResults.length > 0) {
-                logger.info(`🔄 [ToolEnabledOllamaStreamliner] Tool execution complete, continuing conversation`);
-                
-                // Create continuation request with tool results
-                const continuationRequest = {
-                  ...processedRequest,
-                  messages: [
-                    ...processedRequest.messages,
-                    { 
-                      role: 'assistant', 
-                      content: fullResponseContent.replace(toolCallMatch[0], '').trim(),
-                      tool_calls: toolCalls 
-                    },
-                    ...toolResults
-                  ]
-                };
-                
-                // Continue the conversation
-                await this.streamChat(continuationRequest, onToken, onComplete, clientIp);
-                return;
-              }
+              yield responseChunk;
+            } else {
+              logger.error(`❌ Tool call failed: ${toolCall.function.name}`, toolResponse.error);
             }
-          } catch (error) {
-            logger.error('❌ [ToolEnabledOllamaStreamliner] Error processing tool calls:', error);
           }
-        }
-        
-        // No tool calls or error, proceed with normal completion
-        if (onComplete) {
-          onComplete(result);
-        }
-      } catch (error) {
-        logger.error('❌ [ToolEnabledOllamaStreamliner] Error in wrapped onComplete:', error);
-        if (onComplete) {
-          onComplete(result);
+        } else {
+          // Regular chunk, pass through
+          yield chunk;
         }
       }
+    } catch (error) {
+      logger.error(`❌ [ToolEnabledOllamaStreamliner] Stream error:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get debug information
+   */
+  getDebugInfo(): any {
+    return {
+      ...super.getDebugInfo(),
+      toolsEnabled: true,
+      recentToolCalls: this.mcpStreamliner.getRecentCalls(10),
+      toolRegistry: Array.from(this.mcpStreamliner.getToolRegistry().entries())
     };
-    
-    // Call parent streamChat with wrapped handlers
-    return super.streamChat(processedRequest, wrappedOnToken, wrappedOnComplete, clientIp);
   }
 }
-
-// Export singleton instance
-export const toolEnabledOllamaStreamliner = new ToolEnabledOllamaStreamliner();
