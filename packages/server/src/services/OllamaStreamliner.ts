@@ -4,8 +4,6 @@ import { AppError } from '../middleware/errorHandler';
 import { getDeploymentConfig, OllamaLoadBalancer } from '../config/deployment';
 import { ChatMemoryService, MemoryConfig } from './ChatMemoryService';
 import { customModelCapabilityService } from './CustomModelCapabilityService';
-import { MCPManager } from './MCPManager';
-import { ToolIntegrationService } from './ToolIntegrationService';
 interface OllamaModelInfo {
   modelfile?: string;
   description?: string;
@@ -99,8 +97,6 @@ export class OllamaStreamliner {
   private memoryService: ChatMemoryService;
   private capabilityDetectionInProgress: Set<string> = new Set();
   // NEW: MCP integration services for subproject 3
-  protected mcpManager: MCPManager;
-  protected toolIntegrationService: ToolIntegrationService;
   constructor() {
     // Initialize load balancer if multiple hosts are configured
     if (this.deploymentConfig.ollama.hosts.length > 0) {
@@ -115,8 +111,6 @@ export class OllamaStreamliner {
     this.memoryService = ChatMemoryService.getInstance();
     
     // NEW: Initialize MCP integration services for subproject 3
-    this.mcpManager = MCPManager.getInstance();
-    this.toolIntegrationService = ToolIntegrationService.getInstance();    
     // Log Ollama configuration for debugging
     logger.info(`Ollama configuration for Multi-host deployment: ${JSON.stringify({
       host: this.deploymentConfig.ollama.host,
@@ -128,19 +122,6 @@ export class OllamaStreamliner {
   }
 
   // NEW: Initialize MCP services on startup
-  async initializeMCPServices(): Promise<void> {
-    try {
-      logger.info('[DEBUG] [OllamaStreamliner] Initializing MCP services for subproject 3...');
-      
-      await this.mcpManager.initialize();
-      await this.toolIntegrationService.initialize();
-      
-      logger.info('[SUCCESS] [OllamaStreamliner] MCP services initialized successfully');
-    } catch (error) {
-      logger.error('[ERROR] [OllamaStreamliner] Failed to initialize MCP services:', error);
-      // Don't throw - continue without MCP if initialization fails
-    }
-  }
 
   private getOllamaHost(clientIp?: string): string {
     if (this.loadBalancer && this.deploymentConfig.ollama.hosts.length > 0) {
@@ -1124,7 +1105,6 @@ export class OllamaStreamliner {
     if (capabilities.tools && !capabilities.vision) {
       try {
         logger.info('[DEBUG] [OllamaStreamliner] Detected tool-capable model, injecting MCP tools...');
-        availableTools = await this.toolIntegrationService.getAvailableTools();
         
         if (availableTools.length > 0) {
           logger.info(`[SUCCESS] [OllamaStreamliner] Found ${availableTools.length} MCP tools for injection`);
@@ -1291,7 +1271,6 @@ export class OllamaStreamliner {
     // NEW: Format tools for Ollama if available
     let formattedTools: any[] = [];
     if (availableTools && availableTools.length > 0) {
-      formattedTools = this.toolIntegrationService.formatToolsForOllama(availableTools);
       logger.debug(`[DEBUG] [OllamaStreamliner] Formatted ${formattedTools.length} tools for Ollama`);
     }
 
@@ -1414,7 +1393,6 @@ export class OllamaStreamliner {
                 onToken(token);
                 
                 // TODO: Add tool call processing here for MCP integration
-                // Parse json.message.tool_calls and execute via toolIntegrationService                
                 // Log progress
                 if (tokenCount === 1) {
                   logger.info('First token received and sent to client');
@@ -1466,7 +1444,6 @@ export class OllamaStreamliner {
                 onToken(token);
                 
                 // TODO: Add tool call processing here for MCP integration
-                // Parse json.message.tool_calls and execute via toolIntegrationService
               }            } catch (error) {
               logger.debug('Failed to parse final buffered content:', { 
                 content: remainingLine.substring(0, 200),
