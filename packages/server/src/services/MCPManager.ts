@@ -61,6 +61,7 @@ export class MCPManager extends EventEmitter {
 
     // Get WebSocket service if available
     this.ws = WebSocketService.getInstance();
+    
     // Updated servers for subproject 3
     const defaultServers: MCPServer[] = [
       {
@@ -118,8 +119,8 @@ export class MCPManager extends EventEmitter {
         args: ["-y", "@upstash/context7-mcp"],
         optional: true,
         status: "stopped"
-      }
-    ];      {
+      },
+      {
         id: 'memory',
         name: 'memory',
         transport: 'stdio',
