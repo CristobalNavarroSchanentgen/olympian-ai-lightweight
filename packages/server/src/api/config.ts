@@ -14,6 +14,20 @@ const CONFIG_DIR = path.join(os.homedir(), '.olympian-ai-lite');
 const MCP_CONFIG_PATH = path.join(CONFIG_DIR, 'mcp_config.json');
 const TOOL_OVERRIDES_PATH = path.join(CONFIG_DIR, 'tool_overrides.json');
 const BACKUPS_DIR = path.join(CONFIG_DIR, 'backups');
+
+// Helper function to ensure config directory exists
+async function ensureConfigDir(): Promise<void> {
+  try {
+    await fs.mkdir(CONFIG_DIR, { recursive: true });
+    await fs.mkdir(BACKUPS_DIR, { recursive: true });
+  } catch (error) {
+    // Directory might already exist, ignore EEXIST errors
+    if ((error as any).code !== 'EEXIST') {
+      throw error;
+    }
+  }
+}
+
 // Get MCP config
 router.get("/mcp", async (_req, res, next) => {
   try {
@@ -39,13 +53,6 @@ router.get("/mcp", async (_req, res, next) => {
 
     res.json({
       success: true,
-      data: config,
-      timestamp: new Date(),
-    });
-  } catch (error) {
-    next(error);
-  }
-});      success: true,
       data: config,
       timestamp: new Date(),
     });
