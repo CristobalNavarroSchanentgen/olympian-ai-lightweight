@@ -1635,7 +1635,6 @@ export class OllamaStreamliner {
   getLoadBalancerStats(): Map<string, any> | null {
     return this.loadBalancer?.getStats() || null;
   }
-}
 
   /**
    * Initialize the streamliner
@@ -1667,7 +1666,7 @@ export class OllamaStreamliner {
     return {
       modelCapabilities: Array.from(this.modelCapabilities.entries()),
       deploymentConfig: this.deploymentConfig,
-      memoryServiceStats: this.memoryService?.getDebugInfo?.() || 'No memory service'
+      memoryServiceStats: this.memoryService ? "Memory service active" : "No memory service"
     };
   }
 }

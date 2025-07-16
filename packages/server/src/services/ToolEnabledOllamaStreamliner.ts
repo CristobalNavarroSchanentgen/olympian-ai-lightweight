@@ -109,7 +109,7 @@ export class ToolEnabledOllamaStreamliner extends OllamaStreamliner {
             const toolResponse = await this.mcpStreamliner.processToolCall({
               model: request.model,
               toolName: toolCall.function.name,
-              args: toolCall.function.arguments,
+              arguments: toolCall.function.arguments,
               correlationId: `${correlationId}-${toolCall.id || uuidv4()}`
             });
             

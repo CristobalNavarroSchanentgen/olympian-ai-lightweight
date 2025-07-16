@@ -1,203 +1,128 @@
-import { DatabaseService } from '../services/DatabaseService';
-import { AppError } from '../middleware/errorHandler';
-import * as fs from 'fs/promises';
+import { Router, Request, Response, NextFunction } from 'express';
+import * as fs from 'fs';
 import * as path from 'path';
-import * as os from 'os';
-import { z } from 'zod';
 
 const router = Router();
-const db = DatabaseService.getInstance();
 
-// Config paths
-const CONFIG_DIR = path.join(os.homedir(), '.olympian-ai-lite');
-const MCP_CONFIG_PATH = path.join(CONFIG_DIR, 'mcp_config.json');
-const TOOL_OVERRIDES_PATH = path.join(CONFIG_DIR, 'tool_overrides.json');
-const BACKUPS_DIR = path.join(CONFIG_DIR, 'backups');
-// Get MCP config
-router.get("/mcp", async (_req, res, next) => {
+function ensureConfigDir() {
+  const configDir = path.join(process.cwd(), 'config');
+  if (!fs.existsSync(configDir)) {
+    fs.mkdirSync(configDir, { recursive: true });
+  }
+}
+
+// Get all config templates
+router.get('/templates', (_req: Request, res: Response, next: NextFunction) => {
   try {
-    let config = {};
-    
-    // Try to load the project mcp-config.multihost.json first
-    const projectConfigPath = path.join(process.cwd(), "mcp-config.multihost.json");
-    
-    try {
-      const data = await fs.readFile(projectConfigPath, "utf-8");
-      config = JSON.parse(data);
-    } catch (error) {
-      // Fallback to user config directory
-      await ensureConfigDir();
-      try {
-        const data = await fs.readFile(MCP_CONFIG_PATH, "utf-8");
-        config = JSON.parse(data);
-      } catch {
-        // Return empty config if neither exists
-        config = { mcpServers: {}, _meta: { version: "1.0" } };
-      }
-    }
-
-    res.json({
-      success: true,
-      data: config,
-      timestamp: new Date(),
-    });
+    const templates = [
+      { name: 'mcp-config.stdio.json', description: 'Standard I/O MCP configuration' },
+      { name: 'mcp-config.multihost.json', description: 'Multi-host MCP configuration' }
+    ];
+    res.json({ success: true, data: templates });
   } catch (error) {
     next(error);
   }
 });
 
-// Update MCP config
-router.put('/mcp', async (req, res, next) => {
+// Save config
+router.post('/save', (req: Request, res: Response, next: NextFunction) => {
   try {
-    await ensureConfigDir();
-    
-    // Validate the config
-    const configSchema = z.object({
-      servers: z.array(z.any()),
-      version: z.string(),
-    });
-    
-    const validated = configSchema.parse(req.body);
-    
-    // Create backup
-    const timestamp = new Date().toISOString().replace(/:/g, '-');
-    const backupPath = path.join(BACKUPS_DIR, `mcp_config_${timestamp}.json`);
-    
-    try {
-      const currentConfig = await fs.readFile(MCP_CONFIG_PATH, 'utf-8');
-      await fs.writeFile(backupPath, currentConfig);
-    } catch {
-      // No existing config to backup
-    }
-    
-    // Save new config
-    const newConfig = {
-      ...validated,
-      lastModified: new Date(),
-    };
-    
-    await fs.writeFile(MCP_CONFIG_PATH, JSON.stringify(newConfig, null, 2));
-    
-    res.json({
-      success: true,
-      data: newConfig,
-      timestamp: new Date(),
-    });
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      next(new AppError(400, 'Invalid configuration', 'VALIDATION_ERROR'));
-    } else {
-      next(error);
-    }
-  }
-});
-
-// Get tool overrides
-router.get('/tool-overrides', async (_req, res, next) => {
-  try {
-    await ensureConfigDir();
-    
-    let overrides = {};
-    try {
-      const data = await fs.readFile(TOOL_OVERRIDES_PATH, 'utf-8');
-      overrides = JSON.parse(data);
-    } catch {
-      // File doesn't exist, return empty overrides
-      overrides = {};
-    }
-
-    res.json({
-      success: true,
-      data: overrides,
-      timestamp: new Date(),
-    });
+    ensureConfigDir();
+    const configPath = path.join(process.cwd(), 'mcp-config.json');
+    fs.writeFileSync(configPath, JSON.stringify(req.body, null, 2));
+    res.json({ success: true, message: 'Configuration saved' });
   } catch (error) {
     next(error);
   }
 });
 
-// Update tool overrides
-router.put('/tool-overrides', async (req, res, next) => {
+// Get active config
+router.get('/active', (_req: Request, res: Response, next: NextFunction) => {
   try {
-    await ensureConfigDir();
+    ensureConfigDir();
+    const configPath = path.join(process.cwd(), 'mcp-config.json');
     
-    // Create backup
-    const timestamp = new Date().toISOString().replace(/:/g, '-');
-    const backupPath = path.join(BACKUPS_DIR, `tool_overrides_${timestamp}.json`);
-    
-    try {
-      const currentOverrides = await fs.readFile(TOOL_OVERRIDES_PATH, 'utf-8');
-      await fs.writeFile(backupPath, currentOverrides);
-    } catch {
-      // No existing overrides to backup
+    if (!fs.existsSync(configPath)) {
+      res.json({ success: false, message: 'No active configuration found' });
+      return;
     }
     
-    // Save new overrides
-    await fs.writeFile(TOOL_OVERRIDES_PATH, JSON.stringify(req.body, null, 2));
-    
-    res.json({
-      success: true,
-      data: req.body,
-      timestamp: new Date(),
-    });
+    const content = fs.readFileSync(configPath, 'utf8');
+    const config = JSON.parse(content);
+    res.json({ success: true, data: config });
   } catch (error) {
     next(error);
   }
 });
 
-// List backups
-router.get('/backups', async (_req, res, next) => {
+// Load template
+router.post('/load-template', (req: Request, res: Response, next: NextFunction) => {
   try {
-    await ensureConfigDir();
+    ensureConfigDir();
+    const { templateName } = req.body;
+    const templatePath = path.join(process.cwd(), templateName);
     
-    const files = await fs.readdir(BACKUPS_DIR);
-    const backups = await Promise.all(
-      files.map(async (filename) => {
-        const stats = await fs.stat(path.join(BACKUPS_DIR, filename));
+    if (!fs.existsSync(templatePath)) {
+      res.status(404).json({ success: false, message: 'Template not found' });
+      return;
+    }
+    
+    const content = fs.readFileSync(templatePath, 'utf8');
+    const config = JSON.parse(content);
+    
+    // Save as active config
+    const configPath = path.join(process.cwd(), 'mcp-config.json');
+    fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+    
+    res.json({ success: true, data: config, message: 'Template loaded and saved as active configuration' });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// List saved configs
+router.get('/list', (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    ensureConfigDir();
+    const configDir = path.join(process.cwd(), 'config');
+    
+    if (!fs.existsSync(configDir)) {
+      res.json({ success: true, data: [] });
+      return;
+    }
+    
+    const files = fs.readdirSync(configDir);
+    const configs = files
+      .filter((file: string) => file.endsWith('.json'))
+      .map((filename: string) => {
+        const filePath = path.join(configDir, filename);
+        const stat = fs.statSync(filePath);
         return {
           filename,
-          type: filename.includes('mcp_config') ? 'mcp' : 'tool_overrides',
-          createdAt: stats.birthtime,
-          size: stats.size,
+          size: stat.size,
+          modified: stat.mtime
         };
       })
-    );
+      .sort((a: any, b: any) => b.modified.getTime() - a.modified.getTime());
     
-    backups.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-    
-    res.json({
-      success: true,
-      data: backups,
-      timestamp: new Date(),
-    });
+    res.json({ success: true, data: configs });
   } catch (error) {
     next(error);
   }
 });
 
-// Restore from backup
-router.post('/backups/:filename/restore', async (req, res, next) => {
+// Save named config
+router.post('/save-as/:name', (req: Request, res: Response, next: NextFunction) => {
   try {
-    await ensureConfigDir();
+    ensureConfigDir();
+    const { name } = req.params;
+    const configPath = path.join(process.cwd(), 'config', `${name}.json`);
     
-    const backupPath = path.join(BACKUPS_DIR, req.params.filename);
-    const backupData = await fs.readFile(backupPath, 'utf-8');
-    
-    if (req.params.filename.includes('mcp_config')) {
-      await fs.writeFile(MCP_CONFIG_PATH, backupData);
-    } else if (req.params.filename.includes('tool_overrides')) {
-      await fs.writeFile(TOOL_OVERRIDES_PATH, backupData);
-    } else {
-      throw new AppError(400, 'Unknown backup type');
-    }
-    
-    res.json({
-      success: true,
-      timestamp: new Date(),
-    });
+    fs.writeFileSync(configPath, JSON.stringify(req.body, null, 2));
+    res.json({ success: true, message: `Configuration saved as ${name}` });
   } catch (error) {
     next(error);
   }
 });
 
-export { router as configRouter };
+export { router };

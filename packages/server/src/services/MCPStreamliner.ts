@@ -9,7 +9,7 @@ interface ToolCallRecord {
   timestamp: Date;
   model: string;
   tool: string;
-  args: any;
+  arguments: any;
   response?: MCPInvokeResponse;
   error?: string;
   duration?: number;
@@ -46,7 +46,7 @@ export class MCPStreamliner extends EventEmitter {
     timestamp: Date;
     model: string;
     tool: string;
-    args: any;
+    arguments: any;
     response?: any;
     error?: string;
     duration?: number;
@@ -153,7 +153,7 @@ export class MCPStreamliner extends EventEmitter {
   async processToolCall(params: {
     model: string;
     toolName: string;
-    args: any;
+    arguments: any;
     correlationId?: string;
   }): Promise<MCPInvokeResponse> {
     const callId = params.correlationId || uuidv4();
@@ -163,7 +163,7 @@ export class MCPStreamliner extends EventEmitter {
     logger.info(`🔧 [MCPStreamliner] Tool call ${callId}:`, {
       model: params.model,
       tool: params.toolName,
-      args: params.args
+      arguments: params.arguments
     });
     
     const callRecord = {
@@ -171,7 +171,7 @@ export class MCPStreamliner extends EventEmitter {
       timestamp: new Date(),
       model: params.model,
       tool: params.toolName,
-      args: params.args
+      arguments: params.arguments
     };
     
     try {
@@ -182,7 +182,7 @@ export class MCPStreamliner extends EventEmitter {
       }
       
       // Normalize arguments
-      const normalizedArgs = this.normalizeArgs(params.args, toolInfo.argsSchema);
+      const normalizedArgs = this.normalizeArgs(params.arguments, toolInfo.argsSchema);
       
       logger.debug(`📝 [MCPStreamliner] Normalized args for ${params.toolName}:`, normalizedArgs);
       
@@ -197,8 +197,6 @@ export class MCPStreamliner extends EventEmitter {
       
       // Record success
       const duration = Date.now() - startTime;
-      callRecord.response = response;
-      callRecord.duration = duration;
       
       logger.info(`✅ [MCPStreamliner] Tool call ${callId} completed in ${duration}ms`);
       
@@ -210,8 +208,6 @@ export class MCPStreamliner extends EventEmitter {
     } catch (error) {
       // Record error
       const duration = Date.now() - startTime;
-      callRecord.error = error.message;
-      callRecord.duration = duration;
       
       logger.error(`❌ [MCPStreamliner] Tool call ${callId} failed:`, error);
       
@@ -221,7 +217,7 @@ export class MCPStreamliner extends EventEmitter {
       // Return error response
       return {
         success: false,
-        error: error.message,
+        error: (error as any).message || String(error),
         duration: duration,
         serverId: "default",
         toolName: params.toolName
@@ -309,7 +305,7 @@ export class MCPStreamliner extends EventEmitter {
     const servers = await this.mcpManager.getServers();
     
     for (const server of servers) {
-      if (server.status === 'connected') {
+      if (server.status === 'running') {
         const tools = await this.mcpManager.listTools();
         if (tools.some(t => t.name === toolName)) {
           return true;

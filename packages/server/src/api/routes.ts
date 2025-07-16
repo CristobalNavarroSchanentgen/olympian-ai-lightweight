@@ -3,7 +3,7 @@ import { chatRouter } from './chat';
 import { chatEnhancedRouter } from './chat-endpoints-enhanced'; // NEW: Enhanced chat endpoints
 import { healthRouter } from './health';
 import { connectionsRouter } from './connections';
-import { configRouter } from './config';
+import { router as configRouter } from "./config";
 import { modelsRouter } from './models';
 import { progressiveRouter } from './progressive';
 import { mcpRouter } from './mcp';
