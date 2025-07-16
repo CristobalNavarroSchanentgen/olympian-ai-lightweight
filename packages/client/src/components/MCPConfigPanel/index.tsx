@@ -13,6 +13,7 @@ import { Save, Download, Upload } from 'lucide-react';
 export function MCPConfigPanel() {
   const [config, setConfig] = useState<any>({});
   const [toolOverrides, setToolOverrides] = useState<Record<string, any>>({});
+  const [availableTools, setAvailableTools] = useState<any[]>([]);
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [activeTab, setActiveTab] = useState('config');
@@ -23,53 +24,33 @@ export function MCPConfigPanel() {
       setConfig(data);
     } catch (error) {
       toast({
-        title: "Error",
-        description: "Failed to load MCP configuration",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const [toolOverrides, setToolOverrides] = useState<Record<string, any>>({});
-  const [availableTools, setAvailableTools] = useState<any[]>([]);
-  const [hasChanges, setHasChanges] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState("config");
-
-  const loadConfig = async () => {
-    try {
-      const data = await api.getMCPConfig();
-      setConfig(data);
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to load MCP configuration",
-        variant: "destructive",
-      });
-    }
-  };
-      const data = await api.getMCPConfig();
-      setConfig(data);
-  useEffect(() => {
-    loadConfig();
-    loadToolOverrides();
-    loadAvailableTools();
-  }, []);
-
-  const loadToolOverrides = async () => {
-    try {
-      const data = await api.getToolOverrides();
-      setToolOverrides(data);
-    } catch (error) {
-      toast({
         title: 'Error',
-        description: 'Failed to load tool overrides',
+        description: 'Failed to load MCP configuration',
         variant: 'destructive',
       });
     }
   };
 
-  const handleSaveConfig = async () => {
+  const loadToolOverrides = async () => {
+    try {
+      const data = await api.getToolOverrides();
+      setToolOverrides(data || {});
+    } catch (error) {
+      console.error('Failed to load tool overrides:', error);
+    }
+  };
+
+  const loadAvailableTools = async () => {
+    try {
+      const response = await api.get('/mcp/tools');
+      setAvailableTools(response.data.data.tools || []);
+    } catch (error) {
+      console.log('Tools not available:', error);
+      setAvailableTools([]);
+    }
+  };
+
+  const handleSave = async () => {
     setIsSaving(true);
     try {
       await api.updateMCPConfig(config);
@@ -80,23 +61,15 @@ export function MCPConfigPanel() {
       });
     } catch (error) {
       toast({
-        title: "Error",
-        description: "Failed to save MCP configuration",
-        variant: "destructive",
+        title: 'Error',
+        description: 'Failed to save MCP configuration',
+        variant: 'destructive',
       });
     } finally {
       setIsSaving(false);
     }
-
-  const loadAvailableTools = async () => {
-    try {
-      const response = await api.get("/mcp/tools");
-      setAvailableTools(response.data.data.tools || []);
-    } catch (error) {
-      console.log("Tools not available:", error);
-      setAvailableTools([]);
-    }
   };
+
   const handleSaveToolOverrides = async () => {
     setIsSaving(true);
     try {
@@ -121,19 +94,14 @@ export function MCPConfigPanel() {
     const exportData = {
       config,
       toolOverrides,
-      exportDate: new Date().toISOString(),
+      timestamp: new Date().toISOString(),
     };
-    
-    const blob = new Blob([JSON.stringify(exportData, null, 2)], {
-      type: 'application/json',
-    });
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `mcp-config-${new Date().toISOString().split('T')[0]}.json`;
-    document.body.appendChild(a);
+    a.download = `mcp-config-${Date.now()}.json`;
     a.click();
-    document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
 
@@ -142,16 +110,16 @@ export function MCPConfigPanel() {
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = async (e) => {
+    reader.onload = (e) => {
       try {
-        const importData = JSON.parse(e.target?.result as string);
-        if (importData.config) {
-          setConfig(importData.config);
+        const data = JSON.parse(e.target?.result as string);
+        if (data.config) {
+          setConfig(data.config);
+          setHasChanges(true);
         }
-        if (importData.toolOverrides) {
-          setToolOverrides(importData.toolOverrides);
+        if (data.toolOverrides) {
+          setToolOverrides(data.toolOverrides);
         }
-        setHasChanges(true);
         toast({
           title: 'Success',
           description: 'Configuration imported successfully',
@@ -167,96 +135,92 @@ export function MCPConfigPanel() {
     reader.readAsText(file);
   };
 
+  useEffect(() => {
+    loadConfig();
+    loadToolOverrides();
+    loadAvailableTools();
+  }, []);
+
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold">MCP Configuration</h2>
-          <p className="text-muted-foreground">
-            Configure MCP servers and customize tool descriptions
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={handleExport}>
-            <Download className="mr-2 h-4 w-4" />
-            Export
-          </Button>
-          <label>
-            <Button variant="outline" asChild>
-              <span>
-                <Upload className="mr-2 h-4 w-4" />
-                Import
-              </span>
+    <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle>MCP Configuration</CardTitle>
+          <CardDescription>
+            Manage Model Context Protocol servers and tool configurations
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex justify-end gap-2 mb-4">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExport}
+            >
+              <Download className="mr-2 h-4 w-4" />
+              Export
             </Button>
+            <label htmlFor="import-config">
+              <Button
+                variant="outline"
+                size="sm"
+                asChild
+              >
+                <span>
+                  <Upload className="mr-2 h-4 w-4" />
+                  Import
+                </span>
+              </Button>
+            </label>
             <input
+              id="import-config"
               type="file"
               accept=".json"
               className="hidden"
               onChange={handleImport}
             />
-          </label>
-          <Button
-            onClick={activeTab === 'config' ? handleSaveConfig : handleSaveToolOverrides}
-            disabled={!hasChanges || isSaving}
-          >
-            <Save className="mr-2 h-4 w-4" />
-            {isSaving ? 'Saving...' : 'Save Changes'}
-          </Button>
-        </div>
-      </div>
+            <Button
+              onClick={activeTab === 'config' ? handleSave : handleSaveToolOverrides}
+              disabled={!hasChanges || isSaving}
+            >
+              <Save className="mr-2 h-4 w-4" />
+              {isSaving ? 'Saving...' : 'Save Changes'}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
-      {/* Main Content */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="config">Configuration</TabsTrigger>
-          <TabsTrigger value="servers">MCP Servers</TabsTrigger>
-          <TabsTrigger value="tools">Tool Descriptions</TabsTrigger>
+          <TabsTrigger value="config">Server Config</TabsTrigger>
+          <TabsTrigger value="tools">Tool Overrides</TabsTrigger>
+          <TabsTrigger value="servers">Server Management</TabsTrigger>
           <TabsTrigger value="backups">Backups</TabsTrigger>
         </TabsList>
-
+        
         <TabsContent value="config" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>MCP Configuration File</CardTitle>
-              <CardDescription>
-                Edit your MCP configuration in JSON format. This file controls how MCP servers are initialized and connected.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ConfigEditor
-                value={config}
-                onChange={(newConfig) => {
-                  setConfig(newConfig);
-                  setHasChanges(true);
-                }}
-              />
-            </CardContent>
-          </Card>
+          <ConfigEditor
+            config={config}
+            onChange={(newConfig) => {
+              setConfig(newConfig);
+              setHasChanges(true);
+            }}
+          />
+        </TabsContent>
+
+        <TabsContent value="tools" className="space-y-4">
+          <ToolDescriptionEditor
+            overrides={toolOverrides}
+            availableTools={availableTools}
+            onChange={(newOverrides) => {
+              setToolOverrides(newOverrides);
+              setHasChanges(true);
+            }}
+          />
         </TabsContent>
 
         <TabsContent value="servers" className="space-y-4">
           <ServerManager />
-        </TabsContent>
-
-        <TabsContent value="tools" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Tool Description Overrides</CardTitle>
-              <CardDescription>
-                Customize tool descriptions and add examples to make them more user-friendly
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ToolDescriptionEditor
-                overrides={toolOverrides}
-                availableTools={availableTools}
-                onChange={(newOverrides) => {
-                  setToolOverrides(newOverrides);
-                  setHasChanges(true);
-                }}
-              />            </CardContent>
-          </Card>
         </TabsContent>
 
         <TabsContent value="backups" className="space-y-4">
@@ -268,5 +232,4 @@ export function MCPConfigPanel() {
       </Tabs>
     </div>
   );
-}
 }
