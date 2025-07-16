@@ -42,7 +42,7 @@ export function MCPConfigPanel() {
 
   const loadAvailableTools = async () => {
     try {
-      const response = await api.getMCPServers()
+      await api.getMCPServers()
       setAvailableTools([]);
     } catch (error) {
       console.log('Tools not available:', error);
