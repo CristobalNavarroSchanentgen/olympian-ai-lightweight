@@ -17,19 +17,44 @@ export function MCPConfigPanel() {
   const [isSaving, setIsSaving] = useState(false);
   const [activeTab, setActiveTab] = useState('config');
 
+  const loadConfig = async () => {
+    try {
+      const data = await api.getMCPConfig();
+      setConfig(data);
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to load MCP configuration",
+        variant: "destructive",
+      });
+    }
+  };
+
   const [toolOverrides, setToolOverrides] = useState<Record<string, any>>({});
   const [availableTools, setAvailableTools] = useState<any[]>([]);
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [activeTab, setActiveTab] = useState("config");    try {
+
+  const loadConfig = async () => {
+    try {
+      const data = await api.getMCPConfig();
+      setConfig(data);
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to load MCP configuration",
+        variant: "destructive",
+      });
+    }
+  };
       const data = await api.getMCPConfig();
       setConfig(data);
   useEffect(() => {
     loadConfig();
     loadToolOverrides();
     loadAvailableTools();
-  }, []);    }
-  };
+  }, []);
 
   const loadToolOverrides = async () => {
     try {
@@ -52,7 +77,17 @@ export function MCPConfigPanel() {
       toast({
         title: 'Success',
         description: 'MCP configuration saved successfully',
-  };
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to save MCP configuration",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSaving(false);
+    }
+      });  };
 
   const loadAvailableTools = async () => {
     try {

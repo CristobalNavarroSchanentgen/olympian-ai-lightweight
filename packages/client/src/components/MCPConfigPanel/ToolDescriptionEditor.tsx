@@ -7,9 +7,6 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Plus, Trash, Edit2, Save, X } from 'lucide-react';
 
-interface ToolDescriptionEditorProps {
-  overrides: Record<string, any>;
-interface ToolDescriptionEditorProps {
   overrides: Record<string, any>;
   availableTools?: any[];
   onChange: (overrides: Record<string, any>) => void;
@@ -85,7 +82,11 @@ export function ToolDescriptionEditor({ overrides, availableTools = [], onChange
           </CardContent>
         </Card>
       )}
-
+      {/* Add New Tool Button */}
+      <div className="mb-4">
+        <Button
+          onClick={() => setShowNewForm(true)}
+          disabled={showNewForm}
       {/* Add New Tool Button */}          disabled={showNewForm}
         >
           <Plus className="mr-2 h-4 w-4" />
