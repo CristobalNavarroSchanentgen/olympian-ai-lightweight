@@ -93,10 +93,8 @@ export function MCPConfigPanel() {
       console.log("Tools not available:", error);
       setAvailableTools([]);
     }
-  };      });
-    } finally {
-      setIsSaving(false);
-    try {
+  const handleSaveToolOverrides = async () => {
+    setIsSaving(true);    try {
       await api.updateToolOverrides(toolOverrides);
       setHasChanges(false);
       toast({

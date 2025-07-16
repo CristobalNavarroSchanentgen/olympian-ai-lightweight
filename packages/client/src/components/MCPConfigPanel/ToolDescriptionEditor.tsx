@@ -87,7 +87,6 @@ interface ToolDescriptionEditorProps {  overrides: Record<string, any>;
         <Button
           onClick={() => setShowNewForm(true)}
           disabled={showNewForm}
-      {/* Add New Tool Button */}          disabled={showNewForm}
         >
           <Plus className="mr-2 h-4 w-4" />
           Add Tool Override
