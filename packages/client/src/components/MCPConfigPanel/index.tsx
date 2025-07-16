@@ -87,10 +87,6 @@ export function MCPConfigPanel() {
     } finally {
       setIsSaving(false);
     }
-      });  };
-
-  const loadAvailableTools = async () => {
-    try {
       const response = await api.get("/mcp/tools");
       setAvailableTools(response.data.data.tools || []);
     } catch (error) {
@@ -100,11 +96,6 @@ export function MCPConfigPanel() {
   };      });
     } finally {
       setIsSaving(false);
-    }
-  };
-
-  const handleSaveToolOverrides = async () => {
-    setIsSaving(true);
     try {
       await api.updateToolOverrides(toolOverrides);
       setHasChanges(false);

@@ -7,10 +7,10 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Plus, Trash, Edit2, Save, X } from 'lucide-react';
 
-  overrides: Record<string, any>;
+interface ToolDescriptionEditorProps {  overrides: Record<string, any>;
   availableTools?: any[];
   onChange: (overrides: Record<string, any>) => void;
-export function ToolDescriptionEditor({ overrides, availableTools = [], onChange }: ToolDescriptionEditorProps) {  const [editingTool, setEditingTool] = useState<string | null>(null);
+}export function ToolDescriptionEditor({ overrides, availableTools = [], onChange }: ToolDescriptionEditorProps) {  const [editingTool, setEditingTool] = useState<string | null>(null);
   const [newTool, setNewTool] = useState({ name: '', description: '', examples: [''] });
   const [showNewForm, setShowNewForm] = useState(false);
 
