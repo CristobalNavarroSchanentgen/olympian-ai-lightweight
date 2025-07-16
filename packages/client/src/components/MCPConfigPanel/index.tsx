@@ -42,8 +42,8 @@ export function MCPConfigPanel() {
 
   const loadAvailableTools = async () => {
     try {
-      const response = await api.get('/mcp/tools');
-      setAvailableTools(response.data.data.tools || []);
+      const response = await api.getMCPServers()
+      setAvailableTools([]);
     } catch (error) {
       console.log('Tools not available:', error);
       setAvailableTools([]);
@@ -200,7 +200,7 @@ export function MCPConfigPanel() {
         
         <TabsContent value="config" className="space-y-4">
           <ConfigEditor
-            config={config}
+            value={config}
             onChange={(newConfig) => {
               setConfig(newConfig);
               setHasChanges(true);
