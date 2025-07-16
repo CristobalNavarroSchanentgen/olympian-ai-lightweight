@@ -24,9 +24,14 @@ COPY package*.json ./
 COPY packages/shared/package*.json ./packages/shared/
 COPY packages/client/package*.json ./packages/client/
 
-# Install dependencies with multiple fallback strategies
-RUN npm ci --no-optional --no-audit --no-fund ||     (echo "NPM failed, trying yarn..." && yarn install --frozen-lockfile --network-timeout 600000) ||     (echo "Both failed, trying npm with force..." && rm -rf node_modules && npm install --no-optional --force)
+# Install dependencies with better cross-platform support
+RUN npm ci --no-audit --no-fund || \
+    (echo "Clearing cache and retrying..." && rm -rf node_modules package-lock.json && \
+     npm install --no-audit --no-fund)
 
+# Install platform-specific rollup binaries for cross-platform builds
+RUN npm install --no-save @rollup/rollup-linux-arm64-musl @rollup/rollup-linux-x64-musl || true
+RUN npm rebuild || true
 # Copy configuration files
 COPY tsconfig.json ./
 
