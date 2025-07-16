@@ -12,10 +12,12 @@ LABEL build_date=${BUILD_DATE}
 LABEL git_commit=${GIT_COMMIT}
 
 # Configure npm for better reliability, use faster mirror and disable optional deps
-RUN npm config set fetch-timeout 600000 &&     npm config set fetch-retry-mintimeout 20000 &&     npm config set fetch-retry-maxtimeout 120000 &&     npm config set fetch-retries 5 &&     npm config set registry https://registry.npmjs.org/ &&     npm config set optional false &&     npm config set progress false
+RUN npm config set fetch-timeout 600000 &&     npm config set fetch-retry-mintimeout 20000 &&     npm config set fetch-retry-maxtimeout 120000 &&     npm config set fetch-retries 5 &&     npm config set registry https://registry.npmjs.org/ &&     npm config set progress false
 
-# Install yarn as alternative
-RUN npm install -g yarn &&     yarn config set network-timeout 600000
+# Yarn is already included in node:20-alpine
+RUN yarn config set network-timeout 600000
+# Yarn is already included in node:20-alpine
+RUN yarn config set network-timeout 600000
 
 # Copy package files first (for better caching when only deps change)
 COPY package*.json ./
@@ -76,9 +78,7 @@ COPY --from=builder /tmp/build_info /usr/share/nginx/html/build_info.txt
 RUN echo "=== Final verification ===" &&     ls -la /usr/share/nginx/html/ &&     if [ -f /usr/share/nginx/html/index.html ]; then         echo "✓ Built index.html confirmed";     else         echo "ERROR: index.html missing!" && exit 1;     fi
 
 # Health check
-RUN echo '#!/bin/sh
-curl -sf http://localhost/ || exit 1' > /healthcheck.sh && chmod +x /healthcheck.sh
-
+RUN printf "#!/bin/sh\ncurl -sf http://localhost/ || exit 1" > /healthcheck.sh && chmod +x /healthcheck.sh
 EXPOSE 80
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 CMD ["/healthcheck.sh"]
