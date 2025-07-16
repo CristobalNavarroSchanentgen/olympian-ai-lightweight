@@ -4,6 +4,17 @@ import { logger } from '../utils/logger';
 import { v4 as uuidv4 } from 'uuid';
 import EventEmitter from 'events';
 
+interface ToolCallRecord {
+  id: string;
+  timestamp: Date;
+  model: string;
+  tool: string;
+  args: any;
+  response?: MCPInvokeResponse;
+  error?: string;
+  duration?: number;
+}
+
 /**
  * MCP Streamliner - Minimal tool use integration layer for Subproject 3
  * 
@@ -177,8 +188,9 @@ export class MCPStreamliner extends EventEmitter {
       
       // Invoke tool via MCP Manager
       const request: MCPInvokeRequest = {
+        serverId: "default",
         toolName: params.toolName,
-        args: normalizedArgs
+        arguments: normalizedArgs
       };
       
       const response = await this.mcpManager.invokeTool(request);
@@ -209,8 +221,11 @@ export class MCPStreamliner extends EventEmitter {
       // Return error response
       return {
         success: false,
-        error: error.message
-      };
+        error: error.message,
+        duration: duration,
+        serverId: "default",
+        toolName: params.toolName
+      } as MCPInvokeResponse;
     }
   }
   

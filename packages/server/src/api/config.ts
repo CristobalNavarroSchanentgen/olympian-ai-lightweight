@@ -1,4 +1,3 @@
-import { Router } from 'express';
 import { DatabaseService } from '../services/DatabaseService';
 import { AppError } from '../middleware/errorHandler';
 import * as fs from 'fs/promises';
@@ -39,13 +38,6 @@ router.get("/mcp", async (_req, res, next) => {
 
     res.json({
       success: true,
-      data: config,
-      timestamp: new Date(),
-    });
-  } catch (error) {
-    next(error);
-  }
-});      success: true,
       data: config,
       timestamp: new Date(),
     });

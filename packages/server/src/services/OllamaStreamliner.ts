@@ -1636,3 +1636,38 @@ export class OllamaStreamliner {
     return this.loadBalancer?.getStats() || null;
   }
 }
+
+  /**
+   * Initialize the streamliner
+   */
+  async initialize(): Promise<void> {
+    logger.info('[OllamaStreamliner] Initializing streamliner');
+  }
+
+  /**
+   * Stream method for yielding responses
+   */
+  async *stream(request: any, memoryConfig?: any): AsyncGenerator<any, void, unknown> {
+    const chunks: any[] = [];
+    await this.streamChat(
+      request,
+      (chunk) => chunks.push(chunk),
+      () => {},
+      memoryConfig
+    );
+    for (const chunk of chunks) {
+      yield chunk;
+    }
+  }
+
+  /**
+   * Get debug information
+   */
+  getDebugInfo(): any {
+    return {
+      modelCapabilities: Array.from(this.modelCapabilities.entries()),
+      deploymentConfig: this.deploymentConfig,
+      memoryServiceStats: this.memoryService?.getDebugInfo?.() || 'No memory service'
+    };
+  }
+}

@@ -119,15 +119,6 @@ export class MCPManager extends EventEmitter {
         optional: true,
         status: "stopped"
       }
-    ];      {
-        id: 'memory',
-        name: 'memory',
-        transport: 'stdio',
-        command: 'npx',
-        args: ['-y', '@modelcontextprotocol/server-memory'],
-        optional: true,
-        status: 'stopped'
-      }
     ];
 
     // Start servers

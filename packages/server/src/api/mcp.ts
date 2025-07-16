@@ -214,7 +214,7 @@ router.get('/debug/tool-registry', async (req, res) => {
     res.json({
       success: true,
       data: {
-        tools: registry.map(([name, info]) => ({
+        tools: registry.map(([name, info]: [string, any]) => ({
           name,
           ...info
         })),
