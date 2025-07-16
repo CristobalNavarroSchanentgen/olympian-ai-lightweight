@@ -34,7 +34,7 @@ export function MCPConfigPanel() {
   const [availableTools, setAvailableTools] = useState<any[]>([]);
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState("config");    try {
+  const [activeTab, setActiveTab] = useState("config");
 
   const loadConfig = async () => {
     try {
@@ -87,14 +87,19 @@ export function MCPConfigPanel() {
     } finally {
       setIsSaving(false);
     }
+
+  const loadAvailableTools = async () => {
+    try {
       const response = await api.get("/mcp/tools");
       setAvailableTools(response.data.data.tools || []);
     } catch (error) {
       console.log("Tools not available:", error);
       setAvailableTools([]);
     }
+  };
   const handleSaveToolOverrides = async () => {
-    setIsSaving(true);    try {
+    setIsSaving(true);
+    try {
       await api.updateToolOverrides(toolOverrides);
       setHasChanges(false);
       toast({
