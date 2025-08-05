@@ -31,12 +31,12 @@ Olympian AI Lightweight provides deployment-specific MCP configurations:
 
 #### Subproject 3: Multi-Host Deployment (HTTP-Only)
 
-For multi-host deployments, the system enforces a **self-reliant, container-based architecture** with HTTP-only transports. See [MCP_HTTP_MULTIHOST.md](./MCP_HTTP_MULTIHOST.md) for detailed documentation.
+For multi-host deployments, the system enforces a **self-reliant, process-based architecture** with stdio-only transports. See [MCP_HTTP_MULTIHOST.md](./MCP_HTTP_MULTIHOST.md) for detailed documentation.
 
 **Key Features:**
-- All MCP servers run as Docker containers
-- HTTP-only transport (no stdio support)
-- Container-based networking
+- All MCP servers run as child processes
+- Stdio-only transport (no HTTP support)
+- Process-based execution
 - Zero external dependencies
 
 **Quick Setup:**
@@ -90,7 +90,7 @@ Each server can be configured with:
 - **`http`** - Legacy HTTP (auto-upgrades to streamable_http)
 - **`sse`** - Server-Sent Events (fallback)
 
-**Note:** stdio transport is not supported in multihost deployment mode.
+**Note: HTTP transport is not supported in multihost deployment mode - stdio only.
 
 ## API Endpoints
 
