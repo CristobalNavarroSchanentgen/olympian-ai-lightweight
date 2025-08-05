@@ -17,9 +17,9 @@ A minimalist MCP client application focused on seamless Ollama integration with 
 
 ## What's New: Self-Reliant MCP Container Deployment 🚀
 
-Subproject 3 (Multi-host deployment) now features completely self-contained MCP servers running as containers:
+Subproject 3 (Multi-host deployment) now features completely self-contained MCP servers running as child processes:
 
-- **🏗️ Self-Reliant Architecture**: All MCP servers run as containers - no external dependencies
+- **🏗️ Self-Reliant Architecture**: All MCP servers run as child processes - no external dependencies
 - **🔧 Enhanced Setup Script**: Interactive token configuration with `bash scripts/setup-multihost.sh`
 - **📦 6 Integrated MCP Servers**: GitHub, NASA, Met Museum, Context7, AppleScript, Web Search
 - **🔐 Token Management**: Secure authentication setup during initialization
