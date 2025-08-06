@@ -14,6 +14,10 @@ import { ArtifactService } from './services/ArtifactService';
 import { multiHostInit } from './services/MultiHostInitializationService';
 import { MCPManager } from './services/MCPManager';
 import { MCPStreamliner } from "./services/MCPStreamliner";
+import { ToolNamespaceManager } from "./services/ToolNamespaceManager";
+import { EnhancedOllamaStreamliner } from "./services/EnhancedOllamaStreamliner";
+import { HILManager } from "./services/HILManager";
+import { ToolSelectionService } from "./services/ToolSelectionService";
 
 import apiRoutes from './api/routes';
 import { errorHandler } from './middleware/errorHandler';
@@ -36,6 +40,8 @@ const HOSTNAME = process.env.HOSTNAME || 'localhost';
 
 // MCP Configuration
 const MCP_ENABLED = process.env.MCP_ENABLED !== 'false';
+const HIL_ENABLED = process.env.HIL_ENABLED !== "false";
+const COMPATIBLE_MODELS = process.env.COMPATIBLE_MODELS || "qwen2.5,qwen3,llama3.1,llama3.2,mistral,deepseek-r1";
 
 // Security middleware
 app.use(helmet({
@@ -101,10 +107,10 @@ app.use('*', (req, res) => {
 // Initialize services
 async function initializeServices() {
   try {
-    console.log('🚀 [Server] Initializing Olympian AI Lightweight Server...');
-    console.log(`📍 [Server] Instance: ${INSTANCE_ID} on ${HOSTNAME}`);
-    console.log(`🌐 [Server] Multi-host mode: ${ENABLE_MULTI_HOST ? 'ENABLED' : 'DISABLED'}`);
-    console.log(`🚀 [Server] Deployment mode: ${DEPLOYMENT_MODE}`);
+    console.log('🚀 [Server] Initializing Olympian AI with MCP Integration...');
+    console.log('📍 [Server] Instance: ' + INSTANCE_ID + ' on ' + HOSTNAME);
+    console.log('🌐 [Server] Multi-host mode: ' + (ENABLE_MULTI_HOST ? 'ENABLED' : 'DISABLED'));
+    console.log('🚀 [Server] Deployment mode: ' + DEPLOYMENT_MODE);
 
     // Connect to database
     console.log('🔌 [Server] Connecting to MongoDB...');
@@ -132,14 +138,39 @@ async function initializeServices() {
       await multiHostInit.initialize();
     }
 
-    // Initialize MCP if enabled
+    // Initialize MCP Architecture
     if (MCP_ENABLED) {
-      console.log('🔧 [Server] Initializing MCP services...');
+      console.log('🔧 [Server] Initializing MCP Architecture...');
       try {
-        const mcp = MCPManager.getInstance();
-        const mcpStreamliner = MCPStreamliner.getInstance();
-        await mcpStreamliner.initialize();
-        await mcp.initialize();
+        // 1. Initialize MCP Manager with 3 servers
+        const mcpManager = MCPManager.getInstance();
+        await mcpManager.initialize();
+        
+        // 2. Initialize Tool Namespace Manager
+        const namespaceManager = ToolNamespaceManager.getInstance();
+        const tools = await mcpManager.listTools();
+        
+        // Register tools with namespacing
+        for (const [serverId, serverData] of mcpManager.getServers()) {
+          namespaceManager.registerTools(serverId, serverData.tools);
+        }
+        
+        // 3. Initialize Tool Selection Service
+        const toolSelection = ToolSelectionService.getInstance();
+        const allTools = namespaceManager.getAllTools();
+        toolSelection.initialize(allTools);
+        
+        // 4. Initialize HIL Manager
+        const hilManager = HILManager.getInstance();
+        hilManager.setEnabled(process.env.HIL_ENABLED === 'true');
+        
+        // 5. Initialize Enhanced Ollama Streamliner
+        const streamliner = new EnhancedOllamaStreamliner();
+        
+        const mcpStats = mcpManager.getStats();
+        console.log('✅ [MCP] Initialized with ' + mcpStats.totalTools + ' tools from ' + mcpStats.totalServers + ' servers');
+        console.log('🛡️ [HIL] Human-in-the-Loop: ' + (hilManager.isEnabled() ? 'ENABLED' : 'DISABLED'));
+        
       } catch (error) {
         console.error('❌ [Server] MCP initialization failed:', error);
         console.warn('⚠️ [Server] Continuing without MCP services');
@@ -167,12 +198,25 @@ async function initializeServices() {
     await modelProgressiveLoader.startProgressiveLoading();
 
     console.log('✅ [Server] All services initialized successfully');
+    
+    // Log initialization summary
+    if (MCP_ENABLED) {
+      const toolStats = ToolSelectionService.getInstance().getStats();
+      console.log('📊 [Server] Initialization Summary:');
+      console.log('   - MCP Servers: 3 (GitHub, AppleScript, Context7)');
+      console.log('   - Total Tools: ' + toolStats.totalTools);
+      console.log('   - Enabled Tools: ' + toolStats.enabledTools);
+      console.log('   - HIL Protection: ' + (HILManager.getInstance().isEnabled() ? 'Active' : 'Disabled'));
+      console.log('   - Compatible Models: ' + (process.env.COMPATIBLE_MODELS || 'qwen2.5,qwen3,llama3.1,llama3.2,mistral,deepseek-r1'));
+    }
+    
   } catch (error) {
     console.error('❌ [Server] Failed to initialize services:', error);
     await gracefulCleanup();
     process.exit(1);
   }
 }
+
 
 // Graceful cleanup
 async function gracefulCleanup() {
@@ -182,9 +226,7 @@ async function gracefulCleanup() {
     // Cleanup MCP
     if (MCP_ENABLED) {
       const mcp = MCPManager.getInstance();
-        const mcpStreamliner = MCPStreamliner.getInstance();
-        await mcpStreamliner.initialize();
-      await mcp.cleanup();
+      await mcp.shutdown();
     }
 
     // Cleanup multi-host
