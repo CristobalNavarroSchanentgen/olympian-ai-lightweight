@@ -60,7 +60,7 @@ export class ToolSelectionService {
       this.state.enabledTools.add(tool.name);
     }
     
-    logger.info(\`Tool selection initialized: \${tools.length} tools from \${this.state.serverGroups.size} servers\`);
+    logger.info(`Tool selection initialized: \${tools.length} tools from \${this.state.serverGroups.size} servers`);
   }
   
   /**
@@ -214,14 +214,14 @@ export class ToolSelectionService {
       
       return {
         success: true,
-        message: \`Toggled \${changes} tools\`,
+        message: `Toggled \${changes} tools`,
         changes
       };
       
     } catch (error: any) {
       return {
         success: false,
-        message: \`Invalid command: \${error.message}\`,
+        message: `Invalid command: \${error.message}`,
         changes: 0
       };
     }

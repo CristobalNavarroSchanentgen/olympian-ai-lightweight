@@ -31,7 +31,7 @@ export class EnhancedOllamaStreamliner {
   async processRequest(request: ChatRequest): Promise<ProcessedRequest> {
     const correlationId = uuidv4();
     
-    logger.info(\`🎯 Processing request \${correlationId}\`, {
+    logger.info(`🎯 Processing request \${correlationId}`, {
       model: request.model,
       hasImages: !!request.images?.length
     });
@@ -66,7 +66,7 @@ export class EnhancedOllamaStreamliner {
     // Store correlation ID for tracking
     (processedRequest as any)._correlationId = correlationId;
     
-    logger.debug(\`📋 Request prepared with \${tools.length} tools\`);
+    logger.debug(`📋 Request prepared with \${tools.length} tools`);
     
     return processedRequest;
   }
@@ -80,18 +80,18 @@ export class EnhancedOllamaStreamliner {
     const correlationId = (request as any)._correlationId || uuidv4();
     const host = this.getOllamaHost();
     
-    logger.info(\`🌊 Starting stream \${correlationId} to \${host}\`);
+    logger.info(`🌊 Starting stream \${correlationId} to \${host}`);
     
     try {
       // Make Ollama API call
-      const response = await fetch(\`\${host}/api/chat\`, {
+      const response = await fetch(`\${host}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(request)
       });
       
       if (!response.ok) {
-        throw new Error(\`Ollama error: \${response.statusText}\`);
+        throw new Error(`Ollama error: \${response.statusText}`);
       }
       
       const reader = response.body?.getReader();
@@ -135,14 +135,14 @@ export class EnhancedOllamaStreamliner {
               }
               
             } catch (e) {
-              logger.error(\`Error parsing chunk: \${e}\`);
+              logger.error(`Error parsing chunk: \${e}`);
             }
           }
         }
       }
       
     } catch (error) {
-      logger.error(\`Stream error \${correlationId}:\`, error);
+      logger.error(`Stream error \${correlationId}:`, error);
       throw error;
     }
   }
@@ -157,7 +157,7 @@ export class EnhancedOllamaStreamliner {
     const startTime = Date.now();
     const toolCallId = toolCall.id || uuidv4();
     
-    logger.info(\`🔧 Tool call \${toolCallId}\`, {
+    logger.info(`🔧 Tool call \${toolCallId}`, {
       name: toolCall.function.name,
       correlationId
     });
@@ -176,7 +176,7 @@ export class EnhancedOllamaStreamliner {
       // Parse namespace
       const parsed = this.namespaceManager.parseToolName(toolCall.function.name);
       if (!parsed) {
-        throw new Error(\`Invalid tool name: \${toolCall.function.name}\`);
+        throw new Error(`Invalid tool name: \${toolCall.function.name}`);
       }
       
       // Request HIL confirmation if enabled
@@ -226,7 +226,7 @@ export class EnhancedOllamaStreamliner {
       };
       
     } catch (error: any) {
-      logger.error(\`Tool call failed \${toolCallId}:\`, error);
+      logger.error(`Tool call failed \${toolCallId}:`, error);
       
       return {
         id: toolCallId,
@@ -318,14 +318,14 @@ export class EnhancedOllamaStreamliner {
     delete cleanRequest.tools;
     
     try {
-      const response = await fetch(\`\${host}/api/chat\`, {
+      const response = await fetch(`\${host}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(cleanRequest)
       });
       
       if (!response.ok) {
-        throw new Error(\`Ollama error: \${response.statusText}\`);
+        throw new Error(`Ollama error: \${response.statusText}`);
       }
       
       const reader = response.body?.getReader();
@@ -350,7 +350,7 @@ export class EnhancedOllamaStreamliner {
               const chunk = JSON.parse(line);
               yield chunk;
             } catch (e) {
-              logger.error(\`Error parsing chunk: \${e}\`);
+              logger.error(`Error parsing chunk: \${e}`);
             }
           }
         }

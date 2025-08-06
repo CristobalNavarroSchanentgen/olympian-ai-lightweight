@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { ObjectId, WithId } from 'mongodb';
 import { DatabaseService } from '../services/DatabaseService';
-import { OllamaStreamliner } from '../services/OllamaStreamliner';
+import { StreamlinerFactory } from "./StreamlinerFactory";
 import { ChatMemoryService } from '../services/ChatMemoryService';
 import { ArtifactService } from '../services/ArtifactService'; // NEW: Artifact service integration
 import { modelProgressiveLoader } from '../services/ModelProgressiveLoader';
@@ -32,7 +32,7 @@ import {
 
 const router = Router();
 const db = DatabaseService.getInstance();
-const streamliner = new OllamaStreamliner();
+// Streamliner created per request based on model
 const memoryService = ChatMemoryService.getInstance();
 const artifactService = ArtifactService.getInstance(); // NEW: Artifact service instance
 

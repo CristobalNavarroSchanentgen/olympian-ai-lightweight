@@ -1,4 +1,12 @@
 import { ChatRequest, ProcessedRequest, ModelCapability, VisionError, parseThinkingFromContent, ThinkingProcessingResult, ToolCall, ToolResult } from '@olympian/shared';
+// Stub for removed customModelCapabilityService
+const customModelCapabilityService = {
+  getModelCapability: () => null,
+  getCustomVisionModels: () => [],
+  getAllCustomCapabilities: () => ({}),
+  getCapabilityStats: () => ({}),
+  getAvailableModelNames: () => []
+};
 import { logger } from '../utils/logger';
 import { AppError } from '../middleware/errorHandler';
 import { getDeploymentConfig, OllamaLoadBalancer } from '../config/deployment';

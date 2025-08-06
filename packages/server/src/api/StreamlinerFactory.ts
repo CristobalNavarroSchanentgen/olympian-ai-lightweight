@@ -1,49 +1,26 @@
 import { OllamaStreamliner } from '../services/OllamaStreamliner';
-import { ToolEnabledOllamaStreamliner } from '../services/ToolEnabledOllamaStreamliner';
+import { EnhancedOllamaStreamliner } from '../services/EnhancedOllamaStreamliner';
+
+// Compatible models list for tool support
+const COMPATIBLE_MODELS = (process.env.COMPATIBLE_MODELS || 'qwen2.5,qwen3,llama3.1,llama3.2,mistral,deepseek-r1').split(',');
 
 /**
- * Factory function to create the appropriate streamliner based on deployment mode
- * 
- * For subproject 3, returns a tool-enabled streamliner
- * For other subprojects, returns the standard streamliner
+ * Factory to create appropriate streamliner based on model compatibility
  */
-export async function createStreamlinerForDeployment(): Promise<OllamaStreamliner> {
-  const subproject = process.env.SUBPROJECT || '1';
-  const deploymentMode = process.env.DEPLOYMENT_MODE || 'development';
-  const isSubproject3 = subproject === '3' || deploymentMode === 'docker-multi-host';
-  const mcpEnabled = process.env.MCP_ENABLED === 'true';
-  
-  if (isSubproject3 && mcpEnabled) {
-    console.log('🔧 [StreamlinerFactory] Creating tool-enabled streamliner for subproject 3');
-    const toolEnabledStreamliner = new ToolEnabledOllamaStreamliner();
-    await toolEnabledStreamliner.initialize();
-    return toolEnabledStreamliner;
+export class StreamlinerFactory {
+  static getStreamliner(model: string): OllamaStreamliner | EnhancedOllamaStreamliner {
+    const baseModel = model.split(':')[0];
+    
+    if (COMPATIBLE_MODELS.includes(baseModel)) {
+      console.log(`🔧 [StreamlinerFactory] Using EnhancedOllamaStreamliner for model: ${model}`);
+      return new EnhancedOllamaStreamliner();
+    }
+    
+    console.log(`📦 [StreamlinerFactory] Using OllamaStreamliner for model: ${model}`);
+    return new OllamaStreamliner();
   }
   
-  console.log('📦 [StreamlinerFactory] Creating standard streamliner');
-  const standardStreamliner = new OllamaStreamliner();
-  await standardStreamliner.initialize();
-  return standardStreamliner;
-}
-
-/**
- * Get the streamliner instance to use in chat API
- * This allows dynamic switching based on configuration
- */
-let streamlinerInstance: OllamaStreamliner | null = null;
-
-export async function getStreamlinerInstance(): Promise<OllamaStreamliner> {
-  if (!streamlinerInstance) {
-    streamlinerInstance = await createStreamlinerForDeployment();
+  static isCompatibleModel(model: string): boolean {
+    return COMPATIBLE_MODELS.includes(model.split(':')[0]);
   }
-  
-  return streamlinerInstance;
-}
-
-/**
- * Reset the streamliner instance (useful for testing or config changes)
- */
-export function resetStreamlinerInstance(): void {
-  streamlinerInstance = null;
-  console.log('🔄 [StreamlinerFactory] Streamliner instance reset');
 }

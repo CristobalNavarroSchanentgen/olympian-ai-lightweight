@@ -13,7 +13,6 @@ import { modelProgressiveLoader } from './services/ModelProgressiveLoader';
 import { ArtifactService } from './services/ArtifactService';
 import { multiHostInit } from './services/MultiHostInitializationService';
 import { MCPManager } from './services/MCPManager';
-import { MCPStreamliner } from "./services/MCPStreamliner";
 import { ToolNamespaceManager } from "./services/ToolNamespaceManager";
 import { EnhancedOllamaStreamliner } from "./services/EnhancedOllamaStreamliner";
 import { HILManager } from "./services/HILManager";

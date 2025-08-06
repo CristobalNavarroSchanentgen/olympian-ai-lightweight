@@ -3,7 +3,6 @@ import { logger } from '../utils/logger';
 import { ModelCapability } from '@olympian/shared';
 import { OllamaStreamliner } from './OllamaStreamliner';
 import { getDeploymentConfig } from '../config/deployment';
-import { customModelCapabilityService } from './CustomModelCapabilityService';
 
 interface ProgressiveLoadingState {
   totalModels: number;

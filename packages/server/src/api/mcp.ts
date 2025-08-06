@@ -181,10 +181,10 @@ router.get('/health', (req, res) => {
 
 export { router as mcpRouter };
 
-// Add debug endpoints for MCPStreamliner
+// Add debug endpoints for EnhancedOllamaStreamliner
 router.get('/debug/tool-calls', async (req, res) => {
   try {
-    const mcpStreamliner = require('../services/MCPStreamliner').MCPStreamliner.getInstance();
+    const mcpStreamliner = require('../services/EnhancedOllamaStreamliner').EnhancedOllamaStreamliner.getInstance();
     const limit = parseInt(req.query.limit as string) || 10;
     
     const recentCalls = mcpStreamliner.getRecentCalls(limit);
@@ -207,7 +207,7 @@ router.get('/debug/tool-calls', async (req, res) => {
 
 router.get('/debug/tool-registry', async (req, res) => {
   try {
-    const mcpStreamliner = require('../services/MCPStreamliner').MCPStreamliner.getInstance();
+    const mcpStreamliner = require('../services/EnhancedOllamaStreamliner').EnhancedOllamaStreamliner.getInstance();
     
     const registry = Array.from(mcpStreamliner.getToolRegistry().entries());
     

@@ -2,7 +2,6 @@ import { Router } from 'express';
 import { DatabaseService } from '../services/DatabaseService';
 import { getDeploymentConfig } from '../config/deployment';
 import { OllamaHealthCheck } from '../services/OllamaHealthCheck';
-import { customModelCapabilityService } from '../services/CustomModelCapabilityService';
 import { MongoClient } from 'mongodb';
 
 interface OllamaVersionResponse {
