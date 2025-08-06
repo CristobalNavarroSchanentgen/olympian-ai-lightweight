@@ -177,7 +177,7 @@ export function registerMCPStatusHandlers(socket: Socket): void {
   // Get MCP server status
   socket.on('mcp:get_status', () => {
     const status = mcpManager.getStatus();
-    const serverEntries = Array.from(mcpManager.getServers().entries());
+    const serverEntries = Array.from(mcpManager.getServers().entries()) as [string, any][];
     const servers = serverEntries.map(entry => ({
       id: entry[0],
       name: entry[1].name,
@@ -195,7 +195,7 @@ export function registerMCPStatusHandlers(socket: Socket): void {
     const mcpTools = await mcpManager.listTools();
     const selectionState = toolSelection.getSelectionState();
     
-    const serverEntries = Array.from(mcpManager.getServers().entries());
+    const serverEntries = Array.from(mcpManager.getServers().entries()) as [string, any][];
     const servers = serverEntries.map(entry => {
       const serverId = entry[0];
       const serverData = entry[1];
@@ -211,7 +211,6 @@ export function registerMCPStatusHandlers(socket: Socket): void {
         }))
       };
     });
-    }));
     
     socket.emit('tools:list', { servers });
   });
