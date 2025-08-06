@@ -39,7 +39,7 @@ services:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_USERNAME:-admin}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-password}
       MONGO_INITDB_DATABASE: olympian-ai
-    command: mongod --config /etc/mongod.conf --replSet rs0
+    command: mongod --replSet rs0
     healthcheck:
       test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 10s
@@ -83,7 +83,7 @@ services:
     restart: unless-stopped
     environment:
       # Database Configuration
-      MONGODB_URI: mongodb://admin:password@mongodb:27017/olympian-ai?authSource=admin
+      MONGODB_URI: mongodb://mongodb:27017/olympian-ai?replicaSet=rs0
       
       # Redis Configuration
       REDIS_URL: redis://redis:6379
@@ -142,7 +142,7 @@ services:
     restart: unless-stopped
     environment:
       # Database Configuration
-      MONGODB_URI: mongodb://admin:password@mongodb:27017/olympian-ai?authSource=admin
+      MONGODB_URI: mongodb://mongodb:27017/olympian-ai?replicaSet=rs0
       
       # Redis Configuration
       REDIS_URL: redis://redis:6379

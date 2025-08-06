@@ -41,43 +41,84 @@ export class MCPManager {
    */
   async initialize(): Promise<void> {
     if (this.initialized) return;
+    logger.info("🚀 [MCP] Initializing MCP manager...");
     
-    logger.info('🚀 [MCP] Initializing MCP manager with 3 servers...');
-    
-    // Only 3 servers - running in main container with npx
+    // Build server list based on available credentials
     const mcpServers: MCPServer[] = [
       {
-        id: 'github',
-        name: 'github',
-        transport: 'stdio',
-        command: 'npx',
-        args: ['-y', '@modelcontextprotocol/server-github'],
-        env: { 
-          GITHUB_PERSONAL_ACCESS_TOKEN: process.env.GITHUB_PERSONAL_ACCESS_TOKEN || ''
-        },
-        status: 'stopped'
-      },
-      {
-        id: 'applescript',
-        name: 'applescript',  
-        transport: 'stdio',
-        command: 'npx',
-        args: ['-y', '@modelcontextprotocol/server-applescript'],
-        status: 'stopped'
-      },
-      {
-        id: 'context7',
-        name: 'context7',
-        transport: 'stdio',
-        command: 'npx',
-        args: ['-y', '@upstash/context7-mcp'],
+        id: "github",
+        name: "github",
+        transport: "stdio",
+        command: "npx",
+        args: ["-y", "@modelcontextprotocol/server-github"],
         env: {
-          UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL || '',
-          UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN || ''
+          GITHUB_PERSONAL_ACCESS_TOKEN: process.env.GITHUB_PERSONAL_ACCESS_TOKEN || ""
         },
-        status: 'stopped'
+        status: "stopped"
+      },
+      {
+        id: "applescript",
+        name: "applescript",
+        transport: "stdio",
+        command: "npx",
+        args: ["-y", "@sampullman/applescript-mcp"],
+        env: {},
+        status: "stopped"
       }
     ];
+    
+    // Only add context7 if credentials are provided
+    if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
+      mcpServers.push({
+        id: "context7",
+        name: "context7",
+        transport: "stdio",
+        command: "npx",
+        args: ["-y", "@upstash/context7-mcp"],
+        env: {
+          UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL,
+          UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN
+        },
+        status: "stopped"
+      });
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     
     // Start all servers
     const results = await Promise.allSettled(
