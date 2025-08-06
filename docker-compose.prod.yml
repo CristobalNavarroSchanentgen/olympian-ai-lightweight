@@ -98,7 +98,6 @@ services:
       # MCP Server Authentication for stdio processes
       GITHUB_PERSONAL_ACCESS_TOKEN: ${GITHUB_PERSONAL_ACCESS_TOKEN:-}
       CONTEXT7_API_KEY: ${CONTEXT7_API_KEY:-}
-      NASA_API_KEY: ${NASA_API_KEY:-DEMO_KEY}
       BRAVE_API_KEY: ${BRAVE_API_KEY:-}
       GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
       GOOGLE_CSE_ID: ${GOOGLE_CSE_ID:-}

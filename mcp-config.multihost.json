@@ -4,31 +4,20 @@
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-github@latest"],
       "env": {
-        "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_PERSONAL_ACCESS_TOKEN}"
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "\${GITHUB_PERSONAL_ACCESS_TOKEN}"
       }
     },
     "context7": {
       "command": "npx",
       "args": ["-y", "@upstash/context7-mcp@latest"],
       "env": {
-        "UPSTASH_REDIS_REST_URL": "${UPSTASH_REDIS_REST_URL}",
-        "UPSTASH_REDIS_REST_TOKEN": "${UPSTASH_REDIS_REST_TOKEN}"
+        "UPSTASH_REDIS_REST_URL": "\${UPSTASH_REDIS_REST_URL}",
+        "UPSTASH_REDIS_REST_TOKEN": "\${UPSTASH_REDIS_REST_TOKEN}"
       }
     },
     "applescript": {
       "command": "npx",
       "args": ["-y", "@sampullman/applescript-mcp@latest"]
-    },
-    "nasa": {
-      "command": "npx",
-      "args": ["-y", "@programcomputer/nasa-mcp-server@latest"],
-      "env": {
-        "NASA_API_KEY": "${NASA_API_KEY}"
-      }
-    },
-    "metmuseum": {
-      "command": "npx",
-      "args": ["-y", "metmuseum-mcp@latest"]
     }
   }
 }
