@@ -22,7 +22,8 @@ interface ServerProcess {
 export class MCPManager {
   private static instance: MCPManager;
   private servers: Map<string, ServerProcess> = new Map();
-  private tools: Map<string, MCPTool[]> = new Map();  private initialized = false;
+  private tools: Map<string, MCPTool[]> = new Map();
+  private initialized = false;
 
   private constructor() {
     logger.info('🚀 [MCP] Manager instantiated');
@@ -121,10 +122,8 @@ export class MCPManager {
 
       // Create transport
       const transport = new StdioClientTransport({
-        stdout: serverProcess.stdout!,
-        stdin: serverProcess.stdin!,
-        stderr: serverProcess.stderr!
-      });      const client = new Client(
+        child: serverProcess
+      } as any);      const client = new Client(
         {
           name: `olympian-${id}`,
           version: '1.0.0'
@@ -268,8 +267,20 @@ export class MCPManager {
    */
   getServerStatus(id: string): MCPServerStatus {
     const server = this.servers.get(id);
-    return server?.status || 'stopped';
-  }
+    if (!server) {
+      return {
+        id,
+        name: "unknown",
+        status: "stopped",
+        tools: 0
+      };
+    }
+    return {
+      id,
+      name: server.name || "unknown",
+      status: server.status,
+      tools: this.tools.get(id)?.length || 0
+    };  }
 
   /**
    * Get all servers

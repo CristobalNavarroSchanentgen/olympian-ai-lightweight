@@ -167,7 +167,7 @@ async function initializeServices() {
         const streamliner = new EnhancedOllamaStreamliner();
         
         const mcpStats = mcpManager.getStats();
-        console.log('✅ [MCP] Initialized with ' + mcpStats.totalServersTools + ' tools from ' + mcpStats.totalServersServers + ' servers');
+        console.log('✅ [MCP] Initialized with ' + mcpStats.totalTools + ' tools from ' + mcpStats.totalServers + ' servers');
         console.log('🛡️ [HIL] Human-in-the-Loop: ' + (hilManager.isEnabled() ? 'ENABLED' : 'DISABLED'));
         
       } catch (error) {

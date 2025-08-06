@@ -377,7 +377,7 @@ export class EnhancedOllamaStreamliner {
     clientIp?: string
   ): Promise<void> {
     try {
-      const generator = this.stream(processedRequest, clientIp);
+      const generator = this.stream(processedRequest);
       let fullResponse = '';
       
       for await (const chunk of generator) {

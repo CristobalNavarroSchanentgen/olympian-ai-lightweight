@@ -22,7 +22,7 @@ export const customModelCapabilityService = {
     return;
   },
   
-  getCapabilityStats() {
+  getCapabilityStats(): any {
     return {};
   },
   
@@ -53,7 +53,7 @@ export const customModelCapabilityService = {
     };
   },
   
-  getAllCustomCapabilities() {
+  getAllCustomCapabilities(): any[] {
     return [];
   }
 };

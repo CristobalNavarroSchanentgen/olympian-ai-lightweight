@@ -175,7 +175,14 @@ export class OllamaStreamliner {
     }
 
     // Automatic mode - existing enhanced detection logic
-  }
+    return {
+      name: model,
+      vision: false,
+      tools: false,
+      reasoning: false,
+      maxTokens: 4096,
+      contextWindow: 8192
+    };  }
 
   /**
    * Get capability using custom predefined list
