@@ -91,24 +91,11 @@ interface StreamResult {
 }
 
 export class OllamaStreamliner {
-  // Only models known to support tools
-  private static readonly COMPATIBLE_MODELS = [
-    'qwen2.5', 'qwen3', 'llama3.1', 'llama3.2', 'mistral', 'deepseek-r1'
-  ];
-  
-  // Simple compatibility check - no detection needed
-  isCompatibleModel(model: string): boolean {
-    const baseModel = model.split(':')[0];
-    return OllamaStreamliner.COMPATIBLE_MODELS.includes(baseModel);
-  }
-  // Only models known to support tools
-  private static readonly COMPATIBLE_MODELS = [
-    "qwen2.5", "qwen3", "llama3.1", "llama3.2", "mistral", "deepseek-r1"
-  ];
-
+  private modelCapabilities: Map<string, ModelCapability> = new Map();
   private deploymentConfig = getDeploymentConfig();
   private loadBalancer?: OllamaLoadBalancer;
   private memoryService: ChatMemoryService;
+  private capabilityDetectionInProgress: Set<string> = new Set();
   // NEW: MCP integration services for subproject 3
   constructor() {
     // Initialize load balancer if multiple hosts are configured
@@ -148,8 +135,10 @@ export class OllamaStreamliner {
    */
   clearCapabilityCache(model?: string): void {
     if (model) {
+      this.modelCapabilities.delete(model);
       logger.info(`Cleared capability cache for model: ${model}`);
     } else {
+      this.modelCapabilities.clear();
       logger.info('Cleared all model capability cache');
     }
   }
@@ -160,6 +149,8 @@ export class OllamaStreamliner {
    * 1. Custom predefined capabilities (fast, no testing) - when MODEL_CAPABILITY_MODE=custom
    * 2. Automatic detection via API testing (slow, accurate) - when MODEL_CAPABILITY_MODE=automatic
    */
+  async detectCapabilities(model: string): Promise<ModelCapability> {
+    // Check if we're in custom mode first
     if (this.deploymentConfig.modelCapability.mode === 'custom') {
       return this.getCustomCapability(model);
     }
@@ -208,6 +199,162 @@ export class OllamaStreamliner {
    * 3. Enhanced metadata analysis (fallback)
    * NO hardcoded patterns or model name assumptions
    */
+  private async detectCapabilitiesAutomatic(model: string): Promise<ModelCapability> {
+    // Check cache first
+    if (this.modelCapabilities.has(model)) {
+      logger.debug(`Using cached capabilities for model: ${model}`);
+      return this.modelCapabilities.get(model)!;
+    }
+
+    // Prevent concurrent capability detection for the same model
+    if (this.capabilityDetectionInProgress.has(model)) {
+      logger.debug(`Capability detection already in progress for model: ${model}, waiting...`);
+      // Wait for ongoing detection to complete
+      while (this.capabilityDetectionInProgress.has(model)) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      if (this.modelCapabilities.has(model)) {
+        return this.modelCapabilities.get(model)!;
+      }
+    }
+
+    this.capabilityDetectionInProgress.add(model);
+    const startTime = Date.now();
+    logger.info(`[SEARCH] Starting ENHANCED capability detection for model: ${model} (Multi-host deployment)`);
+
+    try {
+      // Step 1: Get comprehensive model info using official Ollama API
+      logger.debug(`[DATA] Fetching detailed model info for: ${model}`);
+      const modelInfo = await this.getModelInfo(model);
+      
+      let hasVision = false;
+      let hasTools = false;
+      let hasReasoning = false;
+
+      // STRATEGY 1: Official Capabilities Field (Highest Priority)
+      if (modelInfo.capabilities && Array.isArray(modelInfo.capabilities)) {
+        logger.info(`[SUCCESS] Using OFFICIAL capabilities field for '${model}': [${modelInfo.capabilities.join(', ')}]`);
+        
+        // Check for vision capability
+        hasVision = this.parseOfficialVisionCapability(modelInfo.capabilities);
+        
+        // Check for tools capability
+        hasTools = this.parseOfficialToolsCapability(modelInfo.capabilities);
+                  
+        // Check for reasoning capability
+        hasReasoning = this.parseOfficialReasoningCapability(modelInfo.capabilities);
+        
+        logger.info(`[TARGET] Official capabilities detected - Vision: ${hasVision}, Tools: ${hasTools}, Reasoning: ${hasReasoning}`);
+      } else {
+        logger.debug(`[LIST] No official capabilities field found, proceeding with programmatic testing and metadata analysis`);
+      }
+
+      // STRATEGY 2: Programmatic Testing (Medium Priority) - Test unknown capabilities
+      if (!modelInfo.capabilities || modelInfo.capabilities.length === 0) {
+        logger.info(`🧪 Starting PROGRAMMATIC testing for model: ${model}`);
+        
+        // Vision detection using metadata first (vision is exclusive)
+        hasVision = await this.detectVisionCapabilityEnhanced(model, modelInfo);
+        
+        // Only test tools and reasoning if NOT a vision model (vision is exclusive)
+        if (!hasVision) {
+          // Test tool capability programmatically
+          if (!hasTools) {
+            hasTools = await this.testToolCapabilityProgrammatically(model) || 
+                      await this.detectToolCapabilityEnhanced(model, modelInfo);
+          }
+          
+          // Test reasoning capability programmatically
+          if (!hasReasoning) {
+            hasReasoning = await this.testReasoningCapabilityProgrammatically(model) || 
+                          await this.detectReasoningCapabilityEnhanced(model, modelInfo);
+          }
+        }
+      } else {
+        // Even with official capabilities, test unknown ones programmatically
+        if (!hasVision && !hasTools && !hasReasoning) {
+          logger.info(`🧪 Official capabilities didn't detect vision/tools/reasoning. Testing programmatically...`);
+          
+          hasVision = await this.detectVisionCapabilityEnhanced(model, modelInfo);
+          
+          if (!hasVision) {
+            hasTools = await this.testToolCapabilityProgrammatically(model) || 
+                      await this.detectToolCapabilityEnhanced(model, modelInfo);
+            hasReasoning = await this.testReasoningCapabilityProgrammatically(model) || 
+                          await this.detectReasoningCapabilityEnhanced(model, modelInfo);
+          }
+        }
+      }
+
+      // Apply exclusivity rules - Vision is exclusive
+      if (hasVision) {
+        hasTools = false;
+        hasReasoning = false;
+        logger.debug(`🚫 Vision model detected - disabling tools and reasoning (vision is exclusive)`);
+      }
+      
+      // Build capability object
+      const capability: ModelCapability = {
+        name: model,
+        vision: hasVision,
+        tools: hasTools,
+        reasoning: hasReasoning,
+        maxTokens: this.parseMaxTokens(modelInfo) || 4096,
+        contextWindow: this.parseContextWindow(modelInfo) || 128000,
+        description: modelInfo.description,
+      };
+
+      const detectionTime = Date.now() - startTime;
+      
+      // Enhanced logging for capability detection debugging
+      logger.info(`[SUCCESS] ENHANCED capability detection completed for model '${model}' in ${detectionTime}ms:`, {
+        hasVision: capability.vision,
+        hasTools: capability.tools,
+        hasReasoning: capability.reasoning,
+        combinedCapabilities: `vision:${capability.vision}, tools:${capability.tools}, reasoning:${capability.reasoning}`,
+        officialCapabilities: modelInfo.capabilities || 'none',
+        detectionMethod: modelInfo.capabilities ? 'official_api_primary' : 'programmatic_testing_and_metadata',
+        parameterSize: modelInfo.details?.parameter_size,
+        families: modelInfo.details?.families,
+        architecture: modelInfo.model_info?.['general.architecture'],
+        isVisionExclusive: hasVision && (!hasTools && !hasReasoning),
+        canHaveBothToolsAndReasoning: !hasVision && (hasTools || hasReasoning),
+        maxTokens: capability.maxTokens,
+        contextWindow: capability.contextWindow,
+        detectionTimeMs: detectionTime,
+        deployment: 'multi-host'
+      });
+
+      // Validation check to ensure capability logic is correct
+      if (hasVision && (hasTools || hasReasoning)) {
+        logger.warn(`[WARNING] Logic error: Vision model '${model}' incorrectly detected with tools(${hasTools}) or reasoning(${hasReasoning}). Vision should be exclusive.`);
+      }
+
+      // Cache the result
+      this.modelCapabilities.set(model, capability);
+      
+      return capability;
+    } catch (error) {
+      const detectionTime = Date.now() - startTime;
+      logger.error(`[ERROR] Failed to detect capabilities for model ${model} after ${detectionTime}ms:`, error);
+      
+      // Return default capabilities
+      const defaultCapability: ModelCapability = {
+        name: model,
+        vision: false,
+        tools: false,
+        reasoning: false,
+        maxTokens: 4096,
+        contextWindow: 8192,
+      };
+      
+      // Cache the default to avoid repeated failures
+      this.modelCapabilities.set(model, defaultCapability);
+      return defaultCapability;
+    } finally {
+      this.capabilityDetectionInProgress.delete(model);
+    }
+  }
 
   private async getModelInfo(model: string): Promise<OllamaModelInfo> {
     const ollamaHost = this.getOllamaHost();
@@ -842,7 +989,7 @@ export class OllamaStreamliner {
       // Check each model for vision capabilities using our enhanced detection
       for (const model of models) {
         try {
-          const capabilities = this.isCompatibleModel(model);
+          const capabilities = await this.detectCapabilities(model);
           if (capabilities.vision) {
             visionModels.push(model);
             logger.info(`✓ Added '${model}' to vision models list`);
@@ -902,7 +1049,7 @@ export class OllamaStreamliner {
       for (const chunk of chunks) {
         const chunkPromises = chunk.map(async (model) => {
           try {
-            const capability = this.isCompatibleModel(model);
+            const capability = await this.detectCapabilities(model);
             return capability;
           } catch (error) {
             logger.warn(`Failed to get capabilities for model '${model}':`, error);
@@ -1517,6 +1664,7 @@ export class OllamaStreamliner {
    */
   getDebugInfo(): any {
     return {
+      modelCapabilities: Array.from(this.modelCapabilities.entries()),
       deploymentConfig: this.deploymentConfig,
       memoryServiceStats: this.memoryService ? "Memory service active" : "No memory service"
     };
