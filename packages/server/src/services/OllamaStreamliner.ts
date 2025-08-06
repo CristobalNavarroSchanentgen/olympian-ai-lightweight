@@ -1,20 +1,7 @@
+import { customModelCapabilityService } from "./customModelCapabilityServiceStub";
 // Stub for removed customModelCapabilityService
-const customModelCapabilityService = {
-  getModelCapability: () => ({ vision: false, tools: false, reasoning: false }),
-  getCustomVisionModels: () => [],
-  getAllCustomCapabilities: () => [],
-  getCapabilityStats: () => ({}),
-  getAvailableModelNames: () => []
-};
 import { ChatRequest, ProcessedRequest, ModelCapability, VisionError, parseThinkingFromContent, ThinkingProcessingResult, ToolCall, ToolResult } from '@olympian/shared';
 // Stub for removed customModelCapabilityService
-const customModelCapabilityService = {
-  getModelCapability: () => ({ vision: false, tools: false, reasoning: false }),
-  getCustomVisionModels: () => [],
-  getAllCustomCapabilities: () => [],
-  getCapabilityStats: () => ({}),
-  getAvailableModelNames: () => []
-};
 import { logger } from '../utils/logger';
 import { AppError } from '../middleware/errorHandler';
 import { getDeploymentConfig, OllamaLoadBalancer } from '../config/deployment';
@@ -117,10 +104,6 @@ export class OllamaStreamliner {
     return OllamaStreamliner.COMPATIBLE_MODELS.includes(baseModel);
   }
   // Only models known to support tools
-  private static readonly COMPATIBLE_MODELS = [
-    "qwen2.5", "qwen3", "llama3.1", "llama3.2", "mistral", "deepseek-r1"
-  ];
-
   private deploymentConfig = getDeploymentConfig();
   private loadBalancer?: OllamaLoadBalancer;
   private memoryService: ChatMemoryService;
@@ -177,7 +160,14 @@ export class OllamaStreamliner {
    */
   async detectCapabilities(model: string): Promise<ModelCapability> {
     // Capability detection disabled - use StreamlinerFactory instead
-    return { vision: false, tools: false };
+    return {
+      name: "default",
+      vision: false,
+      tools: false,
+      reasoning: false,
+      maxTokens: 4096,
+      contextWindow: 8192
+    };
   }
 
   private async detectCapabilitiesOriginal(model: string): Promise<ModelCapability> {    if (this.deploymentConfig.modelCapability.mode === 'custom') {

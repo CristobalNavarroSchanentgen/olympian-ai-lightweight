@@ -23,7 +23,7 @@ export interface DeploymentConfig {
     subnet: string;
     discoveryInterval: number;
   };
-  modelCapability: {
+      systemPrompt: undefined,  modelCapability: {
     mode: ModelCapabilityMode;
   };
 }
@@ -90,7 +90,7 @@ export function getDeploymentConfig(): DeploymentConfig {
         subnet: 'localhost',
         discoveryInterval: 300000,
       },
-      modelCapability: {
+      systemPrompt: undefined,      modelCapability: {
         mode: modelCapabilityMode,
       },
     };
@@ -120,7 +120,7 @@ export function getDeploymentConfig(): DeploymentConfig {
         subnet: 'bridge',
         discoveryInterval: 300000,
       },
-      modelCapability: {
+      systemPrompt: undefined,      modelCapability: {
         mode: modelCapabilityMode,
       },
     };
@@ -151,7 +151,7 @@ export function getDeploymentConfig(): DeploymentConfig {
         subnet: 'bridge',
         discoveryInterval: 300000,
       },
-      modelCapability: {
+      systemPrompt: undefined,      modelCapability: {
         mode: modelCapabilityMode,
       },
     };
@@ -194,7 +194,7 @@ export function getDeploymentConfig(): DeploymentConfig {
         subnet: process.env.SERVICE_DISCOVERY_SUBNET || '192.168.1.0/24',
         discoveryInterval: parseInt(process.env.SERVICE_DISCOVERY_INTERVAL || '300000'),
       },
-      modelCapability: {
+      systemPrompt: undefined,      modelCapability: {
         mode: modelCapabilityMode,
       },
     };
@@ -247,7 +247,7 @@ export function getDeploymentConfig(): DeploymentConfig {
         subnet: process.env.SERVICE_DISCOVERY_SUBNET || '192.168.1.0/24',
         discoveryInterval: parseInt(process.env.SERVICE_DISCOVERY_INTERVAL || '300000'),
       },
-      modelCapability: {
+      systemPrompt: undefined,      modelCapability: {
         mode: modelCapabilityMode,
       },
     };

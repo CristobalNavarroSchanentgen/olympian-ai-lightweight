@@ -28,7 +28,7 @@ router.get('/status', (req, res) => {
     data: {
       initialized: true,
       stats,
-      servers: servers.map(s => ({
+      servers: Array.from(servers.values()).map(s => ({
         id: s.id,
         name: s.name,
         status: s.status,
@@ -76,11 +76,11 @@ router.post('/tools/call', async (req, res, next) => {
   try {
     const validated = invokeToolSchema.parse(req.body);
     
-    const result = await mcp.callTool(
-      validated.serverId,
-      validated.toolName,
-      validated.arguments || {}
-    );
+    const result = await mcp.callTool({
+      serverId: validated.serverId,
+      toolName: validated.toolName,
+      arguments: validated.arguments || {}
+    });
     
     res.json({
       success: true,
@@ -170,7 +170,7 @@ router.delete('/servers/:serverId', async (req, res, next) => {
  */
 router.get('/health', (req, res) => {
   const stats = mcp.getStats();
-  const healthy = stats.running > 0;
+  const healthy = stats.runningServers > 0;
   
   res.status(healthy ? 200 : 503).json({
     success: healthy,

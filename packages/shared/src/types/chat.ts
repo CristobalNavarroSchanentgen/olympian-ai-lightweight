@@ -103,6 +103,12 @@ export interface ChatRequest {
   images?: string[];
   model: string;
   visionModel?: string; // Optional vision model for hybrid processing
+  temperature?: number;
+  top_p?: number;
+  seed?: number;
+  num_ctx?: number;
+  messages?: any[];
+  prompt?: string;
 }
 
 export interface ProcessedRequest {

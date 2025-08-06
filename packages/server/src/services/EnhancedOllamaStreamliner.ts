@@ -360,4 +360,46 @@ export class EnhancedOllamaStreamliner {
       throw error;
     }
   }
+
+  // Methods for compatibility with OllamaStreamliner interface
+  async initialize(): Promise<void> {
+    logger.info('EnhancedOllamaStreamliner initialized');
+    // Initialize MCPManager and HILManager if needed
+    if (this.mcpManager) {
+      await this.mcpManager.initialize();
+    }
+  }
+
+  async streamChat(
+    processedRequest: ProcessedRequest,
+    onToken: (token: string) => void,
+    onComplete?: (result: any) => void,
+    clientIp?: string
+  ): Promise<void> {
+    try {
+      const generator = this.stream(processedRequest, clientIp);
+      let fullResponse = '';
+      
+      for await (const chunk of generator) {
+        if (chunk.type === 'token') {
+          onToken(chunk.content);
+          fullResponse += chunk.content;
+        } else if (chunk.type === 'tool_call') {
+          // Handle tool calls if needed
+          logger.debug('Tool call in streamChat:', chunk);
+        }
+      }
+      
+      if (onComplete) {
+        onComplete({
+          response: fullResponse,
+          model: processedRequest.model,
+          done: true
+        });
+      }
+    } catch (error) {
+      logger.error('Error in streamChat:', error);
+      throw error;
+    }
+  }
 }

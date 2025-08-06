@@ -1,13 +1,127 @@
-import { Router } from 'express';
-import { ObjectId, WithId } from 'mongodb';
+import { Router, Request, Response } from "express";
+import { ModelCapability } from "@olympian/shared";
 import { DatabaseService } from '../services/DatabaseService';
-import { StreamlinerFactory } from "./StreamlinerFactory";
-import { ChatMemoryService } from '../services/ChatMemoryService';
-import { ArtifactService } from '../services/ArtifactService'; // NEW: Artifact service integration
-import { modelProgressiveLoader } from '../services/ModelProgressiveLoader';
-import { AppError } from '../middleware/errorHandler';
-import { chatRateLimiter } from '../middleware/rateLimiter';
+import { WebSocketManager } from '../services/WebSocketManager';
+import { StreamlinerFactory } from '../services/StreamlinerFactory';
+import { MCPManager } from '../services/MCPManager';
+import { HILManager } from '../services/HILManager';
+import { ToolNamespaceManager } from '../services/ToolNamespaceManager';
+import { ToolSelectionService } from '../services/ToolSelectionService';
+import { OllamaService } from '../services/OllamaService';
+import { OllamaResponseProcessor } from '../services/OllamaResponseProcessor';
+import { OllamaModel } from '../services/OllamaModel';
 import { z } from 'zod';
+import * as marked from 'marked';
+import { logger } from '../utils/logger';
+
+// Helper to create default ModelCapability
+function createDefaultCapability(vision = false, tools = false): ModelCapability {
+  return {
+    name: "default",
+    vision,
+    tools,
+    reasoning: false,
+    maxTokens: 4096,
+    contextWindow: 8192
+  };
+}
+
+import { DatabaseService } from '../services/DatabaseService';
+// Helper to create default ModelCapability
+function createDefaultCapability(vision = false, tools = false): ModelCapability {
+  return {
+    name: "default",
+    vision,
+    tools,
+    reasoning: false,
+    maxTokens: 4096,
+    contextWindow: 8192
+  };
+}
+import { StreamlinerFactory } from "./StreamlinerFactory";
+// Helper to create default ModelCapability
+function createDefaultCapability(vision = false, tools = false): ModelCapability {
+  return {
+    name: "default",
+    vision,
+    tools,
+    reasoning: false,
+    maxTokens: 4096,
+    contextWindow: 8192
+  };
+}
+import { ChatMemoryService } from '../services/ChatMemoryService';
+// Helper to create default ModelCapability
+function createDefaultCapability(vision = false, tools = false): ModelCapability {
+  return {
+    name: "default",
+    vision,
+    tools,
+    reasoning: false,
+    maxTokens: 4096,
+    contextWindow: 8192
+  };
+}
+import { ArtifactService } from '../services/ArtifactService'; // NEW: Artifact service integration
+// Helper to create default ModelCapability
+function createDefaultCapability(vision = false, tools = false): ModelCapability {
+  return {
+    name: "default",
+    vision,
+    tools,
+    reasoning: false,
+    maxTokens: 4096,
+    contextWindow: 8192
+  };
+}
+import { modelProgressiveLoader } from '../services/ModelProgressiveLoader';
+// Helper to create default ModelCapability
+function createDefaultCapability(vision = false, tools = false): ModelCapability {
+  return {
+    name: "default",
+    vision,
+    tools,
+    reasoning: false,
+    maxTokens: 4096,
+    contextWindow: 8192
+  };
+}
+import { AppError } from '../middleware/errorHandler';
+// Helper to create default ModelCapability
+function createDefaultCapability(vision = false, tools = false): ModelCapability {
+  return {
+    name: "default",
+    vision,
+    tools,
+    reasoning: false,
+    maxTokens: 4096,
+    contextWindow: 8192
+  };
+}
+import { chatRateLimiter } from '../middleware/rateLimiter';
+// Helper to create default ModelCapability
+function createDefaultCapability(vision = false, tools = false): ModelCapability {
+  return {
+    name: "default",
+    vision,
+    tools,
+    reasoning: false,
+    maxTokens: 4096,
+    contextWindow: 8192
+  };
+}
+import { z } from 'zod';
+// Helper to create default ModelCapability
+function createDefaultCapability(vision = false, tools = false): ModelCapability {
+  return {
+    name: "default",
+    vision,
+    tools,
+    reasoning: false,
+    maxTokens: 4096,
+    contextWindow: 8192
+  };
+}
 import { 
   Message, 
   Conversation, 
@@ -105,14 +219,7 @@ async function getModelCapabilitiesWithFallback(modelName: string): Promise<Mode
     
     // Fallback to direct detection
     console.log(`🔍 No cached data for '${modelName}', detecting capabilities directly...`);
-    return {
-    name: "default",
-    vision: false,
-    tools: false,
-    reasoning: false,
-    maxTokens: 4096,
-    contextWindow: 8192
-  }; // Capability detection removed
+    return createDefaultCapability(false, false); // Capability detection removed
   } catch (error) {
     console.warn(`⚠️ Failed to get capabilities for model '${modelName}':`, error);
     return null;
@@ -899,458 +1006,21 @@ router.post('/stream', async (req, res, next) => {
       })}\n\n`);
 
     } catch (streamError) {
-      console.error('Streaming error:', streamError);
-      res.write(`data: ${JSON.stringify({ 
-        type: 'error', 
-        error: streamError instanceof Error ? streamError.message : 'Unknown error' 
-      })}\n\n`);
-    }
 
-    res.end();
+      logger.error("Streaming error:", streamError);
+      res.write(`data: {"error": "Streaming failed", "details": "${streamError.message}"}
+
+`);
+    } finally {
+      res.end();
+    }
   } catch (error) {
-    next(error);
+    logger.error("Chat endpoint error:", error);
+    res.status(500).json({ 
+      error: "Failed to process chat request",
+      details: error.message 
+    });
   }
 });
 
-// =====================================
-// ENHANCED SEND MESSAGE ENDPOINT WITH THINKING
-// =====================================
-
-// ENHANCED: Send a chat message (HTTP fallback for WebSocket) + multi-artifact creation + thinking processing
-router.post('/send', async (req, res, next) => {
-  try {
-    // Validate input
-    const validation = sendMessageSchema.safeParse(req.body);
-    if (!validation.success) {
-      throw new AppError(400, 'Invalid request body');
-    }
-
-    const { message, conversationId, model, visionModel, images } = validation.data;
-
-    // Get or create conversation
-    let convId: string;
-    let conversation: Conversation;
-    
-    if (conversationId) {
-      // Validate existing conversation using proper ObjectId conversion
-      const existingConv = await db.conversations.findOne({ 
-        _id: toObjectId(conversationId) as any
-      });
-      if (!existingConv) {
-        throw new AppError(404, 'Conversation not found');
-      }
-      convId = conversationId;
-      conversation = formatConversation(existingConv);
-    } else {
-      // Create new conversation
-      const newConversation: ConversationDoc = {
-        title: message.substring(0, 50) + (message.length > 50 ? '...' : ''),
-        model,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        messageCount: 0,
-      };
-      const result = await db.conversations.insertOne(newConversation as any);
-      convId = result.insertedId.toString();
-      conversation = formatConversation({
-        ...newConversation,
-        _id: result.insertedId,
-      });
-    }
-
-    // Create streamliner based on model
-    const streamliner = StreamlinerFactory.getStreamliner(model);
-    await streamliner.initialize();
-    // Process the request WITHOUT saving the user message first
-    const processedRequest = await streamliner.processRequest({
-      content: message,
-      model,
-      visionModel,
-      images,
-      conversationId: convId,
-    });
-
-    // Get response from Ollama (non-streaming for HTTP)
-    let assistantContent = '';
-    const startTime = Date.now();
-    let tokenCount = 0;
-    let thinkingData: ThinkingData | undefined = undefined;
-
-    // ENHANCED: Enhanced streamChat with thinking processing for non-streaming endpoint
-    await streamliner.streamChat(
-      processedRequest, 
-      (token: string) => {
-        assistantContent += token;
-        tokenCount++;
-      },
-      // ENHANCED: onComplete callback for thinking processing
-      (result) => {
-        console.log('🧠 [ChatAPI] Non-streaming request completed, processing thinking content...');
-        
-        if (result.thinking?.hasThinking) {
-          console.log(`✅ [ChatAPI] Thinking content detected (${result.thinking.thinkingContent.length} chars)`);
-          thinkingData = result.thinking.thinkingData;
-        }
-      }
-    );
-
-    // ENHANCED: Process thinking content
-    const thinkingResult = parseThinkingFromContent(assistantContent);
-    let finalAssistantContent = assistantContent;
-    
-    if (thinkingResult.hasThinking) {
-      console.log(`🧠 [ChatAPI] Processing thinking content for database storage`);
-      finalAssistantContent = thinkingResult.processedContent;
-      thinkingData = thinkingResult.thinkingData;
-    }
-
-    // Save both messages AFTER generating the response
-    const userMessage: MessageDoc = {
-      conversationId: convId,
-      role: 'user' as const,
-      content: message,
-      images,
-      createdAt: new Date(),
-    };
-    await db.messages.insertOne(userMessage as any);
-
-    // Save assistant message
-    const assistantMessageDoc: MessageDoc = {
-      conversationId: convId,
-      role: 'assistant' as const,
-      content: finalAssistantContent,
-      metadata: {
-        model,
-        visionModel,
-        tokens: tokenCount,
-        generationTime: Date.now() - startTime,
-        // ENHANCED: Add thinking metadata
-        thinking: thinkingData,
-        originalContentWithThinking: thinkingResult.hasThinking ? assistantContent : undefined,
-      },
-      createdAt: new Date(),
-    };
-    
-    const assistantResult = await db.messages.insertOne(assistantMessageDoc as any);
-    const assistantMessageId = assistantResult.insertedId.toString();
-
-    // FIXED: Process artifacts with original content (including thinking tags)
-    console.log(`🎨 [ChatAPI] Processing assistant response for multi-artifacts...`);
-    const artifactResult = await createMultiArtifactsFromResponse(
-      finalAssistantContent, // Processed content without thinking tags
-      convId,
-      assistantMessageId,
-      thinkingResult.hasThinking ? assistantContent : undefined // Original content with thinking tags
-    );
-
-    // Update assistant message with multi-artifact metadata if artifacts were created
-    let finalContent = finalAssistantContent;
-    let finalMetadata = assistantMessageDoc.metadata;
-    
-    if (artifactResult.hasArtifact) {
-      finalContent = artifactResult.processedContent;
-      finalMetadata = {
-        ...assistantMessageDoc.metadata,
-        artifacts: artifactResult.artifacts,
-        hasArtifact: true,
-        artifactCount: artifactResult.artifactCount,
-        artifactCreationStrategy: artifactResult.creationStrategy,
-        multipleCodeBlocks: artifactResult.artifactCount > 1,
-        originalContent: finalAssistantContent,
-        codeBlocksRemoved: true,
-        // Legacy compatibility
-        artifactId: artifactResult.artifacts[0]?.artifactId,
-        artifactType: artifactResult.artifacts[0]?.artifactType
-      };
-
-      await db.messages.updateOne(
-        { _id: toObjectId(assistantMessageId) as any },
-        {
-          $set: {
-            content: finalContent,
-            metadata: finalMetadata,
-            updatedAt: new Date()
-          }
-        }
-      );
-
-      console.log(`✅ [ChatAPI] Assistant message updated with ${artifactResult.artifactCount} artifacts`);
-    }
-
-    // Update conversation
-    await db.conversations.updateOne(
-      { _id: toObjectId(convId) as any },
-      {
-        $set: { updatedAt: new Date() },
-        $inc: { messageCount: 2 },
-      }
-    );
-
-    // ENHANCED: Return response with proper conversation object and thinking data
-    res.json({
-      success: true,
-      data: {
-        conversation,
-        conversationId: convId,
-        message: finalContent,
-        metadata: finalMetadata,
-        // NEW: Include multi-artifact information in response
-        artifacts: artifactResult.hasArtifact ? artifactResult.artifacts : undefined,
-        artifactCount: artifactResult.artifactCount,
-        // Legacy artifact information for backward compatibility
-        artifact: artifactResult.hasArtifact ? {
-          id: artifactResult.artifacts[0]?.artifactId,
-          type: artifactResult.artifacts[0]?.artifactType
-        } : undefined,
-        // ENHANCED: Include thinking data in response
-        thinking: thinkingData,
-        originalContentWithThinking: thinkingResult.hasThinking ? assistantContent : undefined
-      },
-      timestamp: new Date(),
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-// =====================================
-// EXISTING ENDPOINTS (updated with proper ObjectId handling)
-// =====================================
-
-// Get conversations
-router.get('/conversations', async (req, res, next) => {
-  try {
-    const { page = 1, limit = 20 } = req.query;
-    const skip = (Number(page) - 1) * Number(limit);
-
-    const [conversations, total] = await Promise.all([
-      db.conversations
-        .find({})
-        .sort({ updatedAt: -1 })
-        .skip(skip)
-        .limit(Number(limit))
-        .toArray(),
-      db.conversations.countDocuments({}),
-    ]);
-
-    res.json({
-      success: true,
-      data: conversations.map(formatConversation),
-      page: Number(page),
-      pageSize: Number(limit),
-      total,
-      hasMore: skip + conversations.length < total,
-      timestamp: new Date(),
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-// Get conversation by ID
-router.get('/conversations/:id', async (req, res, next) => {
-  try {
-    const conversation = await db.conversations.findOne({
-      _id: toObjectId(req.params.id) as any,
-    });
-
-    if (!conversation) {
-      throw new AppError(404, 'Conversation not found');
-    }
-
-    res.json({
-      success: true,
-      data: formatConversation(conversation),
-      timestamp: new Date(),
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-// ENHANCED: Get messages for a conversation WITH artifacts
-router.get('/conversations/:id/messages', async (req, res, next) => {
-  try {
-    const { page = 1, limit = 50 } = req.query;
-    const skip = (Number(page) - 1) * Number(limit);
-    const conversationId = req.params.id;
-
-    const [messages, total] = await Promise.all([
-      db.messages
-        .find({ conversationId })
-        .sort({ createdAt: 1 })
-        .skip(skip)
-        .limit(Number(limit))
-        .toArray(),
-      db.messages.countDocuments({ conversationId }),
-    ]);
-
-    // NEW: Fetch artifacts for this conversation
-    console.log(`📋 [ChatAPI] Fetching artifacts for conversation: ${conversationId}`);
-    let artifacts: Artifact[] = [];
-    try {
-      artifacts = await artifactService.getArtifactsForConversation(conversationId);
-      console.log(`✅ [ChatAPI] Found ${artifacts.length} artifacts for conversation`);
-    } catch (error) {
-      console.warn(`⚠️ [ChatAPI] Failed to fetch artifacts for conversation:`, error);
-      // Continue without artifacts rather than failing the entire request
-    }
-
-    res.json({
-      success: true,
-      data: {
-        messages: messages.map(formatMessage),
-        artifacts: artifacts // NEW: Include artifacts in response
-      },
-      page: Number(page),
-      pageSize: Number(limit),
-      total,
-      hasMore: skip + messages.length < total,
-      timestamp: new Date(),
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-// Get conversation memory stats
-router.get('/conversations/:id/memory-stats', async (req, res, next) => {
-  try {
-    const conversationId = req.params.id;
-    
-    // Verify conversation exists
-    const conversation = await db.conversations.findOne({
-      _id: toObjectId(conversationId) as any,
-    });
-    
-    if (!conversation) {
-      throw new AppError(404, 'Conversation not found');
-    }
-
-    const stats = await memoryService.getMemoryStats(conversationId);
-    
-    res.json({
-      success: true,
-      data: stats,
-      timestamp: new Date(),
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-// Update conversation memory configuration
-router.put('/conversations/:id/memory-config', async (req, res, next) => {
-  try {
-    const conversationId = req.params.id;
-    
-    // Validate input
-    const validation = memoryConfigSchema.safeParse(req.body);
-    if (!validation.success) {
-      throw new AppError(400, 'Invalid memory configuration');
-    }
-
-    await memoryService.updateConversationMemoryConfig(conversationId, validation.data);
-    
-    res.json({
-      success: true,
-      message: 'Memory configuration updated',
-      timestamp: new Date(),
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-// Clear old messages from a conversation
-router.post('/conversations/:id/clear-old-messages', async (req, res, next) => {
-  try {
-    const conversationId = req.params.id;
-    const { keepLast = 100 } = req.body;
-    
-    if (typeof keepLast !== 'number' || keepLast < 1 || keepLast > 1000) {
-      throw new AppError(400, 'keepLast must be a number between 1 and 1000');
-    }
-
-    await memoryService.clearOldMessages(conversationId, keepLast);
-    
-    res.json({
-      success: true,
-      message: `Old messages cleared, keeping last ${keepLast} messages`,
-      timestamp: new Date(),
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-// Delete conversation
-router.delete('/conversations/:id', async (req, res, next) => {
-  try {
-    const conversationId = req.params.id;
-
-    // NEW: Delete all artifacts for this conversation first
-    console.log(`🗑️ [ChatAPI] Deleting artifacts for conversation: ${conversationId}`);
-    const artifactsToDelete = await artifactService.getArtifactsForConversation(conversationId);
-    for (const artifact of artifactsToDelete) {
-      await artifactService.deleteArtifact(artifact.id);
-    }
-    console.log(`✅ [ChatAPI] Deleted ${artifactsToDelete.length} artifacts`);
-
-    // Delete all messages
-    await db.messages.deleteMany({ conversationId });
-
-    // Delete the conversation
-    const result = await db.conversations.deleteOne({ 
-      _id: toObjectId(conversationId) as any
-    });
-
-    if (result.deletedCount === 0) {
-      throw new AppError(404, 'Conversation not found');
-    }
-
-    res.json({
-      success: true,
-      timestamp: new Date(),
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-// Search messages
-router.get('/search', async (req, res, next) => {
-  try {
-    const { q, page = 1, limit = 20 } = req.query;
-    
-    if (!q || typeof q !== 'string') {
-      throw new AppError(400, 'Search query is required');
-    }
-
-    const skip = (Number(page) - 1) * Number(limit);
-
-    const [messages, total] = await Promise.all([
-      db.messages
-        .find({ $text: { $search: q } } as any)
-        .sort({ score: { $meta: 'textScore' } } as any)
-        .skip(skip)
-        .limit(Number(limit))
-        .toArray(),
-      db.messages.countDocuments({ $text: { $search: q } } as any),
-    ]);
-
-    res.json({
-      success: true,
-      data: messages.map(formatMessage),
-      page: Number(page),
-      pageSize: Number(limit),
-      total,
-      hasMore: skip + messages.length < total,
-      timestamp: new Date(),
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-export { router as chatRouter };
+export default router;

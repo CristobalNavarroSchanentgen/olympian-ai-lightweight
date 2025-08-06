@@ -40,23 +40,19 @@ export interface MCPServerCapabilities {
 }
 
 export interface MCPTool {
+  serverId: string;
   name: string;
   description: string;
-  inputSchema: {
-    type?: 'object';
-    properties?: Record<string, any>;
-    required?: string[];
-    additionalProperties?: boolean;
-  } | Record<string, unknown>;
-  serverId: string;
-  overrides?: ToolOverride;
-  
-  // Caching properties
-  cachedAt?: Date;
-  lastUsed?: Date;
-  usageCount?: number;
+  inputSchema: any;
 }
 
+export interface MCPServerStatus {
+  id: string;
+  name: string;
+  status: "running" | "stopped" | "error";
+  tools: number;
+  error?: string;
+}
 export interface ToolOverride {
   description?: string;
   parameterDescriptions?: Record<string, string>;

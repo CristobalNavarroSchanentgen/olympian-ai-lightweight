@@ -7,14 +7,14 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 
 interface ServerProcess {
-  process: ChildProcess;
+  id: string;
+  name: string;  process: ChildProcess;
   client: Client;
   transport: StdioClientTransport;
-  status: MCPServerStatus;
+  status: "running" | "stopped" | "error";
   tools: MCPTool[];
   resources?: MCPResource[];
 }
-
 /**
  * MCPManager - Streamlined to support only 3 MCP servers
  * GitHub, AppleScript, and Context7
@@ -22,7 +22,7 @@ interface ServerProcess {
 export class MCPManager {
   private static instance: MCPManager;
   private servers: Map<string, ServerProcess> = new Map();
-  private initialized = false;
+  private tools: Map<string, MCPTool[]> = new Map();  private initialized = false;
 
   private constructor() {
     logger.info('🚀 [MCP] Manager instantiated');
@@ -121,13 +121,10 @@ export class MCPManager {
 
       // Create transport
       const transport = new StdioClientTransport({
-        stdin: serverProcess.stdin!,
         stdout: serverProcess.stdout!,
+        stdin: serverProcess.stdin!,
         stderr: serverProcess.stderr!
-      });
-
-      // Create client
-      const client = new Client(
+      });      const client = new Client(
         {
           name: `olympian-${id}`,
           version: '1.0.0'
@@ -157,22 +154,25 @@ export class MCPManager {
       // List available tools
       const toolsResponse = await client.listTools();
       const tools: MCPTool[] = toolsResponse.tools.map(tool => ({
+        serverId: id,
         name: tool.name,
-        description: tool.description || '',
+        description: tool.description || "No description",
         inputSchema: tool.inputSchema as any
       }));
-
       logger.info(`[MCP] Server ${name} connected with ${tools.length} tools`);
 
+      // Store tools in separate map
+      this.tools.set(id, tools);
       // Store server info
       this.servers.set(id, {
+        id,
+        name,
         process: serverProcess,
         client,
         transport,
-        status: 'running',
+        status: "running",
         tools
       });
-
     } catch (error) {
       logger.error(`[MCP] Failed to start server ${name}:`, error);
       throw error;
@@ -347,5 +347,52 @@ export class MCPManager {
     }
     
     return health;
+  }
+
+  /**
+   * Call a tool (alias for invokeTool for compatibility)
+   */
+  async callTool(params: {
+    serverId: string;
+    toolName: string;
+    arguments: any;
+  }): Promise<any> {
+    return this.invokeTool(params);
+  }
+
+  /**
+   * Remove a server (alias for stopServer for compatibility)
+   */
+  async removeServer(id: string): Promise<void> {
+    return this.stopServer(id);
+  }
+
+  /**
+   * Get status of all servers
+   */
+  getStatus(): {
+    totalServers: number;
+    runningServers: number;
+    totalTools: number;
+    servers?: any;
+    running?: number;
+    total?: number;
+  } {
+    const runningServers = Array.from(this.servers.values()).filter(s => s.status === 'running').length;
+    const totalTools = Array.from(this.tools.values()).reduce((sum, tools) => sum + tools.length, 0);
+    
+    return {
+      totalServers: this.servers.size,
+      runningServers,
+      totalTools,
+      servers: Array.from(this.servers.entries()).map(([id, server]) => ({
+        id,
+        status: server.status,
+        tools: this.tools.get(id)?.length || 0
+      })),
+      // Legacy properties for compatibility
+      running: runningServers,
+      total: this.servers.size
+    };
   }
 }

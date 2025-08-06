@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { customModelCapabilityService } from "../services/customModelCapabilityServiceStub";
 import { DatabaseService } from '../services/DatabaseService';
 import { getDeploymentConfig } from '../config/deployment';
 import { OllamaHealthCheck } from '../services/OllamaHealthCheck';

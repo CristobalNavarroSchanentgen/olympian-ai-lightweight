@@ -1,4 +1,5 @@
 import { EventEmitter } from 'events';
+import { customModelCapabilityService } from "./customModelCapabilityServiceStub";
 import { logger } from '../utils/logger';
 import { ModelCapability } from '@olympian/shared';
 import { OllamaStreamliner } from './OllamaStreamliner';

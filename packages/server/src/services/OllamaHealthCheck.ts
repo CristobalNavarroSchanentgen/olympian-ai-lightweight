@@ -1,4 +1,5 @@
 import { logger } from '../utils/logger';
+import { customModelCapabilityService } from "./customModelCapabilityServiceStub";
 import { getDeploymentConfig } from '../config/deployment';
 
 export interface OllamaHealthStatus {
