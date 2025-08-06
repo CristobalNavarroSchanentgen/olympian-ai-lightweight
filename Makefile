@@ -303,6 +303,7 @@ artifacts-setup: ## Initialize artifact persistence system for multi-host deploy
 		echo "$(RED)❌ Backend container is not running! Please start the system first.$(RESET)"; \
 		echo "$(CYAN)Run: make up-prod$(RESET)"; \
 		exit 1; \
+	fi
 	@echo "$(CYAN)🔧 Creating artifacts collection and indexes...$(RESET)"
 	@docker exec olympian-backend node -e " \
 		const { DatabaseService } = require('./dist/services/DatabaseService.js'); \
@@ -332,6 +333,7 @@ artifacts-migrate: ## Migrate existing message metadata to artifact collection
 	@if ! docker ps --format "table {{.Names}}" | grep -q "olympian-backend"; then \
 		echo "$(RED)❌ Backend container is not running!$(RESET)"; \
 		exit 1; \
+	fi
 	@echo "$(YELLOW)Starting migration process...$(RESET)"
 	@docker exec olympian-backend node -e " \
 		const { DatabaseService } = require('./dist/services/DatabaseService.js'); \
@@ -385,7 +387,7 @@ artifacts-validate: ## Validate artifact integrity across all conversations
 	@if ! docker ps --format "table {{.Names}}" | grep -q "olympian-backend"; then \
 		echo "$(RED)❌ Backend container is not running!$(RESET)"; \
 		exit 1; \
-	@docker exec olympian-backend node -e " \
+	fi	@docker exec olympian-backend node -e " \
 		const { DatabaseService } = require('./dist/services/DatabaseService.js'); \
 		(async () => { \
 			try { \
@@ -422,6 +424,7 @@ artifacts-health: ## Check artifact system health across multi-host instances
 	@if ! docker ps --format "table {{.Names}}" | grep -q "olympian-backend"; then \
 		echo "$(RED)❌ Backend container is not running!$(RESET)"; \
 		exit 1; \
+	fi
 	@echo "$(CYAN)📊 Artifact System Health Report$(RESET)"
 	@echo "=================================="
 	@docker exec olympian-backend node -e " \
@@ -460,7 +463,7 @@ artifacts-sync: ## Sync artifacts across multi-host instances (if Redis cache en
 	@if ! docker ps --format "table {{.Names}}" | grep -q "olympian-backend"; then \
 		echo "$(RED)❌ Backend container is not running!$(RESET)"; \
 		exit 1; \
-	@docker exec olympian-backend node -e " \
+	fi	@docker exec olympian-backend node -e " \
 		console.log('🔄 Artifact sync functionality'); \
 		console.log('This feature requires Redis configuration'); \
 		console.log('Current implementation uses MongoDB as single source of truth'); \
@@ -472,7 +475,7 @@ artifacts-backup: ## Backup artifact collection to JSON file
 	@if ! docker ps --format "table {{.Names}}" | grep -q "olympian-backend"; then \
 		echo "$(RED)❌ Backend container is not running!$(RESET)"; \
 		exit 1; \
-	@BACKUP_FILE="artifacts_backup_$(shell date +%Y%m%d_%H%M%S).json"; \
+	fi	@BACKUP_FILE="artifacts_backup_$(shell date +%Y%m%d_%H%M%S).json"; \
 	echo "$(CYAN)Creating backup: $$BACKUP_FILE$(RESET)"; \
 	docker exec olympian-backend node -e " \
 		const { DatabaseService } = require('./dist/services/DatabaseService.js'); \
@@ -505,12 +508,13 @@ artifacts-restore: ## Restore artifact collection from JSON backup file
 	@if [ -z "$(FILE)" ]; then \
 		echo "$(RED)❌ Please specify backup file: make artifacts-restore FILE=backup.json$(RESET)"; \
 		exit 1; \
-	@if [ ! -f "$(FILE)" ]; then \
+	fi	@if [ ! -f "$(FILE)" ]; then \
 		echo "$(RED)❌ Backup file not found: $(FILE)$(RESET)"; \
 		exit 1; \
-	@if ! docker ps --format "table {{.Names}}" | grep -q "olympian-backend"; then \
+	fi	@if ! docker ps --format "table {{.Names}}" | grep -q "olympian-backend"; then \
 		echo "$(RED)❌ Backend container is not running!$(RESET)"; \
 		exit 1; \
+	fi
 	@echo "$(YELLOW)⚠️  This will replace existing artifacts! Are you sure? (y/N)$(RESET)"
 	@read -r confirm && [ "$$confirm" = "y" ] || (echo "Cancelled" && exit 1)
 	@docker cp $(FILE) olympian-backend:/tmp/restore.json
@@ -542,10 +546,10 @@ artifacts-export: ## Export artifacts for a specific conversation
 	@if [ -z "$(CONVERSATION_ID)" ]; then \
 		echo "$(RED)❌ Please specify conversation ID: make artifacts-export CONVERSATION_ID=xxx$(RESET)"; \
 		exit 1; \
-	@if ! docker ps --format "table {{.Names}}" | grep -q "olympian-backend"; then \
+	fi	@if ! docker ps --format "table {{.Names}}" | grep -q "olympian-backend"; then \
 		echo "$(RED)❌ Backend container is not running!$(RESET)"; \
 		exit 1; \
-	@EXPORT_FILE="conversation_$(CONVERSATION_ID)_artifacts_$(shell date +%Y%m%d_%H%M%S).json"; \
+	fi	@EXPORT_FILE="conversation_$(CONVERSATION_ID)_artifacts_$(shell date +%Y%m%d_%H%M%S).json"; \
 	echo "$(CYAN)Exporting artifacts for conversation: $(CONVERSATION_ID)$(RESET)"; \
 	docker exec olympian-backend node -e " \
 		const { DatabaseService } = require('./dist/services/DatabaseService.js'); \
@@ -578,13 +582,13 @@ artifacts-import: ## Import artifacts for a specific conversation
 	@if [ -z "$(FILE)" ]; then \
 		echo "$(RED)❌ Please specify export file: make artifacts-import FILE=export.json$(RESET)"; \
 		exit 1; \
-	@if [ ! -f "$(FILE)" ]; then \
+	fi	@if [ ! -f "$(FILE)" ]; then \
 		echo "$(RED)❌ Export file not found: $(FILE)$(RESET)"; \
 		exit 1; \
-	@if ! docker ps --format "table {{.Names}}" | grep -q "olympian-backend"; then \
+	fi	@if ! docker ps --format "table {{.Names}}" | grep -q "olympian-backend"; then \
 		echo "$(RED)❌ Backend container is not running!$(RESET)"; \
 		exit 1; \
-	@docker cp $(FILE) olympian-backend:/tmp/import.json
+	fi	@docker cp $(FILE) olympian-backend:/tmp/import.json
 	@docker exec olympian-backend node -e " \
 		const { DatabaseService } = require('./dist/services/DatabaseService.js'); \
 		const fs = require('fs'); \
@@ -616,6 +620,7 @@ artifacts-diagnose: ## Diagnose artifact-related issues
 	@if ! docker ps --format "table {{.Names}}" | grep -q "olympian-backend"; then \
 		echo "$(RED)❌ Backend container is not running!$(RESET)"; \
 		exit 1; \
+	fi
 	@echo "$(CYAN)🔍 Artifact System Diagnostics$(RESET)"
 	@echo "=============================="
 	@docker exec olympian-backend node -e " \
@@ -655,6 +660,7 @@ artifacts-clean: ## Clean up orphaned and invalid artifacts
 	@if ! docker ps --format "table {{.Names}}" | grep -q "olympian-backend"; then \
 		echo "$(RED)❌ Backend container is not running!$(RESET)"; \
 		exit 1; \
+	fi
 	@echo "$(YELLOW)⚠️  This will remove orphaned artifacts and fix inconsistencies. Continue? (y/N)$(RESET)"
 	@read -r confirm && [ "$$confirm" = "y" ] || (echo "Cancelled" && exit 1)
 	@docker exec olympian-backend node -e " \
@@ -698,7 +704,7 @@ artifacts-reset: ## Reset entire artifact system (DANGEROUS - removes all artifa
 	@if ! docker ps --format "table {{.Names}}" | grep -q "olympian-backend"; then \
 		echo "$(RED)❌ Backend container is not running!$(RESET)"; \
 		exit 1; \
-	@docker exec olympian-backend node -e " \
+	fi	@docker exec olympian-backend node -e " \
 		const { DatabaseService } = require('./dist/services/DatabaseService.js'); \
 		(async () => { \
 			try { \
@@ -812,7 +818,7 @@ env-docker-multi-interactive: ## Interactive multi-host environment configuratio
 	if [ -z "$$ollama_input" ]; then \
 		echo "$(RED)❌ Ollama host is required for multi-host deployment!$(RESET)"; \
 		exit 1; \
-	fi; \
+	fi	fi; \
 	if echo "$$ollama_input" | grep -E '^https?://' >/dev/null; then \
 		ollama_url="$$ollama_input"; \
 		echo "$(GREEN)✅ Using full URL: $$ollama_url$(RESET)"; \
@@ -822,7 +828,7 @@ env-docker-multi-interactive: ## Interactive multi-host environment configuratio
 			if [ $$octet -gt 255 ]; then \
 				echo "$(RED)❌ Invalid IP address: $$ip_part$(RESET)"; \
 				exit 1; \
-			fi; \
+	fi			fi; \
 		done; \
 		if echo "$$ollama_input" | grep -q ":"; then \
 			ollama_url="http://$$ollama_input"; \
@@ -857,11 +863,11 @@ env-docker-multi-interactive: ## Interactive multi-host environment configuratio
 		else \
 			echo "$(RED)❌ Hostname too long: $$ollama_input$(RESET)"; \
 			exit 1; \
-		fi; \
+	fi		fi; \
 	else \
 		echo "$(RED)❌ Invalid format. Please enter a valid URL, IP address, or hostname: $$ollama_input$(RESET)"; \
 		exit 1; \
-	fi; \
+	fi	fi; \
 	sed -i.bak 's|^OLLAMA_HOST=.*|OLLAMA_HOST='"$$ollama_url"'|' .env
 	@echo ""
 	@echo "$(CYAN)🗄️  MongoDB Configuration:$(RESET)"
