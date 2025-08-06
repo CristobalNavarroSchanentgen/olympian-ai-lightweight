@@ -1,66 +1,57 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Socket } from 'socket.io-client';
+import { useWebSocket } from './useWebSocket';
 
 interface HILRequest {
   id: string;
-  toolName: string;
-  arguments: any;
-  serverId: string;
+  tool: {
+    serverId: string;
+    name: string;
+    description: string;
+    arguments: any;
+  };
+  timeout: number;
 }
 
-export function useHIL(socket: Socket | null) {
-  const [pendingRequest, setPendingRequest] = useState<HILRequest | null>(null);
-  const [hilEnabled, setHilEnabled] = useState(true);
-  
+export function useHIL() {
+  const { socket } = useWebSocket();
+  const [request, setRequest] = useState<HILRequest | null>(null);
+  const [pendingRequests, setPendingRequests] = useState<HILRequest[]>([]);
+
   useEffect(() => {
     if (!socket) return;
-    
-    // Listen for HIL requests
-    socket.on('hil:request', (request: HILRequest) => {
-      setPendingRequest(request);
-    });
-    
-    // Listen for HIL status changes
-    socket.on('hil:status', (data: { enabled: boolean }) => {
-      setHilEnabled(data.enabled);
-    });
-    
-    // Listen for HIL responses (clear pending request)
-    socket.on('hil:response', (data: { requestId: string; approved: boolean }) => {
-      if (pendingRequest?.id === data.requestId) {
-        setPendingRequest(null);
-      }
-    });
-    
-    return () => {
-      socket.off('hil:request');
-      socket.off('hil:status');
-      socket.off('hil:response');
+
+    const handleHILRequest = (data: HILRequest) => {
+      setRequest(data);
+      setPendingRequests(prev => [...prev, data]);
     };
-  }, [socket, pendingRequest]);
-  
-  const approveRequest = useCallback((requestId: string) => {
+
+    socket.on('hil:request', handleHILRequest);
+
+    return () => {
+      socket.off('hil:request', handleHILRequest);
+    };
+  }, [socket]);
+
+  const approve = useCallback((requestId: string) => {
     if (!socket) return;
+    
     socket.emit('hil:approve', { requestId });
-    setPendingRequest(null);
+    setRequest(null);
+    setPendingRequests(prev => prev.filter(r => r.id !== requestId));
   }, [socket]);
-  
-  const rejectRequest = useCallback((requestId: string) => {
+
+  const reject = useCallback((requestId: string) => {
     if (!socket) return;
+    
     socket.emit('hil:reject', { requestId });
-    setPendingRequest(null);
+    setRequest(null);
+    setPendingRequests(prev => prev.filter(r => r.id !== requestId));
   }, [socket]);
-  
-  const toggleHIL = useCallback(() => {
-    if (!socket) return;
-    socket.emit('hil:toggle');
-  }, [socket]);
-  
+
   return {
-    pendingRequest,
-    hilEnabled,
-    approveRequest,
-    rejectRequest,
-    toggleHIL
+    request,
+    pendingRequests,
+    approve,
+    reject
   };
 }

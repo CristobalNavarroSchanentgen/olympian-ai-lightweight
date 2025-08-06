@@ -11,8 +11,6 @@ import { Message, ThinkingData } from '@olympian/shared';
 import { toast } from '@/hooks/useToast';
 import { Plus } from 'lucide-react';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
-import { HILConfirmationModal, MCPStatusIndicator, ToolExecutionFeedback } from "@/components/mcp";
-import { useHIL } from "@/hooks/useHIL";
 
 // Create a unique identifier for messages (handles messages without _id)
 const getMessageIdentifier = (message: Message, index?: number): string => {
@@ -26,8 +24,6 @@ const getMessageIdentifier = (message: Message, index?: number): string => {
 };
 
 export function DivineDialog() {
-    const { request: hilRequest, approve: approveHIL, reject: rejectHIL } = useHIL();
-
   const {
     currentConversation,
     messages,
@@ -39,8 +35,6 @@ export function DivineDialog() {
     createConversation,
     modelCapabilities,
   } = useChatStore();
-
-    const { request: hilRequest, approve: approveHIL, reject: rejectHIL } = useHIL();
 
   const { 
     isArtifactPanelOpen, 
@@ -524,17 +518,6 @@ export function DivineDialog() {
           isGenerating={false}
         />
       </div>
-
-      {/* MCP Components */}
-      <HILConfirmationModal 
-        request={hilRequest}
-        onApprove={approveHIL}
-        onReject={rejectHIL}
-      />
-      <ToolExecutionFeedback />
-      <div className="fixed top-4 right-4 z-50">
-        <MCPStatusIndicator />
-      </div>
     </div>
   );
 
@@ -579,17 +562,6 @@ export function DivineDialog() {
           <ChatContent />
         </div>
       )}
-
-      {/* MCP Components */}
-      <HILConfirmationModal 
-        request={hilRequest}
-        onApprove={approveHIL}
-        onReject={rejectHIL}
-      />
-      <ToolExecutionFeedback />
-      <div className="fixed top-4 right-4 z-50">
-        <MCPStatusIndicator />
-      </div>
     </div>
   );
 }
