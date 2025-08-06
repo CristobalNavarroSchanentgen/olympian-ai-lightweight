@@ -27,7 +27,6 @@ setup: ## Install dependencies and create .env from template
 		echo "$(GREEN)✅ .env file created. Please review and update it with your configuration.$(RESET)"; \
 	else \
 		echo "$(YELLOW)⚠️  .env file already exists, skipping...$(RESET)"; \
-	fi
 	@echo "$(CYAN)📦 Installing dependencies...$(RESET)"
 	@npm install
 	@echo "$(GREEN)✅ Setup complete!$(RESET)"
@@ -246,7 +245,6 @@ logs-backend: ## Show logs from backend service (auto-detects which deployment)
 		fi \
 	else \
 		echo "$(RED)❌ Backend container is not running!$(RESET)"; \
-	fi
 
 logs-frontend: ## Show logs from frontend service
 	@echo "$(CYAN)📋 Showing frontend logs...$(RESET)"
@@ -254,7 +252,6 @@ logs-frontend: ## Show logs from frontend service
 		docker logs -f olympian-frontend; \
 	else \
 		echo "$(RED)❌ Frontend container is not running!$(RESET)"; \
-	fi
 
 logs-frontend-dev: ## Show logs from frontend development service
 	@echo "$(CYAN)📋 Showing frontend development logs...$(RESET)"
@@ -262,7 +259,6 @@ logs-frontend-dev: ## Show logs from frontend development service
 		docker logs -f olympian-frontend-dev; \
 	else \
 		echo "$(RED)❌ Frontend development container is not running!$(RESET)"; \
-	fi
 
 logs-mongodb: ## Show logs from MongoDB service
 	@echo "$(CYAN)📋 Showing MongoDB logs...$(RESET)"
@@ -270,7 +266,6 @@ logs-mongodb: ## Show logs from MongoDB service
 		docker logs -f olympian-mongodb; \
 	else \
 		echo "$(RED)❌ MongoDB container is not running!$(RESET)"; \
-	fi
 
 status: ## Show status of Docker containers
 	@echo "$(CYAN)📊 Container Status:$(RESET)"
@@ -307,7 +302,6 @@ artifacts-setup: ## Initialize artifact persistence system for multi-host deploy
 		echo "$(RED)❌ Backend container is not running! Please start the system first.$(RESET)"; \
 		echo "$(CYAN)Run: make up-prod$(RESET)"; \
 		exit 1; \
-	fi
 	@echo "$(CYAN)🔧 Creating artifacts collection and indexes...$(RESET)"
 	@docker exec olympian-backend node -e " \
 		const { DatabaseService } = require('./dist/services/DatabaseService.js'); \
@@ -337,7 +331,6 @@ artifacts-migrate: ## Migrate existing message metadata to artifact collection
 	@if ! docker ps --format "table {{.Names}}" | grep -q "olympian-backend"; then \
 		echo "$(RED)❌ Backend container is not running!$(RESET)"; \
 		exit 1; \
-	fi
 	@echo "$(YELLOW)Starting migration process...$(RESET)"
 	@docker exec olympian-backend node -e " \
 		const { DatabaseService } = require('./dist/services/DatabaseService.js'); \
@@ -391,7 +384,6 @@ artifacts-validate: ## Validate artifact integrity across all conversations
 	@if ! docker ps --format "table {{.Names}}" | grep -q "olympian-backend"; then \
 		echo "$(RED)❌ Backend container is not running!$(RESET)"; \
 		exit 1; \
-	fi
 	@docker exec olympian-backend node -e " \
 		const { DatabaseService } = require('./dist/services/DatabaseService.js'); \
 		(async () => { \
@@ -429,7 +421,6 @@ artifacts-health: ## Check artifact system health across multi-host instances
 	@if ! docker ps --format "table {{.Names}}" | grep -q "olympian-backend"; then \
 		echo "$(RED)❌ Backend container is not running!$(RESET)"; \
 		exit 1; \
-	fi
 	@echo "$(CYAN)📊 Artifact System Health Report$(RESET)"
 	@echo "=================================="
 	@docker exec olympian-backend node -e " \
@@ -468,7 +459,6 @@ artifacts-sync: ## Sync artifacts across multi-host instances (if Redis cache en
 	@if ! docker ps --format "table {{.Names}}" | grep -q "olympian-backend"; then \
 		echo "$(RED)❌ Backend container is not running!$(RESET)"; \
 		exit 1; \
-	fi
 	@docker exec olympian-backend node -e " \
 		console.log('🔄 Artifact sync functionality'); \
 		console.log('This feature requires Redis configuration'); \
@@ -481,7 +471,6 @@ artifacts-backup: ## Backup artifact collection to JSON file
 	@if ! docker ps --format "table {{.Names}}" | grep -q "olympian-backend"; then \
 		echo "$(RED)❌ Backend container is not running!$(RESET)"; \
 		exit 1; \
-	fi
 	@BACKUP_FILE="artifacts_backup_$(shell date +%Y%m%d_%H%M%S).json"; \
 	echo "$(CYAN)Creating backup: $$BACKUP_FILE$(RESET)"; \
 	docker exec olympian-backend node -e " \
@@ -515,15 +504,12 @@ artifacts-restore: ## Restore artifact collection from JSON backup file
 	@if [ -z "$(FILE)" ]; then \
 		echo "$(RED)❌ Please specify backup file: make artifacts-restore FILE=backup.json$(RESET)"; \
 		exit 1; \
-	fi
 	@if [ ! -f "$(FILE)" ]; then \
 		echo "$(RED)❌ Backup file not found: $(FILE)$(RESET)"; \
 		exit 1; \
-	fi
 	@if ! docker ps --format "table {{.Names}}" | grep -q "olympian-backend"; then \
 		echo "$(RED)❌ Backend container is not running!$(RESET)"; \
 		exit 1; \
-	fi
 	@echo "$(YELLOW)⚠️  This will replace existing artifacts! Are you sure? (y/N)$(RESET)"
 	@read -r confirm && [ "$$confirm" = "y" ] || (echo "Cancelled" && exit 1)
 	@docker cp $(FILE) olympian-backend:/tmp/restore.json
@@ -555,11 +541,9 @@ artifacts-export: ## Export artifacts for a specific conversation
 	@if [ -z "$(CONVERSATION_ID)" ]; then \
 		echo "$(RED)❌ Please specify conversation ID: make artifacts-export CONVERSATION_ID=xxx$(RESET)"; \
 		exit 1; \
-	fi
 	@if ! docker ps --format "table {{.Names}}" | grep -q "olympian-backend"; then \
 		echo "$(RED)❌ Backend container is not running!$(RESET)"; \
 		exit 1; \
-	fi
 	@EXPORT_FILE="conversation_$(CONVERSATION_ID)_artifacts_$(shell date +%Y%m%d_%H%M%S).json"; \
 	echo "$(CYAN)Exporting artifacts for conversation: $(CONVERSATION_ID)$(RESET)"; \
 	docker exec olympian-backend node -e " \
@@ -593,15 +577,12 @@ artifacts-import: ## Import artifacts for a specific conversation
 	@if [ -z "$(FILE)" ]; then \
 		echo "$(RED)❌ Please specify export file: make artifacts-import FILE=export.json$(RESET)"; \
 		exit 1; \
-	fi
 	@if [ ! -f "$(FILE)" ]; then \
 		echo "$(RED)❌ Export file not found: $(FILE)$(RESET)"; \
 		exit 1; \
-	fi
 	@if ! docker ps --format "table {{.Names}}" | grep -q "olympian-backend"; then \
 		echo "$(RED)❌ Backend container is not running!$(RESET)"; \
 		exit 1; \
-	fi
 	@docker cp $(FILE) olympian-backend:/tmp/import.json
 	@docker exec olympian-backend node -e " \
 		const { DatabaseService } = require('./dist/services/DatabaseService.js'); \
@@ -634,7 +615,6 @@ artifacts-diagnose: ## Diagnose artifact-related issues
 	@if ! docker ps --format "table {{.Names}}" | grep -q "olympian-backend"; then \
 		echo "$(RED)❌ Backend container is not running!$(RESET)"; \
 		exit 1; \
-	fi
 	@echo "$(CYAN)🔍 Artifact System Diagnostics$(RESET)"
 	@echo "=============================="
 	@docker exec olympian-backend node -e " \
@@ -674,7 +654,6 @@ artifacts-clean: ## Clean up orphaned and invalid artifacts
 	@if ! docker ps --format "table {{.Names}}" | grep -q "olympian-backend"; then \
 		echo "$(RED)❌ Backend container is not running!$(RESET)"; \
 		exit 1; \
-	fi
 	@echo "$(YELLOW)⚠️  This will remove orphaned artifacts and fix inconsistencies. Continue? (y/N)$(RESET)"
 	@read -r confirm && [ "$$confirm" = "y" ] || (echo "Cancelled" && exit 1)
 	@docker exec olympian-backend node -e " \
@@ -718,7 +697,6 @@ artifacts-reset: ## Reset entire artifact system (DANGEROUS - removes all artifa
 	@if ! docker ps --format "table {{.Names}}" | grep -q "olympian-backend"; then \
 		echo "$(RED)❌ Backend container is not running!$(RESET)"; \
 		exit 1; \
-	fi
 	@docker exec olympian-backend node -e " \
 		const { DatabaseService } = require('./dist/services/DatabaseService.js'); \
 		(async () => { \
@@ -911,7 +889,6 @@ env-docker-multi-interactive: ## Interactive multi-host environment configuratio
 			sed -i.bak 's|^MONGODB_URI=.*|MONGODB_URI=mongodb://mongodb:27017/olympian_ai_lite?replicaSet=rs0|' .env; \
 			echo "$(GREEN)✅ Using containerized MongoDB (accessible via Docker service name)$(RESET)"; \
 		fi; \
-	fi
 	@echo ""
 	@echo "$(CYAN)🔐 MCP Server Authentication Setup$(RESET)"
 	@echo "$(YELLOW)Multi-host deployment includes GitHub, AppleScript, and Context7 MCP servers. GitHub requires authentication$(RESET)"
@@ -938,13 +915,8 @@ env-docker-multi-interactive: ## Interactive multi-host environment configuratio
 			echo "# GITHUB_PERSONAL_ACCESS_TOKEN=your_github_token_here" >> .env; \
 		fi; \
 		echo "$(YELLOW)⚠️  GitHub token not configured - some MCP features will be limited$(RESET)"; \
-	fi
+	fi	@echo ""
 	@echo ""
-	else \
-		echo "$(GREEN)✅ Using NASA DEMO_KEY (limited functionality)$(RESET)"; \
-	fi
-	@echo ""
-	fi
 	@echo ""
 	@echo "$(CYAN)🤖 Model Capability Configuration:$(RESET)"
 	@echo "$(YELLOW)Choose between automatic model capability detection or custom model listing:$(RESET)"
@@ -963,7 +935,6 @@ env-docker-multi-interactive: ## Interactive multi-host environment configuratio
 		echo "$(YELLOW)  Reasoning + Tools: qwen3:32b, qwen3:4b, deepseek-r1:14b$(RESET)"; \
 		echo "$(YELLOW)  Tools only: gemma3:27b, gemma3:4b$(RESET)"; \
 		echo "$(YELLOW)  Base models: phi4:14b, llama3.2:3b$(RESET)"; \
-	fi
 	@echo ""
 	@echo "$(CYAN)🔐 Generating secure secrets...$(RESET)"
 	@JWT_SECRET=$$(openssl rand -base64 32 2>/dev/null || python3 -c "import secrets; print(secrets.token_urlsafe(32))" 2>/dev/null || echo "$$(date +%s)-$$(shuf -i 1000-9999 -n 1)-jwt-secret"); \
@@ -986,7 +957,6 @@ env-docker-multi-interactive: ## Interactive multi-host environment configuratio
 		sed -i.bak "s|^ALLOWED_ORIGINS=.*|ALLOWED_ORIGINS=http://localhost:$$APP_PORT,http://localhost:5173|" .env; \
 	else \
 		echo "ALLOWED_ORIGINS=http://localhost:$$APP_PORT,http://localhost:5173" >> .env; \
-	fi
 	@rm -f .env.bak
 	@echo ""
 	@echo "$(GREEN)✅ Interactive multi-host configuration complete!$(RESET)"
@@ -1001,7 +971,6 @@ env-docker-multi-interactive: ## Interactive multi-host environment configuratio
 		echo "  $(GREEN)✅ GitHub token configured$(RESET)"; \
 	else \
 		echo "  $(YELLOW)⚠️  GitHub token not configured$(RESET)"; \
-	fi
 	@echo ""
 	@echo "$(CYAN)📚 Development Mode Available:$(RESET)"
 	@echo "  For development with hot reloading, use: $(CYAN)make dev-multi$(RESET)"
