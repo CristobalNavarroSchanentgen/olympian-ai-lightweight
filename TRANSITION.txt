@@ -1,0 +1,493 @@
+================================================================================
+OLYMPIAN AI - MCP ARCHITECTURE TRANSITION GUIDE
+================================================================================
+
+Date: August 2025
+Version: 1.0
+Purpose: Document the transition from legacy capability detection to streamlined
+         MCP architecture with namespace-based tool routing and HIL protection
+
+================================================================================
+PART 1: NEW ARCHITECTURE OVERVIEW
+================================================================================
+
+1.1 CORE COMPONENTS
+--------------------
+The new architecture consists of 6 primary services working in concert:
+
+1. MCPManager (Simplified)
+   - Manages ONLY 3 MCP servers: GitHub, AppleScript, Context7
+   - All servers run via npx (no containers needed)
+   - Stdio transport with child processes
+   - Location: packages/server/src/services/MCPManager.ts
+
+2. ToolNamespaceManager (New)
+   - Prevents tool name conflicts via qualified naming (serverId.toolName)
+   - Maintains registry of all tools with server mapping
+   - Translates between qualified and original names
+   - Location: packages/server/src/services/ToolNamespaceManager.ts
+
+3. EnhancedOllamaStreamliner (New)
+   - Replaces legacy OllamaStreamliner for tool-enabled requests
+   - Native streaming with proper tool call handling
+   - Integrates HIL approval flow
+   - Only sends enabled tools to Ollama
+   - Location: packages/server/src/services/EnhancedOllamaStreamliner.ts
+
+4. HILManager (New)
+   - Human-in-the-Loop protection for tool execution
+   - 30-second timeout with default rejection (safety-first)
+   - WebSocket integration for real-time approval
+   - Location: packages/server/src/services/HILManager.ts
+
+5. ToolSelectionService (New)
+   - Manages tool enable/disable state
+   - Server-level and individual tool control
+   - Range-based selection support (1,3,5-8)
+   - Location: packages/server/src/services/ToolSelectionService.ts
+
+6. WebSocketService (Enhanced)
+   - Extended with MCP handlers for HIL and tool selection
+   - Broadcast method updated for event-based messaging
+   - Location: packages/server/src/services/WebSocketService.ts
+
+1.2 DATA FLOW
+-------------
+Request Flow with Tools:
+1. Client sends chat request → WebSocket → Chat endpoint
+2. EnhancedOllamaStreamliner processes request:
+   - Builds message context
+   - Gets enabled tools from ToolSelectionService
+   - Formats tools with namespace qualification
+3. Ollama returns tool calls in stream
+4. For each tool call:
+   - Parse namespace to identify server
+   - Request HIL approval (if enabled)
+   - Execute tool via MCPManager
+   - Return result to stream
+5. Stream continues with tool results integrated
+
+1.3 KEY IMPROVEMENTS
+--------------------
+- NO capability detection (uses COMPATIBLE_MODELS list)
+- Namespace prevents tool conflicts between servers
+- HIL provides safety for tool execution
+- Tool selection gives users control
+- Simplified to only 3 MCP servers
+- All MCP servers run via npx (no container management)
+
+================================================================================
+PART 2: LEGACY CONFLICTS AND RESOLUTIONS
+================================================================================
+
+2.1 CRITICAL CONFLICTS TO RESOLVE
+----------------------------------
+
+CONFLICT 1: Dual Streamliner Pattern
+Current State: Both OllamaStreamliner and EnhancedOllamaStreamliner exist
+Problem: Confusion about which to use when
+Resolution:
+  - OllamaStreamliner: Keep for non-tool models and legacy compatibility
+  - EnhancedOllamaStreamliner: Use for ALL tool-enabled models
+  - StreamlinerFactory pattern needed:
+    class StreamlinerFactory {
+      static getStreamliner(model: string): IStreamliner {
+        if (COMPATIBLE_MODELS.includes(model.split(':')[0])) {
+          return new EnhancedOllamaStreamliner();
+        }
+        return new OllamaStreamliner();
+      }
+    }
+
+CONFLICT 2: MCPStreamliner vs EnhancedOllamaStreamliner
+Current State: MCPStreamliner.ts still exists
+Problem: Overlapping responsibility with EnhancedOllamaStreamliner
+Resolution:
+  - DELETE MCPStreamliner.ts entirely
+  - Update all imports to use EnhancedOllamaStreamliner
+  - Remove MCPStreamliner initialization from index.ts
+
+CONFLICT 3: Capability Detection Remnants
+Current State: OllamaStreamliner still has capability detection code
+Problem: Partially removed, may cause TypeScript errors
+Resolution:
+  - Complete removal of ALL capability detection code
+  - Remove ModelCapability interface usage
+  - Update any code that expects capabilities to use isCompatibleModel()
+
+CONFLICT 4: Tool Format Inconsistency
+Current State: Multiple tool format conversions happening
+Problem: Tools formatted differently in different places
+Resolution:
+  - Standardize on Ollama tool format everywhere:
+    {
+      type: 'function',
+      function: {
+        name: string,    // namespace qualified
+        description: string,
+        parameters: object
+      }
+    }
+  - Only ToolNamespaceManager should handle namespace qualification
+
+CONFLICT 5: WebSocket Event Naming
+Current State: Mix of old broadcast() and new event-based messaging
+Problem: Inconsistent event naming and handling
+Resolution:
+  - Migrate ALL broadcasts to event-based: ws.broadcast('event', data)
+  - Standardize event naming convention:
+    - HIL events: hil:*
+    - Tool events: tools:*
+    - Chat events: chat:*
+    - MCP events: mcp:*
+
+2.2 MODERATE CONFLICTS
+-----------------------
+
+CONFLICT 6: Configuration Duplication
+Current State: MCP config in multiple places (stdio.json, multihost.json, code)
+Problem: Configuration drift and maintenance burden
+Resolution:
+  - Single source of truth: mcp-config.stdio.json
+  - Remove mcp-config.multihost.json
+  - All environments use same config file
+
+CONFLICT 7: Model Loading Strategy
+Current State: ModelProgressiveLoader still loads all models
+Problem: Wastes resources loading incompatible models
+Resolution:
+  - Filter model loading to COMPATIBLE_MODELS only
+  - Update ModelProgressiveLoader to check compatibility first
+
+CONFLICT 8: API Endpoint Duplication
+Current State: Multiple chat endpoints with overlapping functionality
+Problem: /api/chat, /api/chat/enhanced, /api/mcp/chat all exist
+Resolution:
+  - Single endpoint: /api/chat
+  - Route internally based on model compatibility
+  - Deprecate other endpoints
+
+2.3 MINOR CONFLICTS
+--------------------
+
+CONFLICT 9: Import Organization
+Current State: Scattered imports of MCP services
+Problem: Difficult to track dependencies
+Resolution:
+  - Create packages/server/src/services/mcp/index.ts:
+    export * from '../ToolNamespaceManager';
+    export * from '../EnhancedOllamaStreamliner';
+    export * from '../HILManager';
+    export * from '../ToolSelectionService';
+
+CONFLICT 10: Error Handling Inconsistency
+Current State: Different error handling patterns in different services
+Problem: Difficult to debug and maintain
+Resolution:
+  - Standardize on try-catch with proper logging
+  - All MCP errors should include context (serverId, toolName, etc.)
+
+================================================================================
+PART 3: ALIGNMENT STRATEGY
+================================================================================
+
+3.1 IMMEDIATE ACTIONS (BREAKING CHANGES)
+-----------------------------------------
+1. DELETE these files:
+   - packages/server/src/services/MCPStreamliner.ts
+   - packages/server/src/services/CustomModelCapabilityService.ts
+   - mcp-config.multihost.json
+   - Any backup files (.backup, .old, etc.)
+
+2. UPDATE these files:
+   - packages/server/src/api/chat.ts
+     * Use StreamlinerFactory pattern
+     * Remove capability detection calls
+   
+   - packages/server/src/services/OllamaStreamliner.ts
+     * Complete removal of capability detection
+     * Keep only for non-tool streaming
+   
+   - packages/server/src/services/ModelProgressiveLoader.ts
+     * Filter to COMPATIBLE_MODELS only
+
+3. CREATE these files:
+   - packages/server/src/api/StreamlinerFactory.ts
+   - packages/server/src/services/mcp/index.ts
+   - packages/client/src/components/MCP/MCPDashboard.tsx (consolidated UI)
+
+3.2 MIGRATION PATH
+------------------
+Phase 1: Clean Break (Immediate)
+- Stop all services
+- Apply all deletions and updates
+- Rebuild TypeScript
+- Fix compilation errors
+- Deploy with new architecture only
+
+Phase 2: UI Integration (Day 1-2)
+- Integrate HILConfirmationModal into main chat UI
+- Add ToolSelectionPanel to settings or sidebar
+- Wire up HIL approval flow
+- Test tool execution flow end-to-end
+
+Phase 3: Monitoring & Optimization (Day 3-5)
+- Add metrics for tool execution
+- Monitor HIL timeout rates
+- Optimize tool selection UX
+- Performance profiling of EnhancedOllamaStreamliner
+
+3.3 TESTING CHECKLIST
+---------------------
+[ ] Non-tool model still works (via OllamaStreamliner)
+[ ] Tool-enabled model uses EnhancedOllamaStreamliner
+[ ] Tool namespace qualification working
+[ ] HIL approval modal appears for tool calls
+[ ] Tool selection panel updates properly
+[ ] WebSocket events flow correctly
+[ ] No TypeScript compilation errors
+[ ] No runtime errors in console
+[ ] Docker deployment works
+[ ] All 3 MCP servers start successfully
+
+================================================================================
+PART 4: CONFIGURATION ALIGNMENT
+================================================================================
+
+4.1 ENVIRONMENT VARIABLES (FINAL)
+----------------------------------
+Required in .env:
+
+# MCP Servers
+GITHUB_PERSONAL_ACCESS_TOKEN=xxx
+UPSTASH_REDIS_REST_URL=xxx
+UPSTASH_REDIS_REST_TOKEN=xxx
+
+# HIL Settings
+HIL_ENABLED=true
+HIL_TIMEOUT_MS=30000
+
+# Model Compatibility
+COMPATIBLE_MODELS=qwen2.5,qwen3,llama3.1,llama3.2,mistral,deepseek-r1
+
+# MCP Transport
+MCP_ENABLED=true
+MCP_TRANSPORT=stdio
+
+
+Remove from .env:
+
+# REMOVE THESE
+MODEL_CAPABILITY_MODE=xxx
+CAPABILITY_DETECTION_ENABLED=xxx
+MCP_OPTIONAL=xxx
+MCP_CONFIG_PATH=/app/mcp-config.multihost.json
+
+
+4.2 DOCKER ALIGNMENT
+--------------------
+Use ONLY these compose files:
+- docker-compose.multihost.yml (base)
+- docker-compose.mcp.yml (MCP override)
+
+Delete these compose files:
+- docker-compose.same-host.yml
+- docker-compose.same-host-existing-ollama.yml
+- docker-compose.dev.yml (unless actively developing)
+
+4.3 TYPESCRIPT CONFIG
+---------------------
+Update tsconfig.json paths:
+{
+  "compilerOptions": {
+    "paths": {
+      "@mcp/*": ["./packages/server/src/services/mcp/*"],
+      "@olympian/*": ["./packages/*"]
+    }
+  }
+}
+
+================================================================================
+PART 5: ROLLBACK PLAN
+================================================================================
+
+If critical issues arise:
+1. Git revert to commit before MCP architecture
+2. Restore OllamaStreamliner as primary
+3. Disable MCP_ENABLED in environment
+4. Restart all services
+
+Rollback commands:
+# Save current state
+git stash
+
+# Revert to pre-MCP
+git checkout <pre-mcp-commit>
+
+# Restore environment
+cp .env.backup .env
+
+# Restart
+docker-compose -f docker-compose.multihost.yml down
+docker-compose -f docker-compose.multihost.yml up -d
+
+================================================================================
+PART 6: SUCCESS CRITERIA
+================================================================================
+
+The transition is complete when:
+1. All TypeScript compiles without errors
+2. No capability detection code remains
+3. All tool calls go through namespace manager
+4. HIL approval works for all tool executions
+5. Tool selection UI is functional
+6. Only 3 MCP servers running (GitHub, AppleScript, Context7)
+7. No legacy MCPStreamliner references
+8. Single source of configuration truth
+9. All tests pass
+10. Production deployment successful
+
+================================================================================
+PART 7: MONITORING & MAINTENANCE
+================================================================================
+
+7.1 KEY METRICS TO TRACK
+------------------------
+- Tool execution success rate
+- HIL approval/rejection ratio
+- Average HIL response time
+- Tool namespace conflicts (should be 0)
+- MCP server uptime
+- Memory usage of npx processes
+
+7.2 LOGS TO MONITOR
+-------------------
+Critical log patterns:
+- "MCP] Failed to start server"
+- "HIL request .* timed out"
+- "Invalid tool name"
+- "Tool call failed"
+- "Namespace conflict detected"
+
+7.3 MAINTENANCE TASKS
+---------------------
+Weekly:
+- Review HIL timeout settings
+- Check tool execution logs
+- Verify MCP server health
+
+Monthly:
+- Update MCP server packages
+- Review and optimize enabled tools
+- Analyze tool usage patterns
+
+================================================================================
+PART 8: KNOWN ISSUES AND WORKAROUNDS
+================================================================================
+
+8.1 STREAMLINER SELECTION
+-------------------------
+Issue: Chat endpoint still uses old OllamaStreamliner for all requests
+Impact: Tools won't work even with compatible models
+Workaround: Manually check model in chat endpoint:
+  const streamliner = COMPATIBLE_MODELS.includes(model.split(':')[0])
+    ? new EnhancedOllamaStreamliner()
+    : new OllamaStreamliner();
+
+8.2 TYPESCRIPT COMPILATION
+---------------------------
+Issue: Missing types for new services
+Impact: Build failures
+Workaround: Add to packages/shared/src/types/index.ts:
+  export interface IStreamliner {
+    processRequest(request: ChatRequest): Promise<ProcessedRequest>;
+    stream(request: ProcessedRequest): AsyncGenerator<any>;
+  }
+
+8.3 WEBSOCKET INITIALIZATION
+-----------------------------
+Issue: HILManager.initialize() called before WebSocketService exists
+Impact: HIL broadcasts fail
+Workaround: Initialize in correct order in index.ts:
+  1. Create WebSocketService instance
+  2. Initialize socket.io
+  3. Call HILManager.initialize(wsService)
+
+8.4 TOOL NAME CONFLICTS
+------------------------
+Issue: Same tool name from different servers
+Impact: Wrong server executes tool
+Workaround: Always use namespace qualified names:
+  github.search_repositories (not search_repositories)
+  context7.store_context (not store_context)
+
+8.5 NPX CACHE ISSUES
+--------------------
+Issue: npx fails to download packages in Docker
+Impact: MCP servers don't start
+Workaround: Clear npm cache in Dockerfile:
+  RUN npm cache clean --force
+  RUN rm -rf ~/.npm/_npx
+
+================================================================================
+PART 9: PERFORMANCE CONSIDERATIONS
+================================================================================
+
+9.1 MEMORY USAGE
+----------------
+- Each MCP server (npx process): ~50-100MB
+- Tool namespace registry: ~1MB for 100 tools
+- HIL pending requests: ~10KB per request
+- Enhanced streamliner buffer: ~5MB max
+
+Total overhead: ~300-400MB for full MCP architecture
+
+9.2 LATENCY IMPACT
+------------------
+- Tool namespace lookup: <1ms
+- HIL approval wait: up to 30s (user dependent)
+- MCP server startup (first npx): 2-5s
+- Tool execution: 100ms-2s depending on tool
+
+9.3 OPTIMIZATION OPPORTUNITIES
+------------------------------
+1. Pre-warm MCP servers on startup
+2. Cache tool descriptions to reduce lookup
+3. Implement tool execution pooling
+4. Add Redis caching for frequent tool results
+
+================================================================================
+PART 10: FUTURE ENHANCEMENTS
+================================================================================
+
+10.1 PLANNED FEATURES
+---------------------
+- Tool execution history UI
+- HIL batch approval
+- Tool usage analytics dashboard
+- Custom tool timeout configuration
+- Tool result caching strategy
+
+10.2 ARCHITECTURE EVOLUTION
+---------------------------
+- Add more MCP servers (selective)
+- Implement tool chaining
+- Add tool execution workflows
+- Create tool marketplace UI
+
+================================================================================
+END OF TRANSITION GUIDE
+================================================================================
+
+For questions or issues during transition:
+1. Check this guide first
+2. Review error logs
+3. Verify environment configuration
+4. Test with single MCP server first
+5. Gradually enable additional servers
+
+Remember: The new architecture prioritizes safety (HIL) and simplicity (3 servers)
+over feature completeness. This is by design.
+
+Last Updated: August 2025
+Next Review: September 2025
