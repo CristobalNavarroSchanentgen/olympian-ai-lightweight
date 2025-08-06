@@ -938,6 +938,7 @@ env-docker-multi-interactive: ## Interactive multi-host environment configuratio
 		echo "$(YELLOW)  Reasoning + Tools: qwen3:32b, qwen3:4b, deepseek-r1:14b$(RESET)"; \
 		echo "$(YELLOW)  Tools only: gemma3:27b, gemma3:4b$(RESET)"; \
 		echo "$(YELLOW)  Base models: phi4:14b, llama3.2:3b$(RESET)"; \
+	fi
 	@echo ""
 	@echo "$(CYAN)🔐 Generating secure secrets...$(RESET)"
 	@JWT_SECRET=$$(openssl rand -base64 32 2>/dev/null || python3 -c "import secrets; print(secrets.token_urlsafe(32))" 2>/dev/null || echo "$$(date +%s)-$$(shuf -i 1000-9999 -n 1)-jwt-secret"); \
