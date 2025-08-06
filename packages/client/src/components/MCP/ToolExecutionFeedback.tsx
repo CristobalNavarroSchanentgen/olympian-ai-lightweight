@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { CheckCircle, XCircle, Loader2, Clock, Copy } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { Button } from '../ui/button';
@@ -7,7 +7,7 @@ interface ToolExecution {
   id: string;
   toolName: string;
   namespace: string;
-  status: 'executing' | 'success' | 'error';
+  status: 'executing' as const | 'success' | 'error';
   result?: any;
   error?: string;
   timestamp: Date;
@@ -24,7 +24,7 @@ export function ToolExecutionFeedback() {
         id,
         toolName,
         namespace,
-        status: 'executing',
+        status: 'executing' as const,
         timestamp: new Date()
       }, ...prev].slice(0, 10));
     };

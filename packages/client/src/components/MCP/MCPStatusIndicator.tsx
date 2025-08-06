@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { Shield, Server, Tool } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Shield, Server, Wrench } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
 interface MCPServer {
@@ -40,22 +40,23 @@ export function MCPStatusIndicator({ className }: MCPStatusIndicatorProps) {
           {connectedCount}/{servers.length} servers
         </span>
         <div className="flex gap-1">
-          {servers.map(server => (
-            <div
-              key={server.id}
-              className={cn(
-                "w-2 h-2 rounded-full",
-                server.status === 'connected' ? "bg-green-500" :
-                server.status === 'error' ? "bg-red-500" : "bg-gray-500"
-              )}
-              title={\`\${server.name}: \${server.status}\`}
-            />
-          ))}
+          {servers.map(server => {
+            const statusClass = server.status === 'connected' ? "bg-green-500" :
+                              server.status === 'error' ? "bg-red-500" : "bg-gray-500";
+            const title = server.name + ': ' + server.status;
+            return (
+              <div
+                key={server.id}
+                className={cn("w-2 h-2 rounded-full", statusClass)}
+                title={title}
+              />
+            );
+          })}
         </div>
       </div>
       
       <div className="flex items-center gap-1.5">
-        <Tool className="w-4 h-4 text-gray-400" />
+        <Wrench className="w-4 h-4 text-gray-400" />
         <span className="text-xs text-gray-300">{totalTools} tools</span>
       </div>
       

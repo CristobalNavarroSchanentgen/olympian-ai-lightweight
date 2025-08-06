@@ -1,4 +1,3 @@
-import React, { useState, useEffect } from 'react';
 import { Button } from './ui/button';
 import { Card, CardContent } from './ui/card';
 import { Shield, ShieldOff } from 'lucide-react';

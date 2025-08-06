@@ -6,6 +6,7 @@ import { DivineDialog } from '@/components/DivineDialog';
 import { Toaster } from '@/components/ui/toaster';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { ThemeProvider } from '@/components/ThemeProvider';
+import { MCPProvider } from "@/contexts/MCPContext";
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Cable, Settings, History } from 'lucide-react';
@@ -24,7 +25,8 @@ function App() {
   }, [connect, disconnect]);
 
   return (
-    <ThemeProvider defaultTheme="dark" storageKey="olympian-theme">
+    <MCPProvider>
+      <ThemeProvider defaultTheme="dark" storageKey="olympian-theme">
       <div className="h-screen bg-background flex flex-col overflow-hidden">
         <header className="border-b flex-shrink-0">
           <div className="container flex h-14 items-center justify-between px-4">
@@ -107,6 +109,7 @@ function App() {
         <Toaster />
       </div>
     </ThemeProvider>
+    </MCPProvider>
   );
 }
 

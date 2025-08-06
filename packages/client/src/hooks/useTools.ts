@@ -29,7 +29,7 @@ export function useTools() {
       
       // Persist to localStorage
       const enabledTools = data.servers.flatMap(s => 
-        s.tools.filter(t => t.enabled).map(t => \`\${s.id}.\${t.id}\`)
+        s.tools.filter(t => t.enabled).map(t => s.id + '.' + t.id)
       );
       localStorage.setItem('mcp-tools-enabled', JSON.stringify(enabledTools));
     };

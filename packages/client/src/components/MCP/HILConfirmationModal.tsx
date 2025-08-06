@@ -1,15 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
+import { HILRequest } from "@/types/mcp";
 import { Button } from './ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 import { Alert, AlertDescription } from './ui/alert';
 import { ShieldAlert, CheckCircle, XCircle } from 'lucide-react';
 
-interface HILRequest {
-  id: string;
-  toolName: string;
-  arguments: any;
-  serverId: string;
-}
 
 interface HILConfirmationModalProps {
   request: HILRequest | null;
@@ -66,12 +61,12 @@ export function HILConfirmationModal({
           </Alert>
           
           <div className="bg-muted p-4 rounded-lg">
-            <div className="font-semibold mb-2">Tool: {request.toolName}</div>
+            <div className="font-semibold mb-2">Tool: {request.tool.name}</div>
             <div className="text-sm text-muted-foreground mb-2">
-              Server: {request.serverId}
+              Server: {request.tool.serverId}
             </div>
             <div className="font-mono text-sm bg-background p-3 rounded">
-              <pre>{JSON.stringify(request.arguments, null, 2)}</pre>
+              <pre>{JSON.stringify(request.tool.arguments, null, 2)}</pre>
             </div>
           </div>
           

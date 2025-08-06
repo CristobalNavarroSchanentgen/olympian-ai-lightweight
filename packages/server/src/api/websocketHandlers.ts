@@ -163,5 +163,78 @@ export function registerMCPHandlers(socket: Socket): void {
   registerHILHandlers(socket);
   registerToolHandlers(socket);
   
+  registerMCPStatusHandlers(socket);
   logger.info('MCP WebSocket handlers registered for socket ' + socket.id);
+}
+
+/**
+ * Register MCP Server Status handlers
+ */
+export function registerMCPStatusHandlers(socket: Socket): void {
+  const { MCPManager } = require('../services/MCPManager');
+  const mcpManager = MCPManager.getInstance();
+  
+  // Get MCP server status
+  socket.on('mcp:get_status', () => {
+    const status = mcpManager.getStatus();
+    const servers = Array.from(mcpManager.getServers().entries()).map(([id, server]) => ({
+      id,
+      name: server.name,
+      status: server.status === 'running' ? 'connected' : 
+              server.status === 'error' ? 'error' : 'disconnected',
+      toolCount: server.tools.length
+    }));
+    
+    socket.emit('mcp:status', { servers });
+  });
+  
+  // Get tools list with enable/disable state
+  socket.on('tools:request-list', async () => {
+    const toolSelection = ToolSelectionService.getInstance();
+    const mcpTools = await mcpManager.listTools();
+    const selectionState = toolSelection.getSelectionState();
+    
+    const servers = Array.from(mcpManager.getServers().entries()).map(([id, server]) => ({
+      id,
+      name: server.name,
+      status: server.status === 'running' ? 'connected' : 'disconnected',
+      tools: server.tools.map((tool: any) => ({
+        id: tool.name,
+        name: tool.name,
+        description: tool.description,
+        enabled: selectionState.servers.find(s => s.id === id)?.tools.find(t => t.name === tool.name)?.enabled || false
+      }))
+    }));
+    
+    socket.emit('tools:list', { servers });
+  });
+  
+  // Enable specific tool
+  socket.on('tools:enable', (data: { toolId: string }) => {
+    const toolSelection = ToolSelectionService.getInstance();
+    const enabled = toolSelection.toggleTool(data.toolId);
+    if (!enabled) {
+      // Toggle again to ensure it's enabled
+      toolSelection.toggleTool(data.toolId);
+    }
+    socket.emit('tools:updated', { toolId: data.toolId, enabled: true });
+  });
+  
+  // Disable specific tool  
+  socket.on('tools:disable', (data: { toolId: string }) => {
+    const toolSelection = ToolSelectionService.getInstance();
+    const enabled = toolSelection.toggleTool(data.toolId);
+    if (enabled) {
+      // Toggle again to ensure it's disabled
+      toolSelection.toggleTool(data.toolId);
+    }
+    socket.emit('tools:updated', { toolId: data.toolId, enabled: false });
+  });
+  
+  // Toggle server tools
+  socket.on('tools:server:toggle', (data: { serverId: string, enabled: boolean }) => {
+    const toolSelection = ToolSelectionService.getInstance();
+    toolSelection.toggleServer(data.serverId);
+    socket.emit('tools:server:updated', { serverId: data.serverId, enabled: data.enabled });
+  });
 }

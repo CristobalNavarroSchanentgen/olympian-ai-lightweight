@@ -12,7 +12,7 @@ import { toast } from '@/hooks/useToast';
 import { Plus } from 'lucide-react';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { HILConfirmationModal, MCPStatusIndicator, ToolExecutionFeedback } from "@/components/mcp";
-import { useHIL } from "@/hooks/useHIL";
+import { useMCP } from "@/contexts/MCPContext";
 
 // Create a unique identifier for messages (handles messages without _id)
 const getMessageIdentifier = (message: Message, index?: number): string => {
@@ -26,7 +26,7 @@ const getMessageIdentifier = (message: Message, index?: number): string => {
 };
 
 export function DivineDialog() {
-    const { request: hilRequest, approve: approveHIL, reject: rejectHIL } = useHIL();
+    const { hilRequest, approveHIL, rejectHIL } = useMCP();
 
   const {
     currentConversation,
@@ -40,7 +40,6 @@ export function DivineDialog() {
     modelCapabilities,
   } = useChatStore();
 
-    const { request: hilRequest, approve: approveHIL, reject: rejectHIL } = useHIL();
 
   const { 
     isArtifactPanelOpen, 

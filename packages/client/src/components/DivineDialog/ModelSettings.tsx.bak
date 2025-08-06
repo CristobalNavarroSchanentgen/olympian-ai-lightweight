@@ -13,7 +13,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Bot, ImageIcon, Wrench, Brain, Cpu, Database } from 'lucide-react';
-import { ToolSelectionPanel } from "@/components/mcp";
 
 interface ModelSettingsProps {
   open: boolean;
@@ -106,10 +105,9 @@ export function ModelSettings({ open, onOpenChange }: ModelSettingsProps) {
         </DialogHeader>
         
         <Tabs defaultValue="model-types" className="w-full">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="model-types">Model Types</TabsTrigger>
             <TabsTrigger value="model-config">Model Config</TabsTrigger>
-            <TabsTrigger value="mcp-tools">MCP Tools</TabsTrigger>
           </TabsList>
           
           <TabsContent value="model-types" className="mt-4">
@@ -314,14 +312,6 @@ export function ModelSettings({ open, onOpenChange }: ModelSettingsProps) {
                 </p>
               </CardContent>
             </Card>
-          </TabsContent>
-
-          <TabsContent value="mcp-tools" className="space-y-4">
-            <div className="text-sm text-muted-foreground mb-4">
-              Manage MCP (Model Context Protocol) tools availability for AI models.
-              Enable or disable specific tools from GitHub, AppleScript, and Context7 servers.
-            </div>
-            <ToolSelectionPanel />
           </TabsContent>
         </Tabs>
       </DialogContent>
