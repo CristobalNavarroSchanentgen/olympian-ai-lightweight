@@ -1,4 +1,4 @@
-.PHONY: help setup build start stop restart logs logs-backend logs-frontend clean install dev test lint auto-build auto-build-same auto-build-same-existing auto-build-multi fix-streaming-rebuild generate-build-args dev-multi up-dev-multi clean-build-multi ultra-clean-multi build-prod-ultra-clean artifacts-setup artifacts-migrate artifacts-validate artifacts-backup artifacts-restore artifacts-health artifacts-sync artifacts-diagnose artifacts-reset artifacts-export artifacts-import artifacts-clean
+.PHONY: help setup build start stop restart logs logs-backend logs-frontend clean install dev test lint auto-build auto-build-same auto-build-same-existing auto-build-multi fix-streaming-rebuild generate-build-args dev-multi up-dev-multi clean-build-multi ultra-clean-multi build-prod-ultra-clean artifacts-setup artifacts-migrate artifacts-validate artifacts-backup artifacts-restore artifacts-health artifacts-sync artifacts-diagnose artifacts-reset artifacts-export artifacts-import artifacts-clean clean-docker-cache clean-cache
 .DEFAULT_GOAL := help
 
 # Colors for output
@@ -803,6 +803,14 @@ clean-all: ## Clean up everything including images and volumes
 	@docker system prune -af --volumes
 	@echo "$(GREEN)✅ Complete cleanup done!$(RESET)"
 
+clean-docker-cache: ## Remove ALL Docker build cache (use when changes are not reflecting)
+	@echo "$(RED)⚠️  Removing ALL Docker build cache...$(RESET)"
+	@docker builder prune -af
+	@docker system prune -af --volumes
+	@echo "$(GREEN)✅ Docker cache completely cleared!$(RESET)"
+
+clean-cache: clean-docker-cache ## Alias for clean-docker-cache
+
 ##@ ⚙️  Configuration
 
 fix-mongo-uri: ## Fix MongoDB URI for Docker deployment
@@ -1046,12 +1054,3 @@ deploy-mcp: ensure-docker env-setup
 	@echo HIL Protection is ENABLED by default
 
 
-clean-docker-cache: ## Remove ALL Docker build cache (use when changes are not reflecting)
-
-clean-docker-cache: ## Remove ALL Docker build cache (use when changes are not reflecting)
-	@echo "\$(RED)⚠️  Removing ALL Docker build cache...\$(RESET)"
-	@docker builder prune -af
-	@docker system prune -af --volumes
-	@echo "\$(GREEN)✅ Docker cache completely cleared!\$(RESET)"
-
-clean-cache: clean-docker-cache ## Alias for clean-docker-cache
