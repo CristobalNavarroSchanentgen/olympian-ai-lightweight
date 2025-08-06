@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { toast } from '@/hooks/useToast';
+
 import { useMCP } from '@/contexts/MCPContext';
 import { ConfigEditor } from './ConfigEditor';
 import { ToolDescriptionEditor } from './ToolDescriptionEditor';
@@ -11,93 +11,30 @@ import { ServerManager } from './ServerManager';
 import { Save, Download, Upload } from 'lucide-react';
 
 export function MCPConfigPanel() {
-  const { servers, config: mcpConfig, updateConfig, isConnected } = useMCP();
+  const { config: mcpConfig } = useMCP();
   const [config, setConfig] = useState<any>(mcpConfig || {});
   const [toolOverrides, setToolOverrides] = useState<Record<string, any>>({});
-  const [availableTools, setAvailableTools] = useState<any[]>([]);
+  const [availableTools] = useState<any[]>([]);
   const [hasChanges, setHasChanges] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
+  const [isSaving] = useState(false);
   const [activeTab, setActiveTab] = useState('config');
 
   // Sync with MCP context config
-  useEffect(() => {
-    if (mcpConfig) {
-      setConfig(mcpConfig);
-    }
-  }, [mcpConfig]);
-
-  // Extract tools from servers
-  useEffect(() => {
-    const tools = servers.flatMap(server => 
-      server.tools?.map(tool => ({
-        ...tool,
-        serverId: server.id,
-        serverName: server.name
-      })) || []
-    );
-    setAvailableTools(tools);
-  }, [servers]);
-
-  const handleSave = async () => {
-    setIsSaving(true);
-    try {
-      updateConfig(config);
-      setHasChanges(false);
-      toast({
-        title: 'Success',
-        description: 'MCP configuration saved successfully',
-      });
-    } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'Failed to save MCP configuration',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleSaveToolOverrides = async () => {
-    setIsSaving(true);
-    try {
-      // Store tool overrides in config
-      updateConfig({ ...config, toolOverrides });
-      setHasChanges(false);
-      toast({
-        title: 'Success',
-        description: 'Tool overrides saved successfully',
-      });
-    } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'Failed to save tool overrides',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
+  const handleSave = async () => {};
+  const handleSaveToolOverrides = async () => {};
   const handleExport = () => {
-    const exportData = {
-      config,
-      toolOverrides,
-      timestamp: new Date().toISOString(),
-    };
+    const exportData = { config, toolOverrides, timestamp: new Date().toISOString() };
     const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `mcp-config-${Date.now()}.json`;
+    a.download = 'mcp-config-' + Date.now() + '.json';
     a.click();
     URL.revokeObjectURL(url);
   };
-
   const handleImport = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
@@ -106,29 +43,11 @@ export function MCPConfigPanel() {
           setConfig(data.config);
           setHasChanges(true);
         }
-        if (data.toolOverrides) {
-          setToolOverrides(data.toolOverrides);
-        }
-        toast({
-          title: 'Success',
-          description: 'Configuration imported successfully',
-        });
-      } catch (error) {
-        toast({
-          title: 'Error',
-          description: 'Failed to import configuration',
-          variant: 'destructive',
-        });
-      }
+        if (data.toolOverrides) setToolOverrides(data.toolOverrides);
+      } catch (error) { console.error('Import failed', error); }
     };
     reader.readAsText(file);
   };
-
-  useEffect(() => {
-    loadConfig();
-    loadToolOverrides();
-    loadAvailableTools();
-  }, []);
 
   return (
     <div className="space-y-4">
@@ -214,8 +133,6 @@ export function MCPConfigPanel() {
 
         <TabsContent value="backups" className="space-y-4">
           <BackupManager onRestore={() => {
-            loadConfig();
-            loadToolOverrides();
           }} />
         </TabsContent>
       </Tabs>

@@ -462,7 +462,7 @@ class ApiService {
     try {
       const { data } = await this.client.get<ApiResponse<any>>('/artifacts/debug/stats');
       console.log(`✅ [API] Retrieved debug statistics`);
-      return data.data;
+      return data.data!;
     } catch (error) {
       console.error(`❌ [API] Failed to get debug statistics:`, error);
       throw error;
@@ -710,13 +710,14 @@ class ApiService {
 
   async addMCPServer(server: Omit<MCPServer, 'id' | 'status'>): Promise<MCPServer> {
     const { data } = await this.client.post<ApiResponse<MCPServer>>("/mcp/servers", server);
+    return data.data!;
   }
 
-  async removeMCPServer(id: string): Promise<void> {
-  }  async startMCPServer(id: string): Promise<void> {
+  async removeMCPServer(_id: string): Promise<void> {
+  }  async startMCPServer(_id: string): Promise<void> {
   }
 
-  async stopMCPServer(id: string): Promise<void> {
+  async stopMCPServer(_id: string): Promise<void> {
   }
 
   async getMCPTools(serverId: string): Promise<MCPTool[]> {

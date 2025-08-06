@@ -4,7 +4,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '../ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '../ui/input';
 import { Badge } from '../ui/badge';
-import { Loader2, Search, Server, Tool } from 'lucide-react';
+import { Loader2, Search, Server, Wrench } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export function ToolSelectionPanel() {
@@ -79,8 +79,8 @@ export function ToolSelectionPanel() {
                 </div>
                 <Checkbox
                   checked={server.tools.every(t => t.enabled)}
-                  onCheckedChange={(checked) => toggleServer(server.id, checked)}
-                  onClick={(e) => e.stopPropagation()}
+                  onCheckedChange={(checked: boolean) => toggleServer(server.id, !!checked)}
+                  onClick={(e: React.MouseEvent) => e.stopPropagation()}
                 />
               </div>
             </CardHeader>
@@ -105,7 +105,7 @@ export function ToolSelectionPanel() {
                       </div>
                       <Checkbox
                         checked={tool.enabled}
-                        onCheckedChange={(checked) => handleToolToggle(server.id, tool.id, checked)}
+                        onCheckedChange={(checked: boolean) => handleToolToggle(server.id, tool.id, !!checked)}
                       />
                     </div>
                   ))}
