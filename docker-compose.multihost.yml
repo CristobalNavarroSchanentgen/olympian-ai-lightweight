@@ -93,7 +93,9 @@ services:
       HOSTNAME: olympian-backend-1
       INSTANCE_ID: backend-1
       ENABLE_COORDINATION: "true"
-      
+      MCP_CONFIG_PATH: /app/mcp-config.multihost.json
+      MCP_ENABLED: "true"
+      MCP_TRANSPORT: "stdio"      
       # Performance Configuration
       CDN_ENABLED: ${CDN_ENABLED:-false}
       CDN_BASE_URL: ${CDN_BASE_URL:-}
@@ -114,7 +116,7 @@ services:
       
     volumes:
       - app_logs_1:/app/logs
-      - ./mcp-config.stdio.json:/app/mcp-config.stdio.json:ro
+      - ./mcp-config.multihost.json:/app/mcp-config.multihost.json:ro
     depends_on:
       redis:
         condition: service_healthy
@@ -150,7 +152,9 @@ services:
       HOSTNAME: olympian-backend-2
       INSTANCE_ID: backend-2
       ENABLE_COORDINATION: "true"
-      
+      MCP_CONFIG_PATH: /app/mcp-config.multihost.json
+      MCP_ENABLED: "true"
+      MCP_TRANSPORT: "stdio"      
       # Performance Configuration
       CDN_ENABLED: ${CDN_ENABLED:-false}
       CDN_BASE_URL: ${CDN_BASE_URL:-}
@@ -171,7 +175,7 @@ services:
       
     volumes:
       - app_logs_2:/app/logs
-      - ./mcp-config.stdio.json:/app/mcp-config.stdio.json:ro
+      - ./mcp-config.multihost.json:/app/mcp-config.multihost.json:ro
     depends_on:
       redis:
         condition: service_healthy

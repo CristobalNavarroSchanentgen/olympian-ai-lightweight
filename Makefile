@@ -39,7 +39,7 @@ setup: ## Install dependencies and create .env from template
 
 quick-docker-same: build-same-host up-same-host ## Quick setup for same-host Docker deployment with Ollama container (forces clean rebuild)
 
-quick-docker-multi: env-docker-multi-interactive build-prod-ultra-clean up-prod artifacts-setup ## Quick setup for multi-host Docker deployment with artifact persistence (forces ultra-clean rebuild to prevent layer corruption)
+quick-docker-multi: env-docker-multi-interactive build-multihost-ultra-clean up-multihost artifacts-setup ## Quick setup for multi-host Docker deployment with artifact persistence (forces ultra-clean rebuild to prevent layer corruption)
 
 quick-docker-same-existing: build-same-host-existing up-same-host-existing ## Quick setup for same-host Docker deployment with existing Ollama (forces clean rebuild)
 
@@ -70,6 +70,19 @@ build-prod-ultra-clean: clean-build-multi generate-build-args ## Ultra-clean bui
 	@echo "$(YELLOW)Using build args: $(DOCKER_BUILD_ENV)$(RESET)"
 	@env $(DOCKER_BUILD_ENV) docker-compose -f docker-compose.prod.yml build --no-cache --pull
 	@echo "$(GREEN)✅ Ultra-clean build completed - Docker layer corruption prevented!$(RESET)"
+
+build-multihost-ultra-clean: clean-build-multi generate-build-args ## Ultra-clean build for multi-host deployment with docker-compose.multihost.yml
+	@echo "$(CYAN)🔧 Ultra-clean build for multi-host deployment...$(RESET)"
+	@echo "$(YELLOW)This build removes all cached layers and forces complete rebuild$(RESET)"
+	@echo "$(YELLOW)Using build args: $(DOCKER_BUILD_ENV)$(RESET)"
+	@env $(DOCKER_BUILD_ENV) docker-compose -f docker-compose.multihost.yml build --no-cache --pull
+	@echo "$(GREEN)✅ Ultra-clean multihost build completed!$(RESET)"
+
+up-multihost: ## Start multi-host environment with Docker
+	@echo "$(CYAN)🐳 Starting multi-host environment...$(RESET)"
+	@docker-compose -f docker-compose.multihost.yml up -d
+	@echo "$(GREEN)✅ Multi-host environment started!$(RESET)"
+	@echo "$(CYAN)Access the application at: http://localhost:8080$(RESET)"
 
 build-dev: generate-build-args ## Build development environment for multi-host with hot reloading
 	@echo "$(CYAN)🏗️  Building development environment for multi-host...$(RESET)"
@@ -756,7 +769,7 @@ lint: ## Run linting
 clean: ## Clean up Docker resources
 	@echo "$(CYAN)🧹 Cleaning up Docker resources...$(RESET)"
 	@docker-compose down -v --remove-orphans
-	@docker-compose -f docker-compose.prod.yml down -v --remove-orphans 2>/dev/null || true
+	@docker-compose -f docker-compose.multihost.yml down -v --remove-orphans 2>/dev/null || true
 	@docker-compose -f docker-compose.dev.yml down -v --remove-orphans 2>/dev/null || true
 	@docker-compose -f docker-compose.same-host.yml down -v --remove-orphans 2>/dev/null || true
 	@docker-compose -f docker-compose.same-host-existing-ollama.yml down -v --remove-orphans 2>/dev/null || true
@@ -766,7 +779,7 @@ clean: ## Clean up Docker resources
 clean-build-multi: ## Ultra-clean for multi-host deployment (removes all cached layers and build artifacts)
 	@echo "$(CYAN)🧹 Ultra-clean for multi-host deployment...$(RESET)"
 	@echo "$(YELLOW)⚠️  This will remove Docker images, build cache, and intermediate containers for multi-host deployment$(RESET)"
-	@docker-compose -f docker-compose.prod.yml down -v --remove-orphans 2>/dev/null || true
+	@docker-compose -f docker-compose.multihost.yml down -v --remove-orphans 2>/dev/null || true
 	@echo "$(CYAN)Removing multi-host specific images...$(RESET)"
 	@docker images | grep -E "(olympian|multi|prod)" | awk '{print $$3}' | xargs -r docker rmi -f 2>/dev/null || true
 	@echo "$(CYAN)Cleaning build cache...$(RESET)"
@@ -783,7 +796,7 @@ clean-all: ## Clean up everything including images and volumes
 	@echo "$(RED)⚠️  This will remove ALL Docker images and volumes!$(RESET)"
 	@read -p "Are you sure? (y/N): " confirm && [ "$$confirm" = "y" ]
 	@docker-compose down -v --remove-orphans --rmi all
-	@docker-compose -f docker-compose.prod.yml down -v --remove-orphans --rmi all 2>/dev/null || true
+	@docker-compose -f docker-compose.multihost.yml down -v --remove-orphans --rmi all 2>/dev/null || true
 	@docker-compose -f docker-compose.dev.yml down -v --remove-orphans --rmi all 2>/dev/null || true
 	@docker-compose -f docker-compose.same-host.yml down -v --remove-orphans --rmi all 2>/dev/null || true
 	@docker-compose -f docker-compose.same-host-existing-ollama.yml down -v --remove-orphans --rmi all 2>/dev/null || true
@@ -1031,4 +1044,11 @@ deploy-mcp: ensure-docker env-setup
 	@echo Frontend: http://localhost:80
 	@echo Backend API: http://localhost:4000/api
 	@echo HIL Protection is ENABLED by default
+
+
+clean-docker-cache: ## Remove ALL Docker build cache (use when changes are not reflecting)
+	@echo "$(RED)⚠️  Removing ALL Docker build cache...$(RESET)"
+	@docker builder prune -af
+	@docker system prune -af --volumes
+	@echo "$(GREEN)✅ Docker cache completely cleared!$(RESET)"
 
