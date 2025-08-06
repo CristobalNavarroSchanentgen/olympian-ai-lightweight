@@ -177,12 +177,13 @@ export function registerMCPStatusHandlers(socket: Socket): void {
   // Get MCP server status
   socket.on('mcp:get_status', () => {
     const status = mcpManager.getStatus();
-    const servers = Array.from(mcpManager.getServers().entries()).map(([id, server]) => ({
-      id,
-      name: server.name,
-      status: server.status === 'running' ? 'connected' : 
-              server.status === 'error' ? 'error' : 'disconnected',
-      toolCount: server.tools.length
+    const serverEntries = Array.from(mcpManager.getServers().entries());
+    const servers = serverEntries.map(entry => ({
+      id: entry[0],
+      name: entry[1].name,
+      status: entry[1].status === "running" ? "connected" :
+              entry[1].status === "error" ? "error" : "disconnected",
+      toolCount: entry[1].tools.length
     }));
     
     socket.emit('mcp:status', { servers });
@@ -194,16 +195,22 @@ export function registerMCPStatusHandlers(socket: Socket): void {
     const mcpTools = await mcpManager.listTools();
     const selectionState = toolSelection.getSelectionState();
     
-    const servers = Array.from(mcpManager.getServers().entries()).map(([id, server]) => ({
-      id,
-      name: server.name,
-      status: server.status === 'running' ? 'connected' : 'disconnected',
-      tools: server.tools.map((tool: any) => ({
-        id: tool.name,
-        name: tool.name,
-        description: tool.description,
-        enabled: selectionState.servers.find(s => s.id === id)?.tools.find(t => t.name === tool.name)?.enabled || false
-      }))
+    const serverEntries = Array.from(mcpManager.getServers().entries());
+    const servers = serverEntries.map(entry => {
+      const serverId = entry[0];
+      const serverData = entry[1];
+      return {
+        id: serverId,
+        name: serverData.name,
+        status: serverData.status === "running" ? "connected" : "disconnected",
+        tools: serverData.tools.map((tool: any) => ({
+          id: tool.name,
+          name: tool.name,
+          description: tool.description,
+          enabled: selectionState.servers.find(s => s.id === serverId)?.tools.find(t => t.name === tool.name)?.enabled || false
+        }))
+      };
+    });
     }));
     
     socket.emit('tools:list', { servers });
