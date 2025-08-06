@@ -961,6 +961,7 @@ env-docker-multi-interactive: ## Interactive multi-host environment configuratio
 		sed -i.bak "s|^ALLOWED_ORIGINS=.*|ALLOWED_ORIGINS=http://localhost:$$APP_PORT,http://localhost:5173|" .env; \
 	else \
 		echo "ALLOWED_ORIGINS=http://localhost:$$APP_PORT,http://localhost:5173" >> .env; \
+	fi
 	@rm -f .env.bak
 	@echo ""
 	@echo "$(GREEN)✅ Interactive multi-host configuration complete!$(RESET)"
@@ -975,6 +976,7 @@ env-docker-multi-interactive: ## Interactive multi-host environment configuratio
 		echo "  $(GREEN)✅ GitHub token configured$(RESET)"; \
 	else \
 		echo "  $(YELLOW)⚠️  GitHub token not configured$(RESET)"; \
+	fi
 	@echo ""
 	@echo "$(CYAN)📚 Development Mode Available:$(RESET)"
 	@echo "  For development with hot reloading, use: $(CYAN)make dev-multi$(RESET)"
