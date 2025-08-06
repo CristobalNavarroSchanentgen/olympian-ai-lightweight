@@ -5,6 +5,8 @@ import { DatabaseService } from './DatabaseService';
 import { ConnectionScanner } from './ConnectionScanner';
 import { OllamaStreamliner } from './OllamaStreamliner';
 import { ChatMemoryService } from './ChatMemoryService';
+import { registerMCPHandlers } from "../api/websocketHandlers";
+import { HILManager } from "./HILManager";
 
 export class WebSocketService {
   private static instance: WebSocketService;
@@ -31,6 +33,8 @@ export class WebSocketService {
   }
 
   public initialize(io: Server): void {
+    // Initialize HIL Manager with WebSocket
+    HILManager.getInstance().initialize(this);
     this.io = io;
     
     this.io.on('connection', (socket: Socket) => {
@@ -67,6 +71,9 @@ export class WebSocketService {
         await this.handleConnectionTest(socket, data);
       });
 
+      // Register MCP handlers (HIL and Tool Selection)
+      registerMCPHandlers(socket);
+
       socket.on('disconnect', () => {
         logger.info(`Client disconnected: ${socket.id}`);
       });
@@ -83,12 +90,21 @@ export class WebSocketService {
   /**
    * Broadcast message to all connected clients (for MCP updates)
    */
-  public broadcast(message: any): void {
+  /**
+   * Broadcast message to all connected clients
+   */
+  public broadcast(event: string, data?: any): void {
     if (this.io) {
-      this.io.emit('broadcast', message);
-      logger.debug('🔄 [WebSocket] Broadcasting message to all clients:', message);
+      if (data === undefined) {
+        // Support old format for backward compatibility
+        this.io.emit("broadcast", event);
+      } else {
+        // New format with event name and data
+        this.io.emit(event, data);
+      }
+      logger.debug("🔄 [WebSocket] Broadcasting event:", event, data);
     } else {
-      logger.warn('⚠️ [WebSocket] Cannot broadcast - WebSocket server not initialized');
+      logger.warn("⚠️ [WebSocket] Cannot broadcast - WebSocket server not initialized");
     }
   }
 
