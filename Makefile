@@ -890,6 +890,7 @@ env-docker-multi-interactive: ## Interactive multi-host environment configuratio
 			sed -i.bak 's|^MONGODB_URI=.*|MONGODB_URI=mongodb://mongodb:27017/olympian_ai_lite?replicaSet=rs0|' .env; \
 			echo "$(GREEN)✅ Using containerized MongoDB (accessible via Docker service name)$(RESET)"; \
 		fi; \
+	fi
 	@echo ""
 	@echo "$(CYAN)🔐 MCP Server Authentication Setup$(RESET)"
 	@echo "$(YELLOW)Multi-host deployment includes GitHub, AppleScript, and Context7 MCP servers. GitHub requires authentication$(RESET)"
