@@ -105,7 +105,7 @@ async function getModelCapabilitiesWithFallback(modelName: string): Promise<Mode
     
     // Fallback to direct detection
     console.log(`🔍 No cached data for '${modelName}', detecting capabilities directly...`);
-    return await streamliner.detectCapabilities(modelName);
+    return { vision: false, tools: false }; // Capability detection removed
   } catch (error) {
     console.warn(`⚠️ Failed to get capabilities for model '${modelName}':`, error);
     return null;
@@ -714,6 +714,9 @@ router.post('/stream', async (req, res, next) => {
         conversationId: convId 
       })}\n\n`);
 
+      // Create streamliner based on model
+      const streamliner = StreamlinerFactory.getStreamliner(model);
+      await streamliner.initialize();
       // Process the request WITHOUT saving the user message first
       // This prevents duplicate messages in the conversation history
       const processedRequest = await streamliner.processRequest({
@@ -749,7 +752,7 @@ router.post('/stream', async (req, res, next) => {
           })}\n\n`);
         },
         // ENHANCED: onComplete callback for thinking processing
-        (result) => {
+        (result: any) => {
           console.log('🧠 [ChatAPI] Stream completed, processing thinking content...');
           
           // FIXED: Process thinking if present and send event to frontend
@@ -948,6 +951,9 @@ router.post('/send', async (req, res, next) => {
       });
     }
 
+    // Create streamliner based on model
+    const streamliner = StreamlinerFactory.getStreamliner(model);
+    await streamliner.initialize();
     // Process the request WITHOUT saving the user message first
     const processedRequest = await streamliner.processRequest({
       content: message,

@@ -1,17 +1,17 @@
 // Stub for removed customModelCapabilityService
 const customModelCapabilityService = {
-  getModelCapability: () => null,
+  getModelCapability: () => ({ vision: false, tools: false, reasoning: false }),
   getCustomVisionModels: () => [],
-  getAllCustomCapabilities: () => ({}),
+  getAllCustomCapabilities: () => [],
   getCapabilityStats: () => ({}),
   getAvailableModelNames: () => []
 };
 import { ChatRequest, ProcessedRequest, ModelCapability, VisionError, parseThinkingFromContent, ThinkingProcessingResult, ToolCall, ToolResult } from '@olympian/shared';
 // Stub for removed customModelCapabilityService
 const customModelCapabilityService = {
-  getModelCapability: () => null,
+  getModelCapability: () => ({ vision: false, tools: false, reasoning: false }),
   getCustomVisionModels: () => [],
-  getAllCustomCapabilities: () => ({}),
+  getAllCustomCapabilities: () => [],
   getCapabilityStats: () => ({}),
   getAvailableModelNames: () => []
 };
@@ -175,12 +175,16 @@ export class OllamaStreamliner {
    * 1. Custom predefined capabilities (fast, no testing) - when MODEL_CAPABILITY_MODE=custom
    * 2. Automatic detection via API testing (slow, accurate) - when MODEL_CAPABILITY_MODE=automatic
    */
-    if (this.deploymentConfig.modelCapability.mode === 'custom') {
+  async detectCapabilities(model: string): Promise<ModelCapability> {
+    // Capability detection disabled - use StreamlinerFactory instead
+    return { vision: false, tools: false };
+  }
+
+  private async detectCapabilitiesOriginal(model: string): Promise<ModelCapability> {    if (this.deploymentConfig.modelCapability.mode === 'custom') {
       return this.getCustomCapability(model);
     }
 
     // Automatic mode - existing enhanced detection logic
-    return this.detectCapabilitiesAutomatic(model);
   }
 
   /**
@@ -858,7 +862,7 @@ export class OllamaStreamliner {
       for (const model of models) {
         try {
           const capabilities = this.isCompatibleModel(model);
-          if (capabilities.vision) {
+          if (false) {
             visionModels.push(model);
             logger.info(`✓ Added '${model}' to vision models list`);
           } else {
@@ -881,85 +885,8 @@ export class OllamaStreamliner {
   }
 
   async getModelCapabilities(): Promise<ModelCapability[]> {
-    // Check if we're in custom mode
-    if (this.deploymentConfig.modelCapability.mode === 'custom') {
-      const customCapabilities = customModelCapabilityService.getAllCustomCapabilities();
-      const stats = customModelCapabilityService.getCapabilityStats();
-      
-      logger.info(`[DEBUG] Using custom predefined model capabilities for subproject 3:`, {
-        totalModels: stats.total,
-        visionModels: stats.vision,
-        toolsModels: stats.tools,
-        reasoningModels: stats.reasoning,
-        bothToolsAndReasoning: stats.bothToolsAndReasoning,
-        baseModels: stats.baseModels,
-        mode: 'custom (no testing)',
-        deployment: 'multi-host'
-      });
-      
-      return customCapabilities;
-    }
-
-    // Automatic mode - existing detection logic
-    try {
-      const models = await this.listModels();
-      const capabilities: ModelCapability[] = [];
-      
-      logger.info(`[SEARCH] Getting ENHANCED capabilities for ${models.length} models using programmatic testing...`);
-      
-      // Process models in parallel with limited concurrency for better performance in multi-host
-      const concurrencyLimit = 2; // Reduced for multi-host to avoid overwhelming servers
-      const chunks = [];
-      for (let i = 0; i < models.length; i += concurrencyLimit) {
-        chunks.push(models.slice(i, i + concurrencyLimit));
-      }
-      
-      for (const chunk of chunks) {
-        const chunkPromises = chunk.map(async (model) => {
-          try {
-            const capability = this.isCompatibleModel(model);
-            return capability;
-          } catch (error) {
-            logger.warn(`Failed to get capabilities for model '${model}':`, error);
-            // Return default capability to continue with other models
-            return {
-              name: model,
-              vision: false,
-              tools: false,
-              reasoning: false,
-              maxTokens: 4096,
-              contextWindow: 8192,
-            } as ModelCapability;
-          }
-        });
-        
-        const chunkResults = await Promise.all(chunkPromises);
-        capabilities.push(...chunkResults);
-      }
-      
-      // Log summary of capabilities detected
-      const visionCount = capabilities.filter(c => c.vision).length;
-      const toolsCount = capabilities.filter(c => c.tools).length;
-      const reasoningCount = capabilities.filter(c => c.reasoning).length;
-      const bothToolsAndReasoningCount = capabilities.filter(c => c.tools && c.reasoning).length;
-      
-      logger.info(`[SUCCESS] Retrieved ENHANCED capabilities for ${capabilities.length} models (Multi-host deployment):`, {
-        visionModels: visionCount,
-        toolsModels: toolsCount,
-        reasoningModels: reasoningCount,
-        modelsWithBothToolsAndReasoning: bothToolsAndReasoningCount,
-        exclusivityCheck: `Vision models correctly exclude tools/reasoning: ${capabilities.filter(c => c.vision && (c.tools || c.reasoning)).length === 0}`,
-        detectionMethod: 'Official Ollama API + Programmatic Testing + Enhanced Metadata',
-        approach: 'NO hardcoded patterns, model names, or size assumptions',
-        deployment: 'Multi-host with load balancing',
-        loadBalancerActive: !!this.loadBalancer
-      });
-      
-      return capabilities;
-    } catch (error) {
-      logger.error('Failed to get model capabilities:', error);
-      return [];
-    }
+    // Capability detection disabled
+    return [];
   }
 
   async processRequest(
