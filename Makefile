@@ -27,6 +27,7 @@ setup: ## Install dependencies and create .env from template
 		echo "$(GREEN)✅ .env file created. Please review and update it with your configuration.$(RESET)"; \
 	else \
 		echo "$(YELLOW)⚠️  .env file already exists, skipping...$(RESET)"; \
+	fi
 	@echo "$(CYAN)📦 Installing dependencies...$(RESET)"
 	@npm install
 	@echo "$(GREEN)✅ Setup complete!$(RESET)"
@@ -915,7 +916,8 @@ env-docker-multi-interactive: ## Interactive multi-host environment configuratio
 			echo "# GITHUB_PERSONAL_ACCESS_TOKEN=your_github_token_here" >> .env; \
 		fi; \
 		echo "$(YELLOW)⚠️  GitHub token not configured - some MCP features will be limited$(RESET)"; \
-	fi	@echo ""
+	fi
+	@echo ""
 	@echo ""
 	@echo ""
 	@echo "$(CYAN)🤖 Model Capability Configuration:$(RESET)"
