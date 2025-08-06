@@ -1,227 +1,286 @@
 ================================================================================
-OLYMPIAN AI - MCP ARCHITECTURE TRANSITION GUIDE (UPDATED)
+OLYMPIAN AI - UI INTEGRATION FOR MCP ARCHITECTURE
 ================================================================================
 
 Date: August 2025
-Version: 2.0
-Status: Phase 1 In Progress
-Purpose: Transition to streamlined MCP architecture with namespace-based tool
-         routing and HIL protection for multi-host deployment (Subproject 3)
+Version: 3.0
+Status: Backend Complete, UI Integration Pending
+Purpose: Integrate UI components for the new MCP architecture with namespace-based 
+         tool routing and HIL protection for multi-host deployment (Subproject 3)
 
 ================================================================================
-CURRENT STATE (as of latest commit)
+BACKEND STATUS (COMPLETED)
 ================================================================================
 
-COMPLETED:
-----------
-✅ Deleted legacy components:
-   - MCPStreamliner.ts (replaced by EnhancedOllamaStreamliner)
-   - CustomModelCapabilityService.ts (using COMPATIBLE_MODELS list instead)
-   - ToolEnabledOllamaStreamliner.ts (consolidated into Enhanced version)
-   - mcp-config.multihost.json (using stdio config only)
-
-✅ Created new components:
-   - StreamlinerFactory.ts - Factory pattern for model-based streamliner selection
-   - packages/server/src/services/mcp/index.ts - Consolidated MCP exports
-   - EnhancedOllamaStreamliner.ts - Tool-enabled streaming
-   - ToolNamespaceManager.ts - Namespace qualification for tools
-   - HILManager.ts - Human-in-the-loop approval system
-   - ToolSelectionService.ts - Tool enable/disable management
-
-✅ Partially updated:
-   - OllamaStreamliner.ts - Stubbed capability detection
-   - chat.ts - Uses StreamlinerFactory pattern
-
-COMPLETED IN THIS SESSION:
-------------
-✅ Fixed all TypeScript compilation errors (51 → 0)
-✅ Added customModelCapabilityService stub
-✅ Fixed ModelCapability type usage throughout
-✅ Added MCPServerStatus type to shared types
-✅ Fixed MCPTool interface with serverId
-✅ Added initialize() and streamChat() to EnhancedOllamaStreamliner
-✅ Fixed MCPManager methods (callTool, removeServer, getStatus)
-✅ Updated ChatRequest interface with additional properties
-✅ Fixed all import and type issues
-✅ Build successful!
-
-================================================================================PART 1: NEW ARCHITECTURE (FINAL)
-================================================================================
-
-CORE SERVICES:
---------------
-1. MCPManager - Manages 3 MCP servers (GitHub, AppleScript, Context7)
-2. ToolNamespaceManager - Prevents conflicts via qualified naming
-3. EnhancedOllamaStreamliner - Handles tool-enabled models
-4. HILManager - 30-second timeout approval for tool execution
-5. ToolSelectionService - User control over tool availability
-6. StreamlinerFactory - Routes to correct streamliner based on model
-
-DATA FLOW:
-----------
-1. Client request → WebSocket → Chat endpoint
-2. StreamlinerFactory.getStreamliner(model) creates appropriate handler
-3. Tool-enabled models → EnhancedOllamaStreamliner
-4. Non-tool models → OllamaStreamliner (legacy support)
-5. Tool calls → HIL approval → MCPManager execution
-6. Results streamed back to client
-
-KEY PRINCIPLES:
----------------
-- NO capability detection (use COMPATIBLE_MODELS list)
-- Namespace qualification for all tools (serverId.toolName)
-- HIL safety-first approach (default rejection after timeout)
-- Single MCP config file (mcp-config.stdio.json)
-- All MCP servers run via npx (no containers)
+✅ TypeScript compilation successful (0 errors)
+✅ MCP architecture implemented:
+   - MCPManager with 3 servers (GitHub, AppleScript, Context7)
+   - ToolNamespaceManager for qualified naming
+   - EnhancedOllamaStreamliner for tool-enabled models
+   - HILManager with 30-second timeout
+   - ToolSelectionService for user control
+   - StreamlinerFactory for model-based routing
 
 ================================================================================
-PART 2: IMMEDIATE FIXES NEEDED
+UI COMPONENTS REQUIRED
 ================================================================================
 
-CRITICAL (Build Blockers):
+1. HIL CONFIRMATION MODAL
+-------------------------
+Location: packages/client/src/components/HILConfirmationModal.tsx
+
+Requirements:
+- Display tool call details (name, description, parameters)
+- 30-second countdown timer
+- Approve/Reject buttons
+- Auto-reject on timeout
+- Namespace display (e.g., "github.create_issue")
+
+WebSocket Events:
+- Listen: 'hil:request' - Incoming tool approval request
+- Emit: 'hil:approve' - User approves tool execution
+- Emit: 'hil:reject' - User rejects tool execution
+
+UI Design:
+- Modal overlay with backdrop
+- Clear tool information display
+- Prominent timer display
+- Color-coded approve (green) / reject (red) buttons
+- Tool namespace badge
+
+2. TOOL SELECTION PANEL
+------------------------
+Location: packages/client/src/components/ToolSelectionPanel.tsx
+
+Requirements:
+- List all available MCP tools grouped by server
+- Toggle switches for individual tools
+- Server-level enable/disable
+- Search/filter functionality
+- Real-time status indicators
+
+WebSocket Events:
+- Listen: 'tools:list' - Available tools from server
+- Emit: 'tools:enable' - Enable specific tool
+- Emit: 'tools:disable' - Disable specific tool
+- Emit: 'tools:server:toggle' - Toggle entire server
+
+UI Design:
+- Collapsible server sections
+- Tool cards with descriptions
+- Status badges (enabled/disabled/pending)
+- Search bar with live filtering
+- Bulk actions toolbar
+
+3. MCP STATUS INDICATOR
+-----------------------
+Location: packages/client/src/components/MCPStatusIndicator.tsx
+
+Requirements:
+- Show MCP servers connection status
+- Display total available tools count
+- Indicate HIL protection status
+- Real-time updates
+
+WebSocket Events:
+- Listen: 'mcp:status' - Server status updates
+- Listen: 'mcp:error' - Connection errors
+
+UI Design:
+- Compact status bar component
+- Server icons with status dots
+- Tool count badge
+- HIL shield icon (active/inactive)
+
+4. TOOL EXECUTION FEEDBACK
 ---------------------------
-1. Add customModelCapabilityService stub to:
-   - packages/server/src/api/health.ts
-   - packages/server/src/services/ModelProgressiveLoader.ts
-   - packages/server/src/services/OllamaHealthCheck.ts
+Location: packages/client/src/components/ToolExecutionFeedback.tsx
 
-2. Fix ModelCapability type definition:
-   - Add missing properties: name, reasoning, maxTokens, contextWindow
-   - Or simplify to only { vision: boolean; tools: boolean }
+Requirements:
+- Show tool execution progress
+- Display results/errors
+- Maintain execution history
+- Namespace-qualified display
 
-3. Align streamliner interfaces:
-   - Both OllamaStreamliner and EnhancedOllamaStreamliner need:
-     * initialize(): Promise<void>
-     * processRequest(request: ChatRequest): Promise<ProcessedRequest>
-     * streamChat(request, onToken, onComplete): Promise<void>
+WebSocket Events:
+- Listen: 'tool:executing' - Tool execution started
+- Listen: 'tool:result' - Tool execution completed
+- Listen: 'tool:error' - Tool execution failed
 
-4. Fix MCPManager missing methods:
-   - Add callTool() method
-   - Add removeServer() method
-   - Fix getStatus() return type
-
-5. Fix EnhancedOllamaStreamliner ChatRequest type:
-   - Add optional properties: temperature, top_p, seed, num_ctx, messages, prompt
-   - Or use existing ChatRequest interface
+UI Design:
+- Toast notifications for quick feedback
+- Execution log panel (collapsible)
+- Success/error color coding
+- Copy result functionality
 
 ================================================================================
-PART 3: PHASE 2 - UI INTEGRATION (Next)
+INTEGRATION POINTS
 ================================================================================
 
-After TypeScript builds successfully:
+1. Chat Component Updates
+-------------------------
+File: packages/client/src/components/Chat.tsx
 
-1. Integrate HILConfirmationModal:
-   - Add to main chat UI
-   - Connect WebSocket events
-   - Test approval/rejection flow
+Required Changes:
+- Import HILConfirmationModal
+- Add state for HIL requests
+- Handle HIL WebSocket events
+- Render modal when HIL request active
 
-2. Add ToolSelectionPanel:
-   - Create UI component
-   - Wire to ToolSelectionService
-   - Add to settings or sidebar
+2. Settings Component Updates
+-----------------------------
+File: packages/client/src/components/Settings.tsx
 
-3. Test end-to-end:
-   - Non-tool model chat
-   - Tool-enabled model chat
-   - Tool execution with HIL
-   - Tool selection changes
+Required Changes:
+- Import ToolSelectionPanel
+- Add MCP tools tab
+- Integrate tool management UI
+- Persist tool preferences
 
-================================================================================
-PART 4: CONFIGURATION
-================================================================================
+3. Main Layout Updates
+----------------------
+File: packages/client/src/components/Layout.tsx
 
-ENVIRONMENT VARIABLES (.env):
-------------------------------
-# MCP Configuration
-MCP_ENABLED=true
-MCP_TRANSPORT=stdio
-GITHUB_PERSONAL_ACCESS_TOKEN=xxx
-
-# HIL Settings  
-HIL_ENABLED=true
-HIL_TIMEOUT_MS=30000
-
-# Model Compatibility
-COMPATIBLE_MODELS=qwen2.5,qwen3,llama3.1,llama3.2,mistral,deepseek-r1
-
-# REMOVE THESE (if still present):
-# MODEL_CAPABILITY_MODE=xxx
-# CAPABILITY_DETECTION_ENABLED=xxx
-# MCP_CONFIG_PATH=xxx
-
-DOCKER COMPOSE:
----------------
-Use only:
-- docker-compose.multihost.yml (base)
-- docker-compose.mcp.yml (MCP override if needed)
-
-Delete if present:
-- docker-compose.same-host.yml
-- docker-compose.same-host-existing-ollama.yml
+Required Changes:
+- Import MCPStatusIndicator
+- Add status bar to header/footer
+- Import ToolExecutionFeedback
+- Add feedback container
 
 ================================================================================
-PART 5: TESTING CHECKLIST
+WEBSOCKET PROTOCOL
 ================================================================================
 
-When build succeeds, verify:
+Client → Server:
+----------------
+{
+  type: 'hil:approve',
+  payload: { requestId: string }
+}
 
-[ ] TypeScript compiles without errors
-[ ] Server starts successfully
-[ ] Non-tool models work (qwen, llama without tools)
-[ ] Tool-enabled models work (qwen2.5, etc)
-[ ] MCP servers initialize (check logs)
-[ ] WebSocket connections establish
-[ ] Basic chat functionality works
+{
+  type: 'hil:reject',
+  payload: { requestId: string }
+}
 
-After UI integration:
+{
+  type: 'tools:enable',
+  payload: { toolId: string }
+}
 
-[ ] HIL modal appears for tool calls
-[ ] Tool selection UI updates properly
-[ ] Tool execution completes successfully
-[ ] Namespace qualification working
-[ ] No duplicate tool names
+{
+  type: 'tools:disable',
+  payload: { toolId: string }
+}
+
+Server → Client:
+----------------
+{
+  type: 'hil:request',
+  payload: {
+    requestId: string,
+    tool: {
+      serverId: string,
+      name: string,
+      description: string,
+      arguments: any
+    },
+    timeout: number
+  }
+}
+
+{
+  type: 'tools:list',
+  payload: {
+    servers: [{
+      id: string,
+      name: string,
+      status: string,
+      tools: [{
+        id: string,
+        name: string,
+        description: string,
+        enabled: boolean
+      }]
+    }]
+  }
+}
 
 ================================================================================
-PART 6: QUICK REFERENCE COMMANDS
+STYLING REQUIREMENTS
 ================================================================================
 
-# Build and test
-npm run build
-npm run build:server
+Use Tailwind CSS classes consistently:
+- Dark mode support (dark:* variants)
+- Responsive design (sm:, md:, lg: breakpoints)
+- Consistent spacing and typography
+- Smooth transitions and animations
+- Accessibility (ARIA labels, keyboard navigation)
 
-# Check for remaining issues
-grep -r "customModelCapabilityService" packages/server/src --include="*.ts"
-grep -r "MCPStreamliner" packages/server/src --include="*.ts"
-grep -r "detectCapabilities" packages/server/src --include="*.ts"
-
-# Start services (after successful build)
-make quick-docker-multi
-
-# Monitor logs
-docker-compose -f docker-compose.multihost.yml logs -f backend
-
-# Git commands for tracking progress
-git add -A && git commit -m "Phase X: Description"
-git status
-git diff --cached
+Color Scheme:
+- Success: green-500/600
+- Error: red-500/600
+- Warning: yellow-500/600
+- Info: blue-500/600
+- HIL: purple-500/600
+- MCP: indigo-500/600
 
 ================================================================================
-NOTES FOR NEXT SESSION
+STATE MANAGEMENT
 ================================================================================
 
-Priority order:
-1. Fix TypeScript compilation errors (51 remaining)
-2. Test basic chat functionality
-3. Implement UI components for HIL and Tool Selection
-4. Full integration testing
-5. Documentation update
+React Context/Hooks:
+- useHIL() - HIL request management
+- useTools() - Tool selection state
+- useMCPStatus() - MCP connection status
+- useToolExecution() - Execution history
 
-Key files to focus on:
-- health.ts, ModelProgressiveLoader.ts, OllamaHealthCheck.ts (need stubs)
-- MCPManager.ts (missing methods)
-- Type definitions in shared package
+Local Storage Keys:
+- 'mcp-tools-enabled' - User tool selections
+- 'hil-auto-approve' - HIL auto-approval settings (if implemented)
+- 'tool-execution-history' - Recent executions
 
-Remember: This is for Subproject 3 (multi-host) ONLY. 
-Other subprojects should not be affected.
+================================================================================
+PRIORITY ORDER
+================================================================================
+
+1. HILConfirmationModal - CRITICAL for safety
+2. MCPStatusIndicator - User awareness of system state  
+3. ToolSelectionPanel - User control over tools
+4. ToolExecutionFeedback - User feedback on actions
+5. Integration with existing components
+
+================================================================================
+FILE STRUCTURE
+================================================================================
+
+packages/client/src/
+├── components/
+│   ├── mcp/
+│   │   ├── HILConfirmationModal.tsx
+│   │   ├── ToolSelectionPanel.tsx
+│   │   ├── MCPStatusIndicator.tsx
+│   │   └── ToolExecutionFeedback.tsx
+│   └── ...existing components
+├── hooks/
+│   ├── useHIL.ts
+│   ├── useTools.ts
+│   ├── useMCPStatus.ts
+│   └── useToolExecution.ts
+├── contexts/
+│   └── MCPContext.tsx
+└── types/
+    └── mcp.ts
+
+================================================================================
+NOTES
+================================================================================
+
+- All UI components must handle loading and error states
+- WebSocket reconnection logic should be transparent to user
+- Tool namespaces must be clearly displayed (serverId.toolName)
+- HIL timeout must be visually prominent
+- Consider adding sound/vibration for HIL requests (optional)
+- Ensure mobile responsiveness for all components
 
 ================================================================================
