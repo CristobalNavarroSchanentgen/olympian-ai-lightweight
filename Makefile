@@ -818,7 +818,7 @@ env-docker-multi-interactive: ## Interactive multi-host environment configuratio
 	if [ -z "$$ollama_input" ]; then \
 		echo "$(RED)❌ Ollama host is required for multi-host deployment!$(RESET)"; \
 		exit 1; \
-	fi	fi; \
+	fi; \
 	if echo "$$ollama_input" | grep -E '^https?://' >/dev/null; then \
 		ollama_url="$$ollama_input"; \
 		echo "$(GREEN)✅ Using full URL: $$ollama_url$(RESET)"; \
@@ -828,7 +828,7 @@ env-docker-multi-interactive: ## Interactive multi-host environment configuratio
 			if [ $$octet -gt 255 ]; then \
 				echo "$(RED)❌ Invalid IP address: $$ip_part$(RESET)"; \
 				exit 1; \
-	fi			fi; \
+	fi; \
 		done; \
 		if echo "$$ollama_input" | grep -q ":"; then \
 			ollama_url="http://$$ollama_input"; \
@@ -863,11 +863,11 @@ env-docker-multi-interactive: ## Interactive multi-host environment configuratio
 		else \
 			echo "$(RED)❌ Hostname too long: $$ollama_input$(RESET)"; \
 			exit 1; \
-	fi		fi; \
+	fi; \
 	else \
 		echo "$(RED)❌ Invalid format. Please enter a valid URL, IP address, or hostname: $$ollama_input$(RESET)"; \
 		exit 1; \
-	fi	fi; \
+	fi; \
 	sed -i.bak 's|^OLLAMA_HOST=.*|OLLAMA_HOST='"$$ollama_url"'|' .env
 	@echo ""
 	@echo "$(CYAN)🗄️  MongoDB Configuration:$(RESET)"
