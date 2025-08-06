@@ -52,7 +52,7 @@ ARG GIT_COMMIT
 # Label the production image
 LABEL build_date=${BUILD_DATE}
 LABEL git_commit=${GIT_COMMIT}
-LABEL description="Olympian AI Lightweight Backend - MCP Architecture with 3 Servers"
+LABEL description="Olympian AI Lightweight Backend - Subproject 3 with Stdio MCP Servers via npx"
 
 # Install system dependencies
 # Note: No need to install MCP packages, npx will handle them on demand

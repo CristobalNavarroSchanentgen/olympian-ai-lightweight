@@ -1021,3 +1021,14 @@ env-docker-multi-interactive: ## Interactive multi-host environment configuratio
 	@echo "$(CYAN)🐳 Self-Reliant MCP Containers:$(RESET)"
 	@echo "  All MCP servers will run as containers - no external setup required!"
 	@echo "  GitHub, NASA, Met Museum, Context7, AppleScript, and Web Search included."
+
+# MCP Architecture deployment
+.PHONY: deploy-mcp
+deploy-mcp: ensure-docker env-setup
+	@echo Starting MCP Architecture deployment...
+	docker-compose -f docker-compose.multihost.yml up -d --build
+	@echo MCP Architecture deployment complete
+	@echo Frontend: http://localhost:80
+	@echo Backend API: http://localhost:4000/api
+	@echo HIL Protection is ENABLED by default
+

@@ -114,6 +114,7 @@ services:
       
     volumes:
       - app_logs_1:/app/logs
+      - ./mcp-config.stdio.json:/app/mcp-config.stdio.json:ro
     depends_on:
       redis:
         condition: service_healthy
@@ -170,6 +171,7 @@ services:
       
     volumes:
       - app_logs_2:/app/logs
+      - ./mcp-config.stdio.json:/app/mcp-config.stdio.json:ro
     depends_on:
       redis:
         condition: service_healthy

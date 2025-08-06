@@ -1,0 +1,33 @@
+# Docker Compose Override for MCP Architecture
+# This file extends docker-compose.multihost.yml with MCP-specific configuration
+
+version: '3.8'
+
+services:
+  olympian-backend-1:
+    environment:
+      # MCP Configuration
+      MCP_ENABLED: 'true'
+      MCP_TRANSPORT: 'stdio'
+      MCP_CONFIG_PATH: '/app/mcp-config.stdio.json'
+      
+      # HIL Configuration
+      HIL_ENABLED: 'true'
+      HIL_TIMEOUT_MS: '30000'
+      
+      # Compatible Models
+      COMPATIBLE_MODELS: 'qwen2.5,qwen3,llama3.1,llama3.2,mistral,deepseek-r1'
+
+  olympian-backend-2:
+    environment:
+      # MCP Configuration
+      MCP_ENABLED: 'true'
+      MCP_TRANSPORT: 'stdio'
+      MCP_CONFIG_PATH: '/app/mcp-config.stdio.json'
+      
+      # HIL Configuration
+      HIL_ENABLED: 'true'
+      HIL_TIMEOUT_MS: '30000'
+      
+      # Compatible Models
+      COMPATIBLE_MODELS: 'qwen2.5,qwen3,llama3.1,llama3.2,mistral,deepseek-r1'
