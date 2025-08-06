@@ -1,3 +1,11 @@
+// Stub for removed customModelCapabilityService
+const customModelCapabilityService = {
+  getModelCapability: () => null,
+  getCustomVisionModels: () => [],
+  getAllCustomCapabilities: () => ({}),
+  getCapabilityStats: () => ({}),
+  getAvailableModelNames: () => []
+};
 import { ChatRequest, ProcessedRequest, ModelCapability, VisionError, parseThinkingFromContent, ThinkingProcessingResult, ToolCall, ToolResult } from '@olympian/shared';
 // Stub for removed customModelCapabilityService
 const customModelCapabilityService = {
@@ -11,7 +19,6 @@ import { logger } from '../utils/logger';
 import { AppError } from '../middleware/errorHandler';
 import { getDeploymentConfig, OllamaLoadBalancer } from '../config/deployment';
 import { ChatMemoryService, MemoryConfig } from './ChatMemoryService';
-import { customModelCapabilityService } from './CustomModelCapabilityService';
 interface OllamaModelInfo {
   modelfile?: string;
   description?: string;
