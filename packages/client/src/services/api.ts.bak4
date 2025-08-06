@@ -703,6 +703,9 @@ class ApiService {
   }
 
   // MCP API
+  async getMCPServers(): Promise<MCPServer[]> {
+    return data.data || [];
+  }
 
   async addMCPServer(server: Omit<MCPServer, 'id' | 'status'>): Promise<MCPServer> {
     return data.data!;
@@ -1048,9 +1051,21 @@ class ApiService {
   }
 
   // Config API
+  async getMCPConfig(): Promise<any> {
+    return data.data;
+  }
 
+  async updateMCPConfig(config: any): Promise<void> {
+  }
 
+  async getToolOverrides(): Promise<Record<string, any>> {
+    const { data } = await this.client.get<ApiResponse<Record<string, any>>>('/config/tool-overrides');
+    return data.data || {};
+  }
 
+  async updateToolOverrides(overrides: Record<string, any>): Promise<void> {
+    await this.client.put('/config/tool-overrides', overrides);
+  }
 
   async getBackups(): Promise<any[]> {
     const { data } = await this.client.get<ApiResponse<any[]>>('/config/backups');

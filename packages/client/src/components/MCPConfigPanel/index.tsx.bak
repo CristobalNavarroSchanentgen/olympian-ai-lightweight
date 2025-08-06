@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from '@/hooks/useToast';
-import { useMCP } from '@/contexts/MCPContext';
+import { api } from '@/services/api';
 import { ConfigEditor } from './ConfigEditor';
 import { ToolDescriptionEditor } from './ToolDescriptionEditor';
 import { BackupManager } from './BackupManager';
@@ -11,37 +11,49 @@ import { ServerManager } from './ServerManager';
 import { Save, Download, Upload } from 'lucide-react';
 
 export function MCPConfigPanel() {
-  const { servers, config: mcpConfig, updateConfig, isConnected } = useMCP();
-  const [config, setConfig] = useState<any>(mcpConfig || {});
+  const [config, setConfig] = useState<any>({});
   const [toolOverrides, setToolOverrides] = useState<Record<string, any>>({});
   const [availableTools, setAvailableTools] = useState<any[]>([]);
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [activeTab, setActiveTab] = useState('config');
 
-  // Sync with MCP context config
-  useEffect(() => {
-    if (mcpConfig) {
-      setConfig(mcpConfig);
+  const loadConfig = async () => {
+    try {
+      const data = await api.getMCPConfig();
+      setConfig(data);
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to load MCP configuration',
+        variant: 'destructive',
+      });
     }
-  }, [mcpConfig]);
+  };
 
-  // Extract tools from servers
-  useEffect(() => {
-    const tools = servers.flatMap(server => 
-      server.tools?.map(tool => ({
-        ...tool,
-        serverId: server.id,
-        serverName: server.name
-      })) || []
-    );
-    setAvailableTools(tools);
-  }, [servers]);
+  const loadToolOverrides = async () => {
+    try {
+      const data = await api.getToolOverrides();
+      setToolOverrides(data || {});
+    } catch (error) {
+      console.error('Failed to load tool overrides:', error);
+    }
+  };
+
+  const loadAvailableTools = async () => {
+    try {
+      await api.getMCPServers()
+      setAvailableTools([]);
+    } catch (error) {
+      console.log('Tools not available:', error);
+      setAvailableTools([]);
+    }
+  };
 
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      updateConfig(config);
+      await api.updateMCPConfig(config);
       setHasChanges(false);
       toast({
         title: 'Success',
@@ -61,8 +73,7 @@ export function MCPConfigPanel() {
   const handleSaveToolOverrides = async () => {
     setIsSaving(true);
     try {
-      // Store tool overrides in config
-      updateConfig({ ...config, toolOverrides });
+      await api.updateToolOverrides(toolOverrides);
       setHasChanges(false);
       toast({
         title: 'Success',

@@ -532,10 +532,9 @@ export function DivineDialog() {
       />
       <ToolExecutionFeedback />
       <div className="fixed top-4 right-4 z-50">
-      <div className="fixed top-4 right-4 z-50">
         <MCPStatusIndicator />
-        <ToolSelectionPanel className="mt-2" />
-      </div>    </div>
+      </div>
+    </div>
   );
 
   return (

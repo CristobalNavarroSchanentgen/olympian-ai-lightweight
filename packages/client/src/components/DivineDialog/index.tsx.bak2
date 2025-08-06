@@ -11,7 +11,7 @@ import { Message, ThinkingData } from '@olympian/shared';
 import { toast } from '@/hooks/useToast';
 import { Plus } from 'lucide-react';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
-import { HILConfirmationModal, MCPStatusIndicator, ToolExecutionFeedback, ToolSelectionPanel } from "@/components/mcp";
+import { HILConfirmationModal, MCPStatusIndicator, ToolExecutionFeedback } from "@/components/mcp";
 import { useMCP } from "@/contexts/MCPContext";
 
 // Create a unique identifier for messages (handles messages without _id)
@@ -532,10 +532,9 @@ export function DivineDialog() {
       />
       <ToolExecutionFeedback />
       <div className="fixed top-4 right-4 z-50">
-      <div className="fixed top-4 right-4 z-50">
         <MCPStatusIndicator />
-        <ToolSelectionPanel className="mt-2" />
-      </div>    </div>
+      </div>
+    </div>
   );
 
   return (

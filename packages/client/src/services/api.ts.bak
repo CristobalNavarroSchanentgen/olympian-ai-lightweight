@@ -703,25 +703,35 @@ class ApiService {
   }
 
   // MCP API
+  async getMCPServers(): Promise<MCPServer[]> {
+    const { data } = await this.client.get<ApiResponse<MCPServer[]>>('/mcp/servers');
+    return data.data || [];
+  }
 
   async addMCPServer(server: Omit<MCPServer, 'id' | 'status'>): Promise<MCPServer> {
+    const { data } = await this.client.post<ApiResponse<MCPServer>>('/mcp/servers', server);
     return data.data!;
   }
 
   async removeMCPServer(id: string): Promise<void> {
+    await this.client.delete(`/mcp/servers/${id}`);
   }
 
   async startMCPServer(id: string): Promise<void> {
+    await this.client.post(`/mcp/servers/${id}/start`);
   }
 
   async stopMCPServer(id: string): Promise<void> {
+    await this.client.post(`/mcp/servers/${id}/stop`);
   }
 
   async getMCPTools(serverId: string): Promise<MCPTool[]> {
+    const { data } = await this.client.get<ApiResponse<MCPTool[]>>(`/mcp/servers/${serverId}/tools`);
     return data.data || [];
   }
 
   async invokeMCPTool(request: MCPInvokeRequest): Promise<MCPInvokeResponse> {
+    const { data } = await this.client.post<ApiResponse<MCPInvokeResponse>>('/mcp/invoke', request);
     return data.data!;
   }
 
@@ -1048,9 +1058,23 @@ class ApiService {
   }
 
   // Config API
+  async getMCPConfig(): Promise<any> {
+    const { data } = await this.client.get<ApiResponse<any>>('/config/mcp');
+    return data.data;
+  }
 
+  async updateMCPConfig(config: any): Promise<void> {
+    await this.client.put('/config/mcp', config);
+  }
 
+  async getToolOverrides(): Promise<Record<string, any>> {
+    const { data } = await this.client.get<ApiResponse<Record<string, any>>>('/config/tool-overrides');
+    return data.data || {};
+  }
 
+  async updateToolOverrides(overrides: Record<string, any>): Promise<void> {
+    await this.client.put('/config/tool-overrides', overrides);
+  }
 
   async getBackups(): Promise<any[]> {
     const { data } = await this.client.get<ApiResponse<any[]>>('/config/backups');
