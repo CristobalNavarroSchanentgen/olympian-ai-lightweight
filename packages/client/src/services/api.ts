@@ -702,26 +702,30 @@ class ApiService {
     return data.data || [];
   }
 
+  async getMCPServers(): Promise<MCPServer[]> {
+    const { data } = await this.client.get<ApiResponse<MCPServer[]>>("/mcp/servers");
+    return data.data || [];
+  }
   // MCP API
 
   async addMCPServer(server: Omit<MCPServer, 'id' | 'status'>): Promise<MCPServer> {
-    return data.data!;
+    const { data } = await this.client.post<ApiResponse<MCPServer>>("/mcp/servers", server);
   }
 
   async removeMCPServer(id: string): Promise<void> {
-  }
-
-  async startMCPServer(id: string): Promise<void> {
+  }  async startMCPServer(id: string): Promise<void> {
   }
 
   async stopMCPServer(id: string): Promise<void> {
   }
 
   async getMCPTools(serverId: string): Promise<MCPTool[]> {
+    const { data } = await this.client.get<ApiResponse<MCPTool[]>>(`/mcp/servers/${serverId}/tools`);
     return data.data || [];
   }
 
   async invokeMCPTool(request: MCPInvokeRequest): Promise<MCPInvokeResponse> {
+    const { data } = await this.client.post<ApiResponse<MCPInvokeResponse>>("/mcp/invoke", request);
     return data.data!;
   }
 
@@ -730,9 +734,7 @@ class ApiService {
       `/chat/conversations?page=${page}&limit=${limit}`
     );
     return { conversations: data.data || [], total: data.total };
-  }
-
-  async getConversation(id: string): Promise<Conversation> {
+  }  async getConversation(id: string): Promise<Conversation> {
     const { data } = await this.client.get<ApiResponse<Conversation>>(`/chat/conversations/${id}`);
     return data.data!;
   }

@@ -7,7 +7,7 @@ interface ToolExecution {
   id: string;
   toolName: string;
   namespace: string;
-  status: 'executing' as const | 'success' | 'error';
+  status: 'executing' | 'success' | 'error';
   result?: any;
   error?: string;
   timestamp: Date;

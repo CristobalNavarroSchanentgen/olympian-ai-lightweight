@@ -11,9 +11,10 @@ import { Message, ThinkingData } from '@olympian/shared';
 import { toast } from '@/hooks/useToast';
 import { Plus } from 'lucide-react';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
-import { HILConfirmationModal, MCPStatusIndicator, ToolExecutionFeedback, ToolSelectionPanel } from "@/components/mcp";
 import { useMCP } from "@/contexts/MCPContext";
-
+import { HILConfirmationModal } from "@/components/mcp/HILConfirmationModal";
+import { ToolExecutionFeedback } from "@/components/mcp/ToolExecutionFeedback";
+import { MCPStatusIndicator } from "@/components/mcp/MCPStatusIndicator";
 // Create a unique identifier for messages (handles messages without _id)
 const getMessageIdentifier = (message: Message, index?: number): string => {
   if (message._id) {
@@ -524,21 +525,8 @@ export function DivineDialog() {
         />
       </div>
 
-      {/* MCP Components */}
-      <HILConfirmationModal 
-        request={hilRequest}
-        onApprove={approveHIL}
-        onReject={rejectHIL}
-      />
-      <ToolExecutionFeedback />
-      <div className="fixed top-4 right-4 z-50">
-      <div className="fixed top-4 right-4 z-50">
-        <MCPStatusIndicator />
-        <ToolSelectionPanel className="mt-2" />
-      </div>    </div>
-  );
-
-  return (
+    </div>
+  );  return (
     <div className="h-full flex bg-gray-900">
       {isArtifactPanelOpen ? (
         // When artifact panel is open, use resizable panels

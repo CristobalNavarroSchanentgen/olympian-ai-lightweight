@@ -15,7 +15,7 @@ interface MCPStatusIndicatorProps {
 
 export function MCPStatusIndicator({ className }: MCPStatusIndicatorProps) {
   const [servers, setServers] = useState<MCPServer[]>([]);
-  const [hilActive, setHilActive] = useState(true);
+  const [hilActive] = useState(true);
   const [totalTools, setTotalTools] = useState(0);
 
   useEffect(() => {
