@@ -1,34 +1,40 @@
-import { MCPClient } from '@modelcontextprotocol/sdk/client/index.js';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import { MCPServer, MCPTool, MCPInvokeResult } from '@olympian/shared';
-import { logger } from '../utils/logger';
+import { MCPTool, MCPResource, MCPServer, MCPServerStatus } from '@olympian/shared';
 import { spawn, ChildProcess } from 'child_process';
-import path from 'path';
-import fs from 'fs/promises';
+import { logger } from '../utils/logger';
+import * as fs from 'fs/promises';
+import * as path from 'path';
 
-interface ServerData {
-  client: MCPClient;
-  server: MCPServer;
-  transport?: StdioClientTransport;
-  process?: ChildProcess;
+interface ServerProcess {
+  process: ChildProcess;
+  client: Client;
+  transport: StdioClientTransport;
+  status: MCPServerStatus;
   tools: MCPTool[];
+  resources?: MCPResource[];
 }
 
 /**
- * Simplified MCP Manager - Only supports GitHub, AppleScript, and Context7 servers
+ * MCPManager - Streamlined to support only 3 MCP servers
+ * GitHub, AppleScript, and Context7
  */
 export class MCPManager {
   private static instance: MCPManager;
-  private servers: Map<string, ServerData> = new Map();
+  private servers: Map<string, ServerProcess> = new Map();
   private initialized = false;
-  
+
+  private constructor() {
+    logger.info('🚀 [MCP] Manager instantiated');
+  }
+
   static getInstance(): MCPManager {
     if (!MCPManager.instance) {
       MCPManager.instance = new MCPManager();
     }
     return MCPManager.instance;
   }
-  
+
   /**
    * Initialize with only 3 required MCP servers
    */
@@ -73,223 +79,273 @@ export class MCPManager {
     ];
     
     // Start all servers
-    await Promise.all(mcpServers.map(server => this.addServer(server)));
+    const results = await Promise.allSettled(
+      mcpServers.map(server => this.addServer(server))
+    );
+    
+    // Log results
+    results.forEach((result, index) => {
+      const server = mcpServers[index];
+      if (result.status === 'rejected') {
+        logger.error(`❌ [MCP] Failed to start ${server.name}: ${result.reason}`);
+      } else {
+        logger.info(`✅ [MCP] Started ${server.name}`);
+      }
+    });
     
     this.initialized = true;
     logger.info(`✅ [MCP] Initialized with ${this.servers.size} servers`);
   }
-  
+
   /**
-   * Add a server to the manager
+   * Add and start a server
    */
   async addServer(config: MCPServer): Promise<void> {
+    const { id, name, command, args = [], env = {} } = config;
+    
+    if (this.servers.has(id)) {
+      logger.warn(`[MCP] Server ${id} already exists`);
+      return;
+    }
+
+    logger.info(`[MCP] Starting server: ${name}`);
+
     try {
-      logger.info(`🔄 [MCP] Adding server: ${config.name}`);
-      
-      const client = new MCPClient({
-        name: `olympian-${config.name}`,
-        version: '1.0.0'
+      // Spawn the server process
+      const serverEnv = { ...process.env, ...env };
+      const serverProcess = spawn(command, args, {
+        env: serverEnv,
+        stdio: ['pipe', 'pipe', 'pipe'],
+        shell: true
       });
-      
-      // Create transport based on type
-      if (config.transport === 'stdio') {
-        const transport = new StdioClientTransport({
-          command: config.command,
-          args: config.args || [],
-          env: {
-            ...process.env,
-            ...config.env
+
+      // Create transport
+      const transport = new StdioClientTransport({
+        stdin: serverProcess.stdin!,
+        stdout: serverProcess.stdout!,
+        stderr: serverProcess.stderr!
+      });
+
+      // Create client
+      const client = new Client(
+        {
+          name: `olympian-${id}`,
+          version: '1.0.0'
+        },
+        {
+          capabilities: {
+            tools: {},
+            resources: {}
           }
-        });
-        
-        await client.connect(transport);
-        
-        // List available tools
-        const tools = await this.listServerTools(client, config.id);
-        
-        this.servers.set(config.id, {
-          client,
-          server: { ...config, status: 'running' },
-          transport,
-          tools
-        });
-        
-        logger.info(`✅ [MCP] Server ${config.name} added with ${tools.length} tools`);
-      }
+        }
+      );
+
+      // Handle process errors
+      serverProcess.on('error', (error) => {
+        logger.error(`[MCP] Server ${name} process error:`, error);
+        this.servers.delete(id);
+      });
+
+      serverProcess.on('exit', (code) => {
+        logger.info(`[MCP] Server ${name} exited with code ${code}`);
+        this.servers.delete(id);
+      });
+
+      // Connect client
+      await client.connect(transport);
+
+      // List available tools
+      const toolsResponse = await client.listTools();
+      const tools: MCPTool[] = toolsResponse.tools.map(tool => ({
+        name: tool.name,
+        description: tool.description || '',
+        inputSchema: tool.inputSchema as any
+      }));
+
+      logger.info(`[MCP] Server ${name} connected with ${tools.length} tools`);
+
+      // Store server info
+      this.servers.set(id, {
+        process: serverProcess,
+        client,
+        transport,
+        status: 'running',
+        tools
+      });
+
     } catch (error) {
-      logger.error(`❌ [MCP] Failed to add server ${config.name}:`, error);
+      logger.error(`[MCP] Failed to start server ${name}:`, error);
       throw error;
     }
   }
-  
+
   /**
-   * List tools from a specific server
+   * Stop a server
    */
-  private async listServerTools(client: MCPClient, serverId: string): Promise<MCPTool[]> {
+  async stopServer(id: string): Promise<void> {
+    const server = this.servers.get(id);
+    if (!server) {
+      logger.warn(`[MCP] Server ${id} not found`);
+      return;
+    }
+
     try {
-      const response = await client.listTools();
-      const tools: MCPTool[] = response.tools.map(tool => ({
-        name: tool.name,
-        description: tool.description || '',
-        inputSchema: tool.inputSchema || {}
-      }));
-      
-      logger.info(`📋 [MCP] Server ${serverId} has ${tools.length} tools`);
-      return tools;
+      await server.client.close();
+      server.process.kill();
+      this.servers.delete(id);
+      logger.info(`[MCP] Server ${id} stopped`);
     } catch (error) {
-      logger.error(`❌ [MCP] Failed to list tools for ${serverId}:`, error);
-      return [];
+      logger.error(`[MCP] Error stopping server ${id}:`, error);
+      server.process.kill('SIGKILL');
+      this.servers.delete(id);
     }
   }
-  
+
   /**
-   * Invoke a tool on a specific server
+   * List all tools from all servers
+   */
+  async listTools(): Promise<MCPTool[]> {
+    const allTools: MCPTool[] = [];
+    
+    for (const [serverId, server] of this.servers) {
+      if (server.status === 'running') {
+        allTools.push(...server.tools);
+      }
+    }
+    
+    return allTools;
+  }
+
+  /**
+   * Invoke a tool
    */
   async invokeTool(params: {
     serverId: string;
     toolName: string;
     arguments: any;
-  }): Promise<MCPInvokeResult> {
-    const startTime = Date.now();
+  }): Promise<{
+    success: boolean;
+    result?: any;
+    error?: string;
+  }> {
+    const server = this.servers.get(params.serverId);
     
+    if (!server) {
+      return {
+        success: false,
+        error: `Server ${params.serverId} not found`
+      };
+    }
+
+    if (server.status !== 'running') {
+      return {
+        success: false,
+        error: `Server ${params.serverId} is not running`
+      };
+    }
+
     try {
-      const serverData = this.servers.get(params.serverId);
-      if (!serverData) {
-        throw new Error(`Server ${params.serverId} not found`);
-      }
-      
-      logger.info(`🔧 [MCP] Invoking ${params.toolName} on ${params.serverId}`);
-      
-      const result = await serverData.client.callTool({
+      const result = await server.client.callTool({
         name: params.toolName,
         arguments: params.arguments
       });
-      
-      const duration = Date.now() - startTime;
-      
-      logger.info(`✅ [MCP] Tool ${params.toolName} completed in ${duration}ms`);
-      
+
       return {
         success: true,
-        result: result.content,
-        duration,
-        serverId: params.serverId,
-        toolName: params.toolName
+        result: result.content
       };
     } catch (error: any) {
-      const duration = Date.now() - startTime;
-      
-      logger.error(`❌ [MCP] Tool invocation failed:`, error);
-      
+      logger.error(`[MCP] Tool invocation failed:`, error);
       return {
         success: false,
-        error: error.message || 'Unknown error',
-        duration,
-        serverId: params.serverId,
-        toolName: params.toolName
+        error: error.message || 'Tool invocation failed'
       };
     }
   }
-  
+
   /**
-   * List all available tools from all servers
+   * Get server status
    */
-  async listTools(): Promise<MCPTool[]> {
-    const allTools: MCPTool[] = [];
-    
-    for (const [serverId, serverData] of this.servers) {
-      // Add server prefix to tool names for namespacing
-      const namespacedTools = serverData.tools.map(tool => ({
-        ...tool,
-        name: `${serverId}.${tool.name}`,
-        description: `[${serverId}] ${tool.description}`
-      }));
-      allTools.push(...namespacedTools);
-    }
-    
-    return allTools;
+  getServerStatus(id: string): MCPServerStatus {
+    const server = this.servers.get(id);
+    return server?.status || 'stopped';
   }
-  
+
   /**
    * Get all servers
    */
-  getServers(): Map<string, ServerData> {
+  getServers(): Map<string, ServerProcess> {
     return this.servers;
   }
-  
+
   /**
-   * Get server statistics
+   * Get stats
    */
   getStats(): {
     totalServers: number;
     runningServers: number;
     totalTools: number;
-    serverDetails: Array<{
-      id: string;
-      name: string;
-      status: string;
-      toolCount: number;
-    }>;
   } {
-    const serverDetails = Array.from(this.servers.entries()).map(([id, data]) => ({
-      id,
-      name: data.server.name,
-      status: data.server.status,
-      toolCount: data.tools.length
-    }));
-    
+    let runningServers = 0;
+    let totalTools = 0;
+
+    for (const server of this.servers.values()) {
+      if (server.status === 'running') {
+        runningServers++;
+        totalTools += server.tools.length;
+      }
+    }
+
     return {
       totalServers: this.servers.size,
-      runningServers: serverDetails.filter(s => s.status === 'running').length,
-      totalTools: serverDetails.reduce((sum, s) => sum + s.toolCount, 0),
-      serverDetails
+      runningServers,
+      totalTools
     };
   }
-  
+
   /**
-   * Stop a specific server
+   * Shutdown all servers
    */
-  async stopServer(serverId: string): Promise<void> {
-    const serverData = this.servers.get(serverId);
-    if (!serverData) {
-      logger.warn(`Server ${serverId} not found`);
-      return;
-    }
+  async shutdown(): Promise<void> {
+    logger.info('[MCP] Shutting down all servers...');
     
-    try {
-      await serverData.client.close();
-      serverData.server.status = 'stopped';
-      logger.info(`🛑 [MCP] Server ${serverId} stopped`);
-    } catch (error) {
-      logger.error(`❌ [MCP] Failed to stop server ${serverId}:`, error);
-    }
-  }
-  
-  /**
-   * Restart a server
-   */
-  async restartServer(serverId: string): Promise<void> {
-    await this.stopServer(serverId);
+    const stopPromises = Array.from(this.servers.keys()).map(id => 
+      this.stopServer(id)
+    );
     
-    const serverData = this.servers.get(serverId);
-    if (serverData) {
-      await this.addServer(serverData.server);
-    }
-  }
-  
-  /**
-   * Cleanup all servers
-   */
-  async cleanup(): Promise<void> {
-    logger.info('🧹 [MCP] Cleaning up all servers...');
-    
-    for (const serverId of this.servers.keys()) {
-      await this.stopServer(serverId);
-    }
+    await Promise.allSettled(stopPromises);
     
     this.servers.clear();
     this.initialized = false;
     
-    logger.info('✅ [MCP] All servers cleaned up');
+    logger.info('[MCP] All servers shut down');
+  }
+
+  /**
+   * Restart a server
+   */
+  async restartServer(id: string, config: MCPServer): Promise<void> {
+    await this.stopServer(id);
+    await this.addServer(config);
+  }
+
+  /**
+   * Health check for all servers
+   */
+  async healthCheck(): Promise<Map<string, boolean>> {
+    const health = new Map<string, boolean>();
+    
+    for (const [id, server] of this.servers) {
+      try {
+        // Try to list tools as a health check
+        await server.client.listTools();
+        health.set(id, true);
+      } catch (error) {
+        health.set(id, false);
+        logger.warn(`[MCP] Health check failed for ${id}`);
+      }
+    }
+    
+    return health;
   }
 }
