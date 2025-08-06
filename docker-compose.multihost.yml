@@ -36,8 +36,6 @@ services:
       - ./docker/mongodb/mongod.conf:/etc/mongod.conf
       - ./docker/mongodb/init-replica.js:/docker-entrypoint-initdb.d/init-replica.js
     environment:
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USERNAME:-admin}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-password}
       MONGO_INITDB_DATABASE: olympian-ai
     command: mongod --replSet rs0
     healthcheck:
@@ -190,24 +188,24 @@ services:
       - olympian-network
 
   # Frontend Application
-  olympian-frontend:
-    build:
-      context: .
-      dockerfile: docker/frontend/Dockerfile
-      args:
-        NODE_ENV: production
-        VITE_API_URL: ${VITE_API_URL:-http://localhost/api}
-        VITE_WS_URL: ${VITE_WS_URL:-ws://localhost/ws}
-    container_name: olympian-frontend
-    restart: unless-stopped
-    environment:
-      NODE_ENV: production
-    depends_on:
-      - nginx
-    networks:
-      - olympian-network
-
-  # Monitoring Dashboard (Optional)
+#   olympian-frontend:
+#     build:
+#       context: .
+#       dockerfile: docker/frontend/Dockerfile
+#       args:
+#         NODE_ENV: production
+#         VITE_API_URL: ${VITE_API_URL:-http://localhost/api}
+#         VITE_WS_URL: ${VITE_WS_URL:-ws://localhost/ws}
+#     container_name: olympian-frontend
+#     restart: unless-stopped
+#     environment:
+#       NODE_ENV: production
+#     depends_on:
+#       - nginx
+#     networks:
+#       - olympian-network
+# 
+#   # Monitoring Dashboard (Optional)
   monitoring-dashboard:
     image: grafana/grafana:10.2.0
     container_name: olympian-monitoring
