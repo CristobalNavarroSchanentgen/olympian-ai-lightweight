@@ -1047,8 +1047,11 @@ deploy-mcp: ensure-docker env-setup
 
 
 clean-docker-cache: ## Remove ALL Docker build cache (use when changes are not reflecting)
-	@echo "$(RED)⚠️  Removing ALL Docker build cache...$(RESET)"
+
+clean-docker-cache: ## Remove ALL Docker build cache (use when changes are not reflecting)
+	@echo "\$(RED)⚠️  Removing ALL Docker build cache...\$(RESET)"
 	@docker builder prune -af
 	@docker system prune -af --volumes
-	@echo "$(GREEN)✅ Docker cache completely cleared!$(RESET)"
+	@echo "\$(GREEN)✅ Docker cache completely cleared!\$(RESET)"
 
+clean-cache: clean-docker-cache ## Alias for clean-docker-cache
