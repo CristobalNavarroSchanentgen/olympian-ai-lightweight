@@ -914,8 +914,8 @@ env-docker-multi-interactive: ## Interactive multi-host environment configuratio
 	fi
 	@echo ""
 	@echo "$(CYAN)🔐 MCP Server Authentication Setup$(RESET)"
-	@echo "$(YELLOW)Self-reliant multi-host deployment includes integrated MCP servers that require authentication$(RESET)"
-	@echo "$(YELLOW)for enhanced functionality. You can configure these tokens now or later.$(RESET)"
+	@echo "$(YELLOW)Multi-host deployment includes GitHub, AppleScript, and Context7 MCP servers. GitHub requires authentication$(RESET)"
+	@echo "$(YELLOW)for repository access. You can configure this token now or later.$(RESET)"
 	@echo ""
 	@echo "$(CYAN)🐙 GitHub MCP Server Configuration$(RESET)"
 	@echo "$(YELLOW)The GitHub MCP server provides repository access, issue management, and PR capabilities.$(RESET)"
@@ -940,36 +940,10 @@ env-docker-multi-interactive: ## Interactive multi-host environment configuratio
 		echo "$(YELLOW)⚠️  GitHub token not configured - some MCP features will be limited$(RESET)"; \
 	fi
 	@echo ""
-	@echo "$(CYAN)🚀 NASA MCP Server Configuration$(RESET)"
-	@echo "$(YELLOW)The NASA MCP server provides space data and APIs.$(RESET)"
-	@echo "$(YELLOW)Get a free API key: https://api.nasa.gov/$(RESET)"
-	@echo "$(YELLOW)Note: DEMO_KEY provides limited functionality$(RESET)"
-	@printf "Enter your NASA API Key (or press Enter for DEMO_KEY): "; \
-	read nasa_key; \
-	if [ -n "$$nasa_key" ]; then \
-		sed -i.bak 's|^NASA_API_KEY=.*|NASA_API_KEY='"$$nasa_key"'|' .env; \
-		echo "$(GREEN)✅ NASA API key configured$(RESET)"; \
 	else \
-		sed -i.bak 's|^NASA_API_KEY=.*|NASA_API_KEY=DEMO_KEY|' .env; \
 		echo "$(GREEN)✅ Using NASA DEMO_KEY (limited functionality)$(RESET)"; \
 	fi
 	@echo ""
-	@echo "$(CYAN)🔍 Web Search MCP Server Configuration$(RESET)"
-	@echo "$(YELLOW)The Web Search MCP server provides search capabilities via Brave Search.$(RESET)"
-	@echo "$(YELLOW)Get a free API key: https://brave.com/search/api/$(RESET)"
-	@echo "$(YELLOW)Note: Limited functionality without API key$(RESET)"
-	@printf "Enter your Brave Search API Key (or press Enter to skip): "; \
-	read -s brave_key; echo; \
-	if [ -n "$$brave_key" ]; then \
-		sed -i.bak 's|^BRAVE_API_KEY=.*|BRAVE_API_KEY='"$$brave_key"'|' .env; \
-		echo "$(GREEN)✅ Brave Search API key configured$(RESET)"; \
-	else \
-		if grep -q "^BRAVE_API_KEY=" .env; then \
-			sed -i.bak 's|^BRAVE_API_KEY=.*|# BRAVE_API_KEY=your_brave_api_key_here|' .env; \
-		else \
-			echo "# BRAVE_API_KEY=your_brave_api_key_here" >> .env; \
-		fi; \
-		echo "$(YELLOW)⚠️  Brave Search API key not configured - web search will have limited functionality$(RESET)"; \
 	fi
 	@echo ""
 	@echo "$(CYAN)🤖 Model Capability Configuration:$(RESET)"
@@ -1028,12 +1002,6 @@ env-docker-multi-interactive: ## Interactive multi-host environment configuratio
 	else \
 		echo "  $(YELLOW)⚠️  GitHub token not configured$(RESET)"; \
 	fi
-	@grep "^NASA_API_KEY=" .env | sed 's/^/  /'
-	@if grep -q "^BRAVE_API_KEY=" .env && ! grep -q "^# BRAVE_API_KEY=" .env; then \
-		echo "  $(GREEN)✅ Brave Search API key configured$(RESET)"; \
-	else \
-		echo "  $(YELLOW)⚠️  Brave Search API key not configured$(RESET)"; \
-	fi
 	@echo ""
 	@echo "$(CYAN)📚 Development Mode Available:$(RESET)"
 	@echo "  For development with hot reloading, use: $(CYAN)make dev-multi$(RESET)"
@@ -1041,7 +1009,7 @@ env-docker-multi-interactive: ## Interactive multi-host environment configuratio
 	@echo ""
 	@echo "$(CYAN)🐳 Self-Reliant MCP Containers:$(RESET)"
 	@echo "  All MCP servers will run as containers - no external setup required!"
-	@echo "  GitHub, NASA, Met Museum, Context7, AppleScript, and Web Search included."
+	@echo "  GitHub, AppleScript, and Context7 included."
 
 # MCP Architecture deployment
 .PHONY: deploy-mcp
