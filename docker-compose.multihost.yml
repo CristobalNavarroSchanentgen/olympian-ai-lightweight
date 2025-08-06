@@ -58,6 +58,7 @@ services:
       - ./docker/nginx/nginx-multihost.conf:/etc/nginx/nginx.conf
       - ./docker/nginx/ssl:/etc/nginx/ssl
       - nginx_logs:/var/log/nginx
+      - ./packages/client/dist:/usr/share/nginx/html
     depends_on:
       - olympian-backend-1
       - olympian-backend-2
