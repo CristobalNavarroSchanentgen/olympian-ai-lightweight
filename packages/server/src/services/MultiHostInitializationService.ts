@@ -159,7 +159,6 @@ export class MultiHostInitializationService {
       await this.services.monitoring.initialize();
       
       // Perform initial health check
-      const healthResult = await this.services.monitoring.performHealthCheck();
       
       console.log(`✅ [MultiHostInit] Monitoring ready - Health score: ${healthResult.score}/100`);
       
@@ -240,14 +239,12 @@ export class MultiHostInitializationService {
         monitoringHealth
       ] = await Promise.all([
         this.services.database.checkArtifactsHealth(),
-        this.services.coordination.healthCheck(),
         this.services.performance.getPerformanceMetrics(),
-        this.services.monitoring.performHealthCheck()
       ]);
 
       return {
         overall: {
-          healthy: dbHealth.isHealthy && coordinationHealth.healthy && monitoringHealth.healthy,
+          status: dbHealth.isHealthy && coordinationHealth.healthy && monitoringHealth.healthy,
           score: monitoringHealth.score
         },
         database: dbHealth,
@@ -262,7 +259,7 @@ export class MultiHostInitializationService {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       return {
         overall: {
-          healthy: false,
+          status: false,
           score: 0,
           error: errorMessage
         },

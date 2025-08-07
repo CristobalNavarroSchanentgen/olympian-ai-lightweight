@@ -11,7 +11,6 @@ import { Server as SocketIOServer } from 'socket.io';
 import { DatabaseService } from './services/DatabaseService';
 import { WebSocketService } from './services/WebSocketService';
 import { ConnectionScanner } from './services/ConnectionScanner';
-import { OllamaHealthCheck } from './services/OllamaHealthCheck';
 import { modelProgressiveLoader } from './services/ModelProgressiveLoader';
 import { ArtifactService } from './services/ArtifactService';
 import { multiHostInit } from './services/MultiHostInitializationService';
@@ -77,23 +76,6 @@ app.use(requestLogger);
 app.use('/api', apiRoutes);
 
 // Health check endpoint
-app.get('/health', async (req, res) => {
-  const mcpStats = MCPManager.getInstance().getStats();
-  
-  res.json({ 
-    status: 'healthy', 
-    timestamp: new Date().toISOString(),
-    version: process.env.npm_package_version || '1.0.0',
-    instanceId: INSTANCE_ID,
-    hostname: HOSTNAME,
-    multiHost: ENABLE_MULTI_HOST,
-    deploymentMode: DEPLOYMENT_MODE,
-    mcp: {
-      enabled: MCP_ENABLED,
-      ...mcpStats
-    }
-  });
-});
 
 // Error handling
 app.use(errorHandler);
@@ -129,10 +111,6 @@ async function initializeServices() {
     const scanner = ConnectionScanner.getInstance();
     await scanner.initialize();
 
-    // Initialize Ollama health check
-    console.log('🏥 [Server] Initializing Ollama health check...');
-    const healthCheck = OllamaHealthCheck.getInstance();
-    await healthCheck.initialize();
 
     // Initialize multi-host services if enabled
     if (ENABLE_MULTI_HOST) {
@@ -319,7 +297,6 @@ async function startServer() {
       
       console.log(`🌐 [Server] CORS enabled for: ${CLIENT_URL}`);
       console.log(`📊 [Server] API endpoints available at: http://localhost:${PORT}/api`);
-      console.log(`🏥 [Server] Health check: http://localhost:${PORT}/health`);
       
       console.log('\n✨ [Server] Ready to accept connections!');
     });

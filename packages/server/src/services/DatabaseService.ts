@@ -31,9 +31,6 @@ export class DatabaseService {
   }
 
   // NEW: Add isHealthy property for multi-host deployment (Subproject 3)
-  public get isHealthy(): boolean {
-    return this.isConnected();
-  }
 
   public async connect(uri: string): Promise<void> {
     try {
@@ -236,7 +233,6 @@ export class DatabaseService {
    * NEW: Health check specifically for artifacts collection
    */
   public async checkArtifactsHealth(): Promise<{
-    isHealthy: boolean;
     totalCount: number;
     conflictCount: number;
     syncedCount: number;
@@ -276,7 +272,6 @@ export class DatabaseService {
       }
 
       return {
-        isHealthy: issues.length === 0,
         totalCount,
         conflictCount,
         syncedCount,
@@ -285,9 +280,7 @@ export class DatabaseService {
       };
       
     } catch (error) {
-      console.error('❌ [DatabaseService] Artifacts health check failed:', error);
       return {
-        isHealthy: false,
         totalCount: 0,
         conflictCount: 0,
         syncedCount: 0,

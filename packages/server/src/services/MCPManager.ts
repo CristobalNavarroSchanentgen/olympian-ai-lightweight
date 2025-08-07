@@ -186,7 +186,7 @@ export class MCPManager {
       const memBefore = process.memoryUsage();
       if (memBefore.heapUsed > 500 * 1024 * 1024) {
         mcpLogger.logEvent({
-          eventType: "health",
+          eventType: "status",
           serverId: id,
           serverName: name,
           message: "High memory usage detected",
@@ -446,26 +446,6 @@ export class MCPManager {
   async restartServer(id: string, config: MCPServer): Promise<void> {
     await this.stopServer(id);
     await this.addServer(config);
-  }
-
-  /**
-   * Health check for all servers
-   */
-  async healthCheck(): Promise<Map<string, boolean>> {
-    const health = new Map<string, boolean>();
-    
-    for (const [id, server] of this.servers) {
-      try {
-        // Try to list tools as a health check
-        await server.client.listTools();
-        health.set(id, true);
-      } catch (error) {
-        health.set(id, false);
-        logger.warn(`[MCP] Health check failed for ${id}`);
-      }
-    }
-    
-    return health;
   }
 
   /**

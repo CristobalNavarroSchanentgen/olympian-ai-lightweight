@@ -51,6 +51,7 @@ http {
 
     # Rate limiting
     limit_req_zone $binary_remote_addr zone=api:10m rate=100r/m;
+    limit_req_zone $binary_remote_addr zone=health:10m rate=300r/m;
 
     # Backend server groups
     upstream olympian_backend {
@@ -59,6 +60,11 @@ http {
         server olympian-backend-1:4000 max_fails=3 fail_timeout=30s;
         server olympian-backend-2:4000 max_fails=3 fail_timeout=30s;
         
+        # Health checks (if nginx-plus is available)
+        # health_check interval=10s fails=3 passes=2 uri=/api/multihost/health/simple;
+        
+        keepalive 32;
+    }
 
     # WebSocket upstream for real-time communication
     upstream olympian_websocket {
@@ -70,6 +76,13 @@ http {
         keepalive 32;
     }
 
+    # Health check upstream (for faster health checks)
+    upstream olympian_health {
+        server olympian-backend-1:4000;
+        server olympian-backend-2:4000;
+        
+        keepalive 8;
+    }
 
     # Main server configuration
     server {
@@ -82,8 +95,23 @@ http {
         add_header X-XSS-Protection "1; mode=block";
         add_header Referrer-Policy strict-origin-when-cross-origin;
 
+        # Health check endpoint (bypass rate limiting)
+        location /health {
+            access_log off;
+            proxy_pass http://olympian_health;
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
+            proxy_connect_timeout 5s;
+            proxy_send_timeout 5s;
+            proxy_read_timeout 5s;
+        }
 
         # Load balancer health check
+        location /nginx-health {
+            access_log off;
+            return 200 "healthy\n";
+            add_header Content-Type text/plain;
+        }
 
         # WebSocket connections
         location /ws {
@@ -201,5 +229,9 @@ http {
             deny all;
         }
         
+        location /health {
+            return 200 "nginx healthy\n";
+            add_header Content-Type text/plain;
+        }
     }
 }

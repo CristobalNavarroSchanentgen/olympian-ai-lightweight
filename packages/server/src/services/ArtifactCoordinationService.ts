@@ -5,6 +5,7 @@ import { DatabaseService } from './DatabaseService';
 
 /**
  * Redis-based artifact coordination service for multi-host deployments
+ * Redis-based artifact coordination service for multi-host deployments
  * Handles cross-instance artifact caching, synchronization, and event coordination
  */
 export class ArtifactCoordinationService extends EventEmitter {
@@ -34,6 +35,7 @@ export class ArtifactCoordinationService extends EventEmitter {
   }
 
   /**
+   * Initialize Redis connections for coordination
    * Initialize Redis connections for coordination
    */
   async initialize(): Promise<void> {
@@ -84,6 +86,7 @@ export class ArtifactCoordinationService extends EventEmitter {
 
   /**
    * Register this server instance in Redis
+   * Register this server instance in Redis
    */
   private async registerInstance(): Promise<void> {
     if (!this.redisClient) return;
@@ -109,6 +112,7 @@ export class ArtifactCoordinationService extends EventEmitter {
   }
 
   /**
+   * Cache artifact with cross-instance coordination
    * Cache artifact with cross-instance coordination
    */
   async cacheArtifact(artifact: Artifact): Promise<void> {
@@ -144,6 +148,7 @@ export class ArtifactCoordinationService extends EventEmitter {
   }
 
   /**
+   * Retrieve artifact from cache with validation
    * Retrieve artifact from cache with validation
    */
   async getCachedArtifact(artifactId: string): Promise<Artifact | null> {
@@ -189,6 +194,7 @@ export class ArtifactCoordinationService extends EventEmitter {
 
   /**
    * Invalidate artifact cache across all instances
+   * Invalidate artifact cache across all instances
    */
   async invalidateArtifactCache(artifactId: string): Promise<void> {
     if (!this.isConnected || !this.redisClient) {
@@ -213,6 +219,7 @@ export class ArtifactCoordinationService extends EventEmitter {
   }
 
   /**
+   * Acquire distributed lock for artifact operations
    * Acquire distributed lock for artifact operations
    */
   async acquireArtifactLock(artifactId: string): Promise<boolean> {
@@ -242,6 +249,7 @@ export class ArtifactCoordinationService extends EventEmitter {
 
   /**
    * Release distributed lock for artifact operations
+   * Release distributed lock for artifact operations
    */
   async releaseArtifactLock(artifactId: string): Promise<void> {
     if (!this.isConnected || !this.redisClient) {
@@ -263,6 +271,7 @@ export class ArtifactCoordinationService extends EventEmitter {
   }
 
   /**
+   * Get all cached artifacts for a conversation
    * Get all cached artifacts for a conversation
    */
   async getCachedArtifactsForConversation(conversationId: string): Promise<Artifact[]> {
@@ -302,6 +311,7 @@ export class ArtifactCoordinationService extends EventEmitter {
 
   /**
    * Publish artifact event to other instances
+   * Publish artifact event to other instances
    */
   private async publishArtifactEvent(eventType: string, data: any): Promise<void> {
     if (!this.publishClient) return;
@@ -322,6 +332,7 @@ export class ArtifactCoordinationService extends EventEmitter {
   }
 
   /**
+   * Handle artifact events from other instances
    * Handle artifact events from other instances
    */
   private async handleArtifactEvent(message: string): Promise<void> {
@@ -359,6 +370,7 @@ export class ArtifactCoordinationService extends EventEmitter {
 
   /**
    * Calculate content checksum for integrity validation
+   * Calculate content checksum for integrity validation
    */
   private calculateChecksum(content: string): string {
     const crypto = require('crypto');
@@ -366,6 +378,7 @@ export class ArtifactCoordinationService extends EventEmitter {
   }
 
   /**
+   * Get active server instances
    * Get active server instances
    */
   async getActiveInstances(): Promise<any[]> {
@@ -397,6 +410,7 @@ export class ArtifactCoordinationService extends EventEmitter {
 
   /**
    * Cleanup resources
+   * Cleanup resources
    */
   async cleanup(): Promise<void> {
     try {
@@ -425,47 +439,4 @@ export class ArtifactCoordinationService extends EventEmitter {
     }
   }
 
-  /**
-   * Health check for coordination service
-   */
-  async healthCheck(): Promise<{ healthy: boolean; details: any }> {
-    const details = {
-      redisConnected: this.isConnected,
-      instanceId: this.serverInstanceId,
-      activeInstances: 0,
-      cacheKeys: 0,
-      errors: [] as string[]
-    };
-
-    try {
-      if (this.redisClient) {
-        // Test Redis connectivity
-        await this.redisClient.ping();
-        
-        // Count active instances
-        const instances = await this.getActiveInstances();
-        details.activeInstances = instances.length;
-        
-        // Count cached artifacts
-        const cacheKeys = await this.redisClient.keys(`${this.CACHE_PREFIX}*`);
-        details.cacheKeys = cacheKeys.length;
-      }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown health check error';
-      details.errors.push(`Redis error: ${errorMessage}`);
-    }
-
-    return {
-      healthy: this.isConnected && details.errors.length === 0,
-      details
-    };
-  }
-
-  get instanceId(): string {
-    return this.serverInstanceId;
-  }
-
-  get connected(): boolean {
-    return this.isConnected;
-  }
 }

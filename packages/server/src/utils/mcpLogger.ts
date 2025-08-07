@@ -4,7 +4,7 @@ import * as path from 'path';
 
 interface MCPEvent {
   timestamp: string;
-  eventType: 'startup' | 'shutdown' | 'error' | 'restart' | 'health' | 'connection';
+  eventType: 'startup' | 'shutdown' | 'error' | 'restart' | 'connection';
   serverId?: string;
   serverName?: string;
   message: string;
@@ -81,7 +81,6 @@ class MCPLogger {
     const errors = this.events.filter(e => e.eventType === 'error');
     
     const lines = [
-      '=== MCP Health Report ===',
       'Generated: ' + new Date().toISOString(),
       'Summary:',
       '- Total Events: ' + this.events.length,

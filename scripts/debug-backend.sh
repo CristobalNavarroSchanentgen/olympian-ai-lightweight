@@ -61,13 +61,8 @@ if docker ps -a | grep -q "olympian-backend"; then
     docker logs --tail=20 olympian-backend 2>&1 || echo "No logs available yet"
     echo ""
     
-    echo -e "${CYAN}🔍 Backend Health Check${RESET}"
-    if docker exec olympian-backend curl -f http://localhost:4000/api/health 2>/dev/null; then
-        echo -e "${GREEN}✅ Backend health check passed${RESET}"
     else
-        echo -e "${RED}❌ Backend health check failed${RESET}"
         echo "Trying to connect to backend manually..."
-        docker exec olympian-backend curl -v http://localhost:4000/api/health 2>&1 || true
     fi
 else
     echo -e "${RED}❌ Backend container not found${RESET}"
@@ -92,7 +87,6 @@ echo ""
 echo -e "${CYAN}🔧 Suggested Actions${RESET}"
 echo "1. Check backend logs: docker logs olympian-backend"
 echo "2. Verify Ollama URL: curl -sf ${OLLAMA_HOST}/api/tags"
-echo "3. Test backend manually: docker exec olympian-backend curl localhost:4000/api/health"
 echo "4. Restart with clean build: make stop && make build-prod-clean && make up-prod"
 
 # Check if we can provide a fix for the Ollama URL

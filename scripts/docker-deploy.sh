@@ -167,9 +167,6 @@ sleep 10
 
 # Check service health
 echo ""
-echo "Checking service health..."
-if docker compose -f "$COMPOSE_FILE" ps | grep -q "unhealthy"; then
-    echo -e "${RED}❌ Some services are unhealthy${NC}"
     docker compose -f "$COMPOSE_FILE" ps
     echo ""
     echo "Check logs with: docker compose -f $COMPOSE_FILE logs"

@@ -1398,7 +1398,6 @@ export class OllamaStreamliner {
             'Check if Ollama is running on the target host',
             'Verify network connectivity between containers',
             'Check firewall rules and security groups',
-            'Verify load balancer health checks'
           ]
         });
       } else if (errorDetails.isTimeoutError) {

@@ -16,12 +16,12 @@ interface ConsistencyIssue {
 }
 
 interface HealthCheckResult {
-  healthy: boolean;
+  status: boolean;
   score: number; // 0-100
   issues: ConsistencyIssue[];
   metrics: {
     totalArtifacts: number;
-    healthyArtifacts: number;
+    activeArtifacts: number;
     corruptedArtifacts: number;
     missingArtifacts: number;
     cacheHitRate: number;
@@ -29,7 +29,7 @@ interface HealthCheckResult {
   };
   instances: {
     id: string;
-    healthy: boolean;
+    status: boolean;
     lastSeen: Date;
     artifactCount: number;
   }[];
@@ -37,8 +37,8 @@ interface HealthCheckResult {
 
 /**
  * Comprehensive monitoring and diagnostics service for multi-host artifact management
- * Handles consistency checks, health monitoring, and automated recovery
- */
+ * Comprehensive monitoring and diagnostics service for multi-host artifact management
+ 
 export class ArtifactMonitoringService extends EventEmitter {
   private static instance: ArtifactMonitoringService;
   private db = DatabaseService.getInstance();
@@ -47,7 +47,6 @@ export class ArtifactMonitoringService extends EventEmitter {
   
   private issues: ConsistencyIssue[] = [];
   private lastHealthCheck: Date | null = null;
-  private healthCheckInterval: NodeJS.Timeout | null = null;
   private validationInterval: NodeJS.Timeout | null = null;
   
   // Monitoring configuration
@@ -69,7 +68,8 @@ export class ArtifactMonitoringService extends EventEmitter {
 
   /**
    * Initialize monitoring service
-   */
+   * Initialize monitoring service
+   
   async initialize(): Promise<void> {
     console.log('🔄 [ArtifactMonitoring] Initializing monitoring service...');
 
@@ -85,7 +85,6 @@ export class ArtifactMonitoringService extends EventEmitter {
       this.coordination.on('artifactInvalidated', this.handleArtifactInvalidated.bind(this));
       
       // Run initial health check
-      await this.performHealthCheck();
       
       console.log('✅ [ArtifactMonitoring] Monitoring service initialized successfully');
       this.emit('initialized');
@@ -98,103 +97,9 @@ export class ArtifactMonitoringService extends EventEmitter {
   }
 
   /**
-   * Perform comprehensive health check
-   */
-  async performHealthCheck(): Promise<HealthCheckResult> {
-    console.log('🔍 [ArtifactMonitoring] Performing comprehensive health check...');
-    const startTime = Date.now();
-
-    try {
-      // Collect metrics from all components
-      const [
-        databaseMetrics,
-        coordinationHealth,
-        performanceMetrics,
-        consistencyIssues,
-        instanceHealth
-      ] = await Promise.all([
-        this.getDatabaseMetrics(),
-        this.coordination.healthCheck(),
-        this.performance.getPerformanceMetrics(),
-        this.checkConsistency(),
-        this.checkInstanceHealth()
-      ]);
-
-      // Calculate overall health score
-      const healthScore = this.calculateHealthScore({
-        database: databaseMetrics,
-        coordination: coordinationHealth,
-        performance: performanceMetrics,
-        consistency: consistencyIssues,
-        instances: instanceHealth
-      });
-
-      const result: HealthCheckResult = {
-        healthy: healthScore >= this.CRITICAL_THRESHOLD,
-        score: healthScore,
-        issues: consistencyIssues,
-        metrics: {
-          totalArtifacts: databaseMetrics.totalArtifacts,
-          healthyArtifacts: databaseMetrics.totalArtifacts - consistencyIssues.length,
-          corruptedArtifacts: consistencyIssues.filter(i => i.type === 'corrupted_content').length,
-          missingArtifacts: consistencyIssues.filter(i => i.type === 'missing_artifact').length,
-          cacheHitRate: coordinationHealth.details.cacheKeys > 0 ? 
-            (coordinationHealth.details.cacheKeys / databaseMetrics.totalArtifacts) * 100 : 0,
-          averageResponseTime: Date.now() - startTime
-        },
-        instances: instanceHealth
-      };
-
-      this.lastHealthCheck = new Date();
-      
-      // Emit events for critical issues
-      if (!result.healthy) {
-        this.emit('healthCritical', result);
-        console.warn(`⚠️ [ArtifactMonitoring] Health check critical - Score: ${healthScore}`);
-      } else {
-        this.emit('healthGood', result);
-        console.log(`✅ [ArtifactMonitoring] Health check passed - Score: ${healthScore}`);
-      }
-
-      // Store issues
-      this.storeIssues(consistencyIssues);
-
-      return result;
-
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown health check error';
-      console.error('❌ [ArtifactMonitoring] Health check failed:', errorMessage);
-      
-      const errorResult: HealthCheckResult = {
-        healthy: false,
-        score: 0,
-        issues: [{
-          type: 'corrupted_content',
-          artifactId: 'health-check',
-          severity: 'critical',
-          details: { error: errorMessage },
-          detectedAt: new Date()
-        }],
-        metrics: {
-          totalArtifacts: 0,
-          healthyArtifacts: 0,
-          corruptedArtifacts: 0,
-          missingArtifacts: 0,
-          cacheHitRate: 0,
-          averageResponseTime: Date.now() - startTime
-        },
-        instances: []
-      };
-
-      this.emit('healthError', errorResult);
-      return errorResult;
-    }
-  }
-
-  /**
    * Check consistency across database, cache, and instances
-   */
-  async checkConsistency(): Promise<ConsistencyIssue[]> {
+   
+  async checkConsistency(): Promise<ConsistencyIssue[]> {   
     console.log('🔍 [ArtifactMonitoring] Checking artifact consistency...');
     const issues: ConsistencyIssue[] = [];
 
@@ -238,7 +143,8 @@ export class ArtifactMonitoringService extends EventEmitter {
 
   /**
    * Validate individual artifact content
-   */
+   * Validate individual artifact content
+   
   private async validateArtifactContent(artifact: Artifact): Promise<ConsistencyIssue[]> {
     const issues: ConsistencyIssue[] = [];
 
@@ -311,7 +217,8 @@ export class ArtifactMonitoringService extends EventEmitter {
 
   /**
    * Validate cache consistency
-   */
+   * Validate cache consistency
+   
   private async validateCacheConsistency(artifact: Artifact): Promise<ConsistencyIssue[]> {
     const issues: ConsistencyIssue[] = [];
 
@@ -372,7 +279,8 @@ export class ArtifactMonitoringService extends EventEmitter {
 
   /**
    * Validate artifact metadata
-   */
+   * Validate artifact metadata
+   
   private async validateMetadata(artifact: Artifact): Promise<ConsistencyIssue[]> {
     const issues: ConsistencyIssue[] = [];
 
@@ -417,7 +325,8 @@ export class ArtifactMonitoringService extends EventEmitter {
 
   /**
    * Check for orphaned cache entries
-   */
+   * Check for orphaned cache entries
+   
   private async checkOrphanedCacheEntries(): Promise<ConsistencyIssue[]> {
     // This would require coordination service to expose cache keys
     // For now, return empty array as this is complex to implement
@@ -426,7 +335,8 @@ export class ArtifactMonitoringService extends EventEmitter {
 
   /**
    * Automated recovery procedures
-   */
+   * Automated recovery procedures
+   
   async performAutomaticRecovery(issues: ConsistencyIssue[]): Promise<void> {
     console.log(`🔧 [ArtifactMonitoring] Starting automatic recovery for ${issues.length} issues...`);
 
@@ -447,7 +357,8 @@ export class ArtifactMonitoringService extends EventEmitter {
 
   /**
    * Recover from specific issue
-   */
+   * Recover from specific issue
+   
   private async recoverFromIssue(issue: ConsistencyIssue): Promise<void> {
     switch (issue.type) {
       case 'cache_inconsistency':
@@ -474,7 +385,8 @@ export class ArtifactMonitoringService extends EventEmitter {
 
   /**
    * Fix metadata issues
-   */
+   * Fix metadata issues
+   
   private async fixMetadata(issue: ConsistencyIssue): Promise<void> {
     // Load artifact and apply fixes
     const artifacts = await this.db.artifacts.findOne({ id: issue.artifactId } as any);
@@ -500,37 +412,11 @@ export class ArtifactMonitoringService extends EventEmitter {
     }
   }
 
-  /**
-   * Calculate health score
-   */
-  private calculateHealthScore(metrics: any): number {
-    let score = 100;
-    
-    // Deduct for database issues
-    if (!metrics.database.connected) score -= 30;
-    
-    // Deduct for coordination issues
-    if (!metrics.coordination.healthy) score -= 20;
-    
-    // Deduct for consistency issues
-    const criticalIssues = metrics.consistency.filter((i: ConsistencyIssue) => i.severity === 'critical').length;
-    const highIssues = metrics.consistency.filter((i: ConsistencyIssue) => i.severity === 'high').length;
-    const mediumIssues = metrics.consistency.filter((i: ConsistencyIssue) => i.severity === 'medium').length;
-    
-    score -= criticalIssues * 15;
-    score -= highIssues * 10;
-    score -= mediumIssues * 5;
-    
-    // Deduct for unhealthy instances
-    const unhealthyInstances = metrics.instances.filter((i: any) => !i.healthy).length;
-    score -= unhealthyInstances * 10;
-    
-    return Math.max(0, Math.min(100, score));
-  }
 
   /**
    * Utility methods
-   */
+   * Utility methods
+   
   private async getDatabaseMetrics(): Promise<any> {
     try {
       const totalArtifacts = await this.db.artifacts.countDocuments({});
@@ -552,7 +438,7 @@ export class ArtifactMonitoringService extends EventEmitter {
     const instances = await this.coordination.getActiveInstances();
     return instances.map(instance => ({
       id: instance.id,
-      healthy: Date.now() - instance.lastHeartbeat < 120000, // 2 minutes
+      status: Date.now() - instance.lastHeartbeat < 120000, // 2 minutes
       lastSeen: new Date(instance.lastHeartbeat),
       artifactCount: 0 // Would need to be calculated
     }));
@@ -604,14 +490,6 @@ export class ArtifactMonitoringService extends EventEmitter {
   }
 
   private startHealthChecks(): void {
-    this.healthCheckInterval = setInterval(async () => {
-      try {
-        await this.performHealthCheck();
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Unknown scheduled health check error';
-        console.error('❌ [ArtifactMonitoring] Scheduled health check failed:', errorMessage);
-      }
-    }, this.HEALTH_CHECK_INTERVAL);
   }
 
   private startValidation(): void {
@@ -639,17 +517,16 @@ export class ArtifactMonitoringService extends EventEmitter {
   /**
    * Get monitoring dashboard data
    */
-  async getDashboardData(): Promise<any> {
-    const lastHealth = this.lastHealthCheck ? await this.performHealthCheck() : null;
+
     
     return {
       lastHealthCheck: this.lastHealthCheck,
-      healthScore: lastHealth?.score || 0,
+      score: 0,
       totalIssues: this.issues.length,
       criticalIssues: this.issues.filter(i => i.severity === 'critical' && !i.resolved).length,
       recentIssues: this.issues.slice(-10),
       activeInstances: await this.coordination.getActiveInstances(),
-      metrics: lastHealth?.metrics || {}
+      metrics: {}
     };
   }
 
@@ -657,9 +534,6 @@ export class ArtifactMonitoringService extends EventEmitter {
    * Cleanup monitoring service
    */
   async cleanup(): Promise<void> {
-    if (this.healthCheckInterval) {
-      clearInterval(this.healthCheckInterval);
-    }
     
     if (this.validationInterval) {
       clearInterval(this.validationInterval);

@@ -24,8 +24,6 @@ services:
       - backend
     networks:
       - olympian-network
-    healthcheck:
-      test: ["CMD", "/healthcheck.sh"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -58,8 +56,6 @@ services:
       - olympian-network
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4000/api/health"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -76,8 +72,6 @@ services:
       MONGO_INITDB_DATABASE: olympian_ai_lite
     networks:
       - olympian-network
-    healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -94,8 +88,6 @@ services:
       - mcp-data:/data
     networks:
       - olympian-network
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000", "||", "exit", "1"]
       interval: 30s
       timeout: 5s
       retries: 3

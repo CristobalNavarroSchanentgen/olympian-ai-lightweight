@@ -6,19 +6,14 @@ echo "======================================"
 echo ""
 
 # 1. Check if all containers are healthy
-echo "1️⃣ Container Health Check:"
 echo "--------------------------"
 docker ps --format "table {{.Names}}\t{{.Status}}" | grep olympian
 echo ""
 
 # 2. Test backend health and Ollama connection
-echo "2️⃣ Backend Health & Ollama Connection:"
 echo "--------------------------------------"
-echo "Backend health:"
-curl -s http://localhost:8080/api/health | jq '.' || echo "Failed to reach backend"
 echo ""
 echo "Services status:"
-curl -s http://localhost:8080/api/health/services | jq '.' || echo "Failed to get services"
 echo ""
 
 # 3. Check if Ollama is accessible from backend

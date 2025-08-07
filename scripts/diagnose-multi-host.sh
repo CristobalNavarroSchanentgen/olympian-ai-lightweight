@@ -30,30 +30,23 @@ fi
 echo -e "${GREEN}✅ Multi-host deployment mode detected${RESET}"
 echo ""
 
-# Function to check service health
-check_service_health() {
     local service_name="$1"
     local container_name="$2"
     
     echo -e "${CYAN}🔍 Checking ${service_name}...${RESET}"
     
     if docker ps | grep -q "${container_name}"; then
-        local status=$(docker inspect --format='{{.State.Health.Status}}' "${container_name}" 2>/dev/null || echo "no-healthcheck")
         local running=$(docker inspect --format='{{.State.Status}}' "${container_name}")
         
         echo "  Status: ${running}"
         if [ "${status}" != "no-healthcheck" ]; then
-            echo "  Health: ${status}"
         fi
         
         if [ "${running}" != "running" ]; then
             echo -e "  ${RED}❌ Container not running${RESET}"
             return 1
-        elif [ "${status}" = "unhealthy" ]; then
-            echo -e "  ${YELLOW}⚠️  Container unhealthy${RESET}"
             return 1
         else
-            echo -e "  ${GREEN}✅ Container healthy${RESET}"
             return 0
         fi
     else
@@ -109,24 +102,20 @@ check_logs_for_errors() {
 }
 
 # Main diagnostic checks
-echo -e "${CYAN}🏥 Health Checks${RESET}"
 echo "=================="
 
 backend_healthy=true
 frontend_healthy=true
 mongodb_healthy=true
 
-if ! check_service_health "Backend" "olympian-backend"; then
     backend_healthy=false
 fi
 echo ""
 
-if ! check_service_health "Frontend" "olympian-frontend"; then
     frontend_healthy=false
 fi
 echo ""
 
-if ! check_service_health "MongoDB" "olympian-mongodb"; then
     mongodb_healthy=false
 fi
 echo ""

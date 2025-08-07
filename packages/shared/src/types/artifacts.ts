@@ -349,36 +349,6 @@ export interface ArtifactOperationResponse {
   }>;
 }
 
-export interface ArtifactHealthCheck {
-  conversationId?: string; // Add optional conversationId field
-  healthy: boolean;
-  totalArtifacts: number;
-  syncedArtifacts: number; // Rename from corruptedArtifacts
-  conflictedArtifacts: number; // Rename from orphanedArtifacts  
-  erroredArtifacts: number; // Rename from inconsistentMetadata
-  lastSyncAt?: Date; // Rename from lastCheckDate
-  issues: Array<{
-    type: 'corruption' | 'orphaned' | 'metadata' | 'sync' | 'checksum';
-    artifactId: string;
-    description: string;
-    severity: 'low' | 'medium' | 'high' | 'critical';
-  }>;
-  // Multi-host specific health metrics
-  instanceHealth?: {
-    [instanceId: string]: {
-      healthy: boolean;
-      lastSeen: Date;
-      artifactCount: number;
-      syncLatency: number;
-    };
-  };
-  // NEW: Multi-artifact health metrics (Phase 1)
-  multiArtifactHealth?: {
-    orphanedArtifacts: number; // Artifacts without valid message references
-    inconsistentGrouping: number; // Artifacts with incorrect order/grouping
-    duplicateArtifacts: number; // Potential duplicate content
-  };
-}
 
 export interface ArtifactSyncData {
   artifactId: string;

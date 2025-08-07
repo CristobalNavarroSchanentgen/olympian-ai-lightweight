@@ -4,7 +4,6 @@ import {
   CreateArtifactRequest, 
   UpdateArtifactRequest, 
   ArtifactOperationResponse,
-  ArtifactHealthCheck,
   MultiArtifactCreationRequest,
   MultiArtifactCreationResponse,
   BatchArtifactOperation,
@@ -964,48 +963,10 @@ router.post('/conversations/:conversationId/migrate', async (req, res, next) => 
 // =====================================
 
 /**
- * GET /api/artifacts/health
- * Get overall artifacts health status
  */
-router.get('/health', async (req, res, next) => {
-  try {
-    console.log(`🏥 [ArtifactsAPI] Checking artifacts health`);
-    
-    const healthCheck = await artifactService.getArtifactsHealthCheck();
-    
-    res.json({
-      success: true,
-      data: healthCheck,
-      timestamp: new Date()
-    });
-    
-  } catch (error) {
-    next(error);
-  }
-});
 
 /**
- * GET /api/artifacts/conversations/:conversationId/health
- * Get health status for specific conversation artifacts
  */
-router.get('/conversations/:conversationId/health', async (req, res, next) => {
-  try {
-    const { conversationId } = req.params;
-    
-    console.log(`🏥 [ArtifactsAPI] Checking artifacts health for conversation: ${conversationId}`);
-    
-    const healthCheck = await artifactService.getArtifactsHealthCheck(conversationId);
-    
-    res.json({
-      success: true,
-      data: healthCheck,
-      timestamp: new Date()
-    });
-    
-  } catch (error) {
-    next(error);
-  }
-});
 
 // =====================================
 // SYNC AND CONFLICT RESOLUTION

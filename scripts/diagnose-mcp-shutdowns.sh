@@ -7,9 +7,7 @@ echo "Starting diagnostic monitoring..."
 # Create logs directory if not exists
 mkdir -p logs/mcp
 
-# Function to check backend health
 check_backend() {
-    curl -s http://localhost:3000/api/mcp/health > /dev/null 2>&1
     return $?
 }
 

@@ -11,8 +11,6 @@ export interface MCPServer {
   status: 'running' | 'stopped' | 'error' | 'initializing' | 'health_check';
   lastError?: string;
   
-  // Health check properties
-  lastHealthCheck?: Date;
   healthStatus?: 'healthy' | 'unhealthy' | 'unknown';
   consecutiveFailures?: number;
   
@@ -84,7 +82,6 @@ export interface MCPConfig {
   lastModified: Date;
   
   // Global settings
-  globalHealthCheckInterval?: number;
   globalTimeout?: number;
   maxConcurrentConnections?: number;
   enableCaching?: boolean;
@@ -147,27 +144,7 @@ export interface MCPResourceLinkContent {
 
 export type MCPContent = MCPTextContent | MCPImageContent | MCPResourceContent | MCPResourceLinkContent;
 
-// Health checking interfaces
-export interface MCPHealthCheck {
-  serverId: string;
-  timestamp: Date;
-  status: 'healthy' | 'unhealthy' | 'timeout' | 'error' | 'unknown';
-  responseTime?: number;
-  error?: string;
-  consecutiveFailures: number;
-  lastSuccessfulCheck?: Date;
-}
 
-export interface MCPHealthStatus {
-  overall: {
-    healthy: boolean;
-    score: number; // 0-100
-    totalServers: number;
-    healthyServers: number;
-  };
-  servers: Record<string, MCPHealthCheck>;
-  lastUpdated: Date;
-}
 
 // Tool caching interfaces
 export interface MCPToolCache {

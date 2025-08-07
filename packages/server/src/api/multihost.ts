@@ -106,20 +106,6 @@ router.get('/instances', async (req, res, next) => {
   }
 });
 
-// Coordination service health check
-router.get('/coordination/health', async (req, res, next) => {
-  try {
-    const health = await coordination.healthCheck();
-    
-    res.json({
-      success: true,
-      ...health,
-      timestamp: new Date(),
-    });
-  } catch (error) {
-    next(error);
-  }
-});
 
 /**
  * PERFORMANCE OPTIMIZATION ENDPOINTS
@@ -211,20 +197,6 @@ router.get('/performance/metrics', async (req, res, next) => {
  * MONITORING & DIAGNOSTICS ENDPOINTS
  */
 
-// Perform health check
-router.get('/health', async (req, res, next) => {
-  try {
-    const healthResult = await monitoring.performHealthCheck();
-    
-    res.status(healthResult.healthy ? 200 : 503).json({
-      success: healthResult.healthy,
-      ...healthResult,
-      timestamp: new Date(),
-    });
-  } catch (error) {
-    next(error);
-  }
-});
 
 // Get monitoring dashboard data
 router.get('/monitoring/dashboard', async (req, res, next) => {
@@ -300,50 +272,7 @@ router.post('/monitoring/recovery', async (req, res, next) => {
  * LOAD BALANCER HEALTH ENDPOINT
  */
 
-// Simple health endpoint for load balancers
-// Ultra-simple health check that always passes during startup
-router.get("/health/ping", (req, res) => {
-  res.status(200).json({ status: "ok", timestamp: new Date() });
-});
 
-router.get('/health/simple', async (req, res) => {
-  let uptime = 0;
-    console.log("[HEALTH CHECK] Request received");
-    console.log("[HEALTH CHECK] Process uptime:", process.uptime(), "seconds");
-  try {
-    // Quick connectivity checks
-    const coordinationConnected = coordination.connected;
-    uptime = process.uptime();
-    const isStartingUp = uptime < 60; // Allow 30 seconds for startup
-    
-    console.log("[HEALTH CHECK] Coordination connected:", coordinationConnected);
-    if (coordinationConnected || isStartingUp) {
-      res.status(200).json({ 
-        status: 'coordinationConnected ? "healthy" : "starting"',
-        instance: coordination.instanceId,
-        timestamp: new Date()
-      });
-    } else {
-      res.status(503).json({ 
-        status: 'unhealthy',
-        reason: "Coordination service not connected after startup period",
-        uptime: uptime,
-        instance: coordination.instanceId,
-        timestamp: new Date()
-      });
-    }
-  } catch (error) {
-    // Fix: Handle unknown error type properly
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-    res.status(503).json({ 
-      status: 'unhealthy',
-        reason: "Coordination service not connected after startup period",
-        uptime: uptime,
-      error: errorMessage,
-      timestamp: new Date()
-    });
-  }
-});
 
 /**
  * DEBUGGING ENDPOINTS (Development Only)

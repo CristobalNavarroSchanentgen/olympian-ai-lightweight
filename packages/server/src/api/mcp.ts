@@ -168,41 +168,9 @@ router.delete('/servers/:serverId', async (req, res, next) => {
 /**
  * Health check
  */
-router.get('/health', (req, res) => {
-  const stats = mcp.getStats();
-  const healthy = true; // MCP is optional, so always healthy if manager exists
-  
-  res.status(200).json({
-    success: healthy,
-    status: stats.runningServers > 0 ? "healthy" : "no-servers",
-    stats
-  });
-});
 
 
 // MCP Health Monitoring Endpoint
-router.get("/health/detailed", async (req, res) => {
-  try {
-    const healthStatus = await mcp.healthCheck();
-    const { mcpLogger } = await import("../utils/mcpLogger");
-    
-    const report = mcpLogger.generateReport();
-    const recentEvents = mcpLogger.getRecentEvents(50);
-    
-    res.json({
-      status: "ok",
-      timestamp: new Date().toISOString(),
-      servers: Object.fromEntries(healthStatus),
-      report,
-      recentEvents
-    });
-  } catch (error: any) {
-    res.status(500).json({
-      status: "error",
-      error: error.message
-    });
-  }
-});
 
 // MCP Diagnostic Endpoint
 router.get("/diagnostics", async (req, res) => {
@@ -227,23 +195,6 @@ router.get("/diagnostics", async (req, res) => {
   }
 });
 
-// Process health endpoint
-router.get("/process/health", async (req, res) => {
-  try {
-    const { processWatchdog } = await import("../utils/processWatchdog");
-    
-    res.json({
-      status: "ok",
-      uptime: processWatchdog.getUptime(),
-      restartHistory: processWatchdog.getRestartHistory(5),
-      currentPid: process.pid,
-      memoryUsage: process.memoryUsage(),
-      timestamp: new Date().toISOString()
-    });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
 export { router as mcpRouter };
 
 // Add debug endpoints for EnhancedOllamaStreamliner
