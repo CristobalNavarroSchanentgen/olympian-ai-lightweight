@@ -25,7 +25,7 @@ class MCPLogger {
     }
     
     const dateStr = new Date().toISOString().split('T')[0];
-    this.logFile = path.join(logsDir, `mcp-events-${dateStr}.log`);
+    this.logFile = path.join(logsDir, 'mcp-events-' + dateStr + '.log');
   }
 
   static getInstance(): MCPLogger {
@@ -51,8 +51,11 @@ class MCPLogger {
     const logLine = JSON.stringify(fullEvent) + '\n';
     fs.appendFileSync(this.logFile, logLine);
     
-    const logMessage = `[MCP:${event.eventType}] ${event.serverName || "System"}: ${event.message}`;
-    const logMessage = `[MCP:" + event.eventType + "] " + (event.serverName || 'System') + ": " + event.message;
+    // Also log to console via main logger
+    const eventType = event.eventType;
+    const serverName = event.serverName || 'System';
+    const message = event.message;
+    const logMessage = '[MCP:' + eventType + '] ' + serverName + ': ' + message;
     
     switch(event.eventType) {
       case 'error':
@@ -70,20 +73,23 @@ class MCPLogger {
   }
 
   getRecentEvents(count: number = 50): MCPEvent[] {
-  generateReport(): string {
-    const shutdowns = this.events.filter(e => e.eventType === "shutdown" || e.eventType === "restart");
-    const errors = this.events.filter(e => e.eventType === "error");
-    const recent = this.getRecentEvents(20);
-    
-    return `=== MCP Health Report ===
-Generated: ${new Date().toISOString()}
-Summary:
-- Total Events: ${this.events.length}
-- Shutdowns: ${shutdowns.length}
-- Errors: ${errors.length}`;
+    return this.events.slice(-count);
   }
-- Shutdowns: " + shutdowns.length + "
-- Errors: " + errors.length;
+
+  generateReport(): string {
+    const shutdowns = this.events.filter(e => e.eventType === 'shutdown' || e.eventType === 'restart');
+    const errors = this.events.filter(e => e.eventType === 'error');
+    
+    const lines = [
+      '=== MCP Health Report ===',
+      'Generated: ' + new Date().toISOString(),
+      'Summary:',
+      '- Total Events: ' + this.events.length,
+      '- Shutdowns: ' + shutdowns.length,
+      '- Errors: ' + errors.length
+    ];
+    
+    return lines.join('\n');
   }
 }
 

@@ -302,11 +302,12 @@ router.post('/monitoring/recovery', async (req, res, next) => {
 
 // Simple health endpoint for load balancers
 router.get('/health/simple', async (req, res) => {
+  let uptime = 0;
     console.log("[HEALTH CHECK] Request received");
   try {
     // Quick connectivity checks
     const coordinationConnected = coordination.connected;
-    const uptime = process.uptime();
+    uptime = process.uptime();
     const isStartingUp = uptime < 30; // Allow 30 seconds for startup
     
     console.log("[HEALTH CHECK] Coordination connected:", coordinationConnected);
