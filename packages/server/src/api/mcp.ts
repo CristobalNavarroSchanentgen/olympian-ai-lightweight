@@ -179,6 +179,71 @@ router.get('/health', (req, res) => {
   });
 });
 
+
+// MCP Health Monitoring Endpoint
+router.get("/health/detailed", async (req, res) => {
+  try {
+    const healthStatus = await mcp.healthCheck();
+    const { mcpLogger } = await import("../utils/mcpLogger");
+    
+    const report = mcpLogger.generateReport();
+    const recentEvents = mcpLogger.getRecentEvents(50);
+    
+    res.json({
+      status: "ok",
+      timestamp: new Date().toISOString(),
+      servers: Object.fromEntries(healthStatus),
+      report,
+      recentEvents
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      status: "error",
+      error: error.message
+    });
+  }
+});
+
+// MCP Diagnostic Endpoint
+router.get("/diagnostics", async (req, res) => {
+  try {
+    const { mcpLogger } = await import("../utils/mcpLogger");
+    const allEvents = mcpLogger.getRecentEvents(100);
+    const shutdowns = allEvents.filter(e => e.eventType === "shutdown");
+    const errors = allEvents.filter(e => e.eventType === "error");
+    
+    res.json({
+      timestamp: new Date().toISOString(),
+      processInfo: {
+        pid: process.pid,
+        uptime: process.uptime(),
+        memoryUsage: process.memoryUsage()
+      },
+      recentShutdowns: shutdowns,
+      recentErrors: errors
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Process health endpoint
+router.get("/process/health", async (req, res) => {
+  try {
+    const { processWatchdog } = await import("../utils/processWatchdog");
+    
+    res.json({
+      status: "ok",
+      uptime: processWatchdog.getUptime(),
+      restartHistory: processWatchdog.getRestartHistory(5),
+      currentPid: process.pid,
+      memoryUsage: process.memoryUsage(),
+      timestamp: new Date().toISOString()
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
 export { router as mcpRouter };
 
 // Add debug endpoints for EnhancedOllamaStreamliner
@@ -231,66 +296,3 @@ router.get('/debug/tool-registry', async (req, res) => {
 });
 
 // MCP Health Monitoring Endpoint
-mcpRouter.get('/health/detailed', async (req: Request, res: Response) => {
-  try {
-    const mcp = MCPManager.getInstance();
-    const { mcpLogger } = await import('../utils/mcpLogger');
-    
-    const healthStatus = await mcp.healthCheck();
-    const report = mcpLogger.generateReport();
-    const recentEvents = mcpLogger.getRecentEvents(50);
-    
-    res.json({
-      status: 'ok',
-      timestamp: new Date().toISOString(),
-      servers: Object.fromEntries(healthStatus),
-      report,
-      recentEvents
-    });
-  } catch (error) {
-    res.status(500).json({
-      status: 'error',
-      error: error.message
-    });
-  }
-});
-
-// MCP Diagnostic Endpoint
-mcpRouter.get('/diagnostics', async (req: Request, res: Response) => {
-  try {
-    const { mcpLogger } = await import('../utils/mcpLogger');
-    const shutdowns = mcpLogger.getRecentEvents(100).filter(e => e.eventType === 'shutdown');
-    const errors = mcpLogger.getRecentEvents(100).filter(e => e.eventType === 'error');
-    
-    res.json({
-      timestamp: new Date().toISOString(),
-      processInfo: {
-        pid: process.pid,
-        uptime: process.uptime(),
-        memoryUsage: process.memoryUsage()
-      },
-      recentShutdowns: shutdowns,
-      recentErrors: errors
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Process health endpoint
-mcpRouter.get('/process/health', async (req: Request, res: Response) => {
-  try {
-    const { processWatchdog } = await import('../utils/processWatchdog');
-    
-    res.json({
-      status: 'ok',
-      uptime: processWatchdog.getUptime(),
-      restartHistory: processWatchdog.getRestartHistory(5),
-      currentPid: process.pid,
-      memoryUsage: process.memoryUsage(),
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});

@@ -176,9 +176,10 @@ export class MCPManager {
         shell: true
       });
 
-      // Create transport
       const transport = new StdioClientTransport({
         child: serverProcess
+      } as any);
+
       // Monitor memory usage before creating client
       const memBefore = process.memoryUsage();
       if (memBefore.heapUsed > 500 * 1024 * 1024) {
@@ -190,7 +191,8 @@ export class MCPManager {
           details: { memoryMB: Math.round(memBefore.heapUsed / 1024 / 1024) }
         });
       }
-      } as any);      const client = new Client(
+
+      const client = new Client(
         {
           name: `olympian-${id}`,
           version: '1.0.0'
