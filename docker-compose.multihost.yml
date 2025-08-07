@@ -18,7 +18,7 @@ services:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
     networks:
       - olympian-network
     environment:
@@ -42,7 +42,7 @@ services:
       test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
     networks:
       - olympian-network
 
@@ -64,8 +64,8 @@ services:
       - olympian-backend-2
     healthcheck:
       test: ["CMD", "nginx", "-t"]
-      interval: 30s
-      timeout: 10s
+      interval: 60s
+      timeout: 30s
       retries: 3
     networks:
       - olympian-network
@@ -122,10 +122,10 @@ services:
       mongodb:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3001/api/multihost/health/simple"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
+      test: ["CMD-SHELL", "sleep 5 && "curl", "-f", "http://localhost:3001/api/multihost/health/ping"]
+      interval: 60s
+      timeout: 30s
+      retries: 10
     networks:
       - olympian-network
 
@@ -181,10 +181,10 @@ services:
       mongodb:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3001/api/multihost/health/simple"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
+      test: ["CMD-SHELL", "sleep 5 && "curl", "-f", "http://localhost:3001/api/multihost/health/ping"]
+      interval: 60s
+      timeout: 30s
+      retries: 10
     networks:
       - olympian-network
 

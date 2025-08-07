@@ -189,4 +189,6 @@ EXPOSE 4000
 # No health check - let the application start immediately
 # Health can be monitored externally via /api/health endpoint if needed
 
-CMD ["node", "packages/server/dist/index.js"]
+COPY docker/backend/startup.sh /app/startup.sh
+RUN chmod +x /app/startup.sh
+CMD ["/app/startup.sh"]

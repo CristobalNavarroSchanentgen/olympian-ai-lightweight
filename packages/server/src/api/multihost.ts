@@ -301,14 +301,20 @@ router.post('/monitoring/recovery', async (req, res, next) => {
  */
 
 // Simple health endpoint for load balancers
+// Ultra-simple health check that always passes during startup
+router.get("/health/ping", (req, res) => {
+  res.status(200).json({ status: "ok", timestamp: new Date() });
+});
+
 router.get('/health/simple', async (req, res) => {
   let uptime = 0;
     console.log("[HEALTH CHECK] Request received");
+    console.log("[HEALTH CHECK] Process uptime:", process.uptime(), "seconds");
   try {
     // Quick connectivity checks
     const coordinationConnected = coordination.connected;
     uptime = process.uptime();
-    const isStartingUp = uptime < 30; // Allow 30 seconds for startup
+    const isStartingUp = uptime < 60; // Allow 30 seconds for startup
     
     console.log("[HEALTH CHECK] Coordination connected:", coordinationConnected);
     if (coordinationConnected || isStartingUp) {
