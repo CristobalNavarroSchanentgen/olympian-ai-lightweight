@@ -47,24 +47,6 @@ export class MCPManager {
     // Build server list based on available credentials
     const mcpServers: MCPServer[] = [];
     
-    // Only add GitHub server if token is provided and not a placeholder
-    const githubToken = process.env.GITHUB_PERSONAL_ACCESS_TOKEN;
-    if (githubToken && githubToken !== '' && !githubToken.includes('your_')) {
-      mcpServers.push({
-        id: "github",
-        name: "github",
-        transport: "stdio",
-        command: "npx",
-        args: ["-y", "@modelcontextprotocol/server-github"],
-        env: {
-          GITHUB_PERSONAL_ACCESS_TOKEN: githubToken
-        },
-        status: "stopped"
-      });
-      logger.info('✅ [MCP] GitHub server configured');
-    } else {
-      logger.warn('⚠️ [MCP] GitHub server skipped - no valid token');
-    }
     
     // Always add AppleScript server (no credentials needed)
     mcpServers.push({

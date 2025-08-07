@@ -904,14 +904,23 @@ env-docker-multi-interactive: ## Interactive multi-host environment configuratio
 	@echo ""
 	@echo "$(CYAN)🐙 GitHub MCP Server Configuration$(RESET)"
 	@echo "$(YELLOW)The GitHub MCP server provides repository access, issue management, and PR capabilities.$(RESET)"
+	@echo "$(YELLOW)To get a token: https://github.com/settings/tokens$(RESET)"
 	@echo "$(YELLOW)Required scopes: repo, read:user, read:org$(RESET)"
 	@printf "Enter your GitHub Personal Access Token (or press Enter to skip): "; \
+	read -s github_token; echo; \
+	if [ -n "$$github_token" ]; then \
+		if echo "$$github_token" | grep -E '^ghp_[a-zA-Z0-9]{36}$$' >/dev/null || echo "$$github_token" | grep -E '^github_pat_[a-zA-Z0-9_]{82}$$' >/dev/null; then \
+			sed -i.bak 's|^GITHUB_PERSONAL_ACCESS_TOKEN=.*|GITHUB_PERSONAL_ACCESS_TOKEN='"$$github_token"'|' .env; \
 			echo "$(GREEN)✅ GitHub token configured$(RESET)"; \
 		else \
 			echo "$(YELLOW)⚠️  Token format doesn't match expected pattern, but will be saved anyway$(RESET)"; \
+			sed -i.bak 's|^GITHUB_PERSONAL_ACCESS_TOKEN=.*|GITHUB_PERSONAL_ACCESS_TOKEN='"$$github_token"'|' .env; \
 		fi; \
 	else \
+		if grep -q "^GITHUB_PERSONAL_ACCESS_TOKEN=" .env; then \
+			sed -i.bak 's|^GITHUB_PERSONAL_ACCESS_TOKEN=.*|# GITHUB_PERSONAL_ACCESS_TOKEN=your_github_token_here|' .env; \
 		else \
+			echo "# GITHUB_PERSONAL_ACCESS_TOKEN=your_github_token_here" >> .env; \
 		fi; \
 		echo "$(YELLOW)⚠️  GitHub token not configured - some MCP features will be limited$(RESET)"; \
 	fi
@@ -969,6 +978,7 @@ env-docker-multi-interactive: ## Interactive multi-host environment configuratio
 	@grep "^ALLOWED_ORIGINS=" .env | sed 's/^/  /'
 	@echo ""
 	@echo "$(CYAN)🔐 MCP Authentication Summary:$(RESET)"
+	@if grep -q "^GITHUB_PERSONAL_ACCESS_TOKEN=" .env && ! grep -q "^# GITHUB_PERSONAL_ACCESS_TOKEN=" .env; then \
 		echo "  $(GREEN)✅ GitHub token configured$(RESET)"; \
 	else \
 		echo "  $(YELLOW)⚠️  GitHub token not configured$(RESET)"; \

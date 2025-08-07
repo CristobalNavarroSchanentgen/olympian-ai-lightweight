@@ -1,19 +1,8 @@
 {
   "mcpServers": {
-    "github": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-github@latest"],
-      "env": {
-        "GITHUB_PERSONAL_ACCESS_TOKEN": "\${GITHUB_PERSONAL_ACCESS_TOKEN}"
-      }
-    },
     "context7": {
       "command": "npx",
-      "args": ["-y", "@upstash/context7-mcp@latest"],
-      "env": {
-        "UPSTASH_REDIS_REST_URL": "\${UPSTASH_REDIS_REST_URL}",
-        "UPSTASH_REDIS_REST_TOKEN": "\${UPSTASH_REDIS_REST_TOKEN}"
-      }
+      "args": ["-y", "@upstash/context7-mcp@latest"]
     },
     "applescript": {
       "command": "npx",
