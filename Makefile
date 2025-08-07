@@ -1003,3 +1003,65 @@ deploy-mcp: ensure-docker env-setup
 	@echo HIL Protection is ENABLED by default
 
 
+
+# MCP Logging Commands
+mcp-logs: ## Centralized MCP integration logs (all components)
+	@echo "\033[1;36m=== MCP Integration Logs Collection ===\033[0m"
+	@echo "\033[1;33mCollecting logs from all MCP-related components...\033[0m"
+	@echo ""
+	@echo "\033[1;34m[1/4] Backend MCP Server Logs\033[0m"
+	@docker logs olympian-backend-1 2>&1 | grep -E "(MCP|mcp|HIL|hil|tool|Tool)" | tail -50 || echo "No backend-1 MCP logs found"
+	@docker logs olympian-backend-2 2>&1 | grep -E "(MCP|mcp|HIL|hil|tool|Tool)" | tail -50 || echo "No backend-2 MCP logs found"
+	@echo ""
+	@echo "\033[1;34m[2/4] MCP Health Status\033[0m"
+	@docker exec olympian-backend-1 sh -c "curl -s localhost:3000/api/mcp/health || echo 'Health check unavailable'" 2>/dev/null || echo "Backend-1 not running"
+	@docker exec olympian-backend-2 sh -c "curl -s localhost:3000/api/mcp/health || echo 'Health check unavailable'" 2>/dev/null || echo "Backend-2 not running"
+	@echo ""
+	@echo "\033[1;34m[3/4] Frontend MCP UI Components\033[0m"
+	@docker logs olympian-frontend 2>&1 | grep -E "(MCP|mcp|tool|Tool|artifact|Artifact)" | tail -30 || echo "No frontend MCP logs found"
+	@echo ""
+	@echo "\033[1;34m[4/4] Nginx MCP-related Requests\033[0m"
+	@docker logs olympian-nginx 2>&1 | grep -E "(/api/mcp|/mcp|tool|artifact)" | tail -20 || echo "No nginx MCP logs found"
+	@echo ""
+	@echo "\033[1;32m=== MCP Logs Collection Complete ===\033[0m"
+
+mcp-logs-live: ## Live tail of MCP integration logs (real-time monitoring)
+	@echo "\033[1;36m=== Live MCP Integration Monitoring ===\033[0m"
+	@echo "\033[1;33mPress Ctrl+C to stop monitoring\033[0m"
+	@docker-compose -f docker-compose.multihost.yml -f docker-compose.mcp.yml logs -f --tail=100 | grep -E "(MCP|mcp|HIL|hil|tool|Tool|artifact|Artifact)"
+
+mcp-logs-debug: ## Detailed MCP debug logs with timestamps
+	@echo "\033[1;36m=== Detailed MCP Debug Logs ===\033[0m"
+	@echo "\033[1;33mCollecting detailed debug information...\033[0m"
+	@echo ""
+	@echo "\033[1;34m[MCP Configuration]\033[0m"
+	@docker exec olympian-backend-1 sh -c "cat /app/mcp-config.stdio.json 2>/dev/null || echo 'Config not found'" || echo "Backend-1 not running"
+	@echo ""
+	@echo "\033[1;34m[MCP Environment Variables]\033[0m"
+	@docker exec olympian-backend-1 sh -c "env | grep -E '(MCP|HIL)' | sort" 2>/dev/null || echo "Backend-1 not running"
+	@echo ""
+	@echo "\033[1;34m[Recent MCP Events (last 100 lines)]\033[0m"
+	@docker-compose -f docker-compose.multihost.yml -f docker-compose.mcp.yml logs --timestamps --tail=100 | grep -E "(MCP|mcp|HIL|hil|tool|Tool)"
+	@echo ""
+	@echo "\033[1;32m=== Debug Collection Complete ===\033[0m"
+
+mcp-logs-export: ## Export MCP logs to file with timestamp
+	@TIMESTAMP=$$(date +"%Y%m%d_%H%M%S"); \
+	LOG_FILE="mcp_logs_$$TIMESTAMP.log"; \
+	echo "\033[1;36mExporting MCP logs to $$LOG_FILE...\033[0m"; \
+	{ \
+		echo "=== MCP Integration Logs Export - $$TIMESTAMP ==="; \
+		echo ""; \
+		echo "[Backend MCP Logs]"; \
+		docker logs olympian-backend-1 2>&1 | grep -E "(MCP|mcp|HIL|hil|tool|Tool)" || echo "No backend-1 logs"; \
+		docker logs olympian-backend-2 2>&1 | grep -E "(MCP|mcp|HIL|hil|tool|Tool)" || echo "No backend-2 logs"; \
+		echo ""; \
+		echo "[Frontend MCP Logs]"; \
+		docker logs olympian-frontend 2>&1 | grep -E "(MCP|mcp|tool|Tool|artifact|Artifact)" || echo "No frontend logs"; \
+		echo ""; \
+		echo "[Nginx MCP Logs]"; \
+		docker logs olympian-nginx 2>&1 | grep -E "(/api/mcp|/mcp|tool|artifact)" || echo "No nginx logs"; \
+	} > "$$LOG_FILE" 2>&1; \
+	echo "\033[1;32mLogs exported to $$LOG_FILE\033[0m"
+
+.PHONY: mcp-logs mcp-logs-live mcp-logs-debug mcp-logs-export
