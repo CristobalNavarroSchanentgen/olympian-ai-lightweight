@@ -179,6 +179,17 @@ export class MCPManager {
       // Create transport
       const transport = new StdioClientTransport({
         child: serverProcess
+      // Monitor memory usage before creating client
+      const memBefore = process.memoryUsage();
+      if (memBefore.heapUsed > 500 * 1024 * 1024) {
+        mcpLogger.logEvent({
+          eventType: "health",
+          serverId: id,
+          serverName: name,
+          message: "High memory usage detected",
+          details: { memoryMB: Math.round(memBefore.heapUsed / 1024 / 1024) }
+        });
+      }
       } as any);      const client = new Client(
         {
           name: `olympian-${id}`,
