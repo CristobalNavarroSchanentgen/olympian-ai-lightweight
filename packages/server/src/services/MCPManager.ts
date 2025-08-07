@@ -76,37 +76,25 @@ export class MCPManager {
       env: {},
       status: "stopped"
     });
+    logger.info('✅ [MCP] AppleScript server configured');
     
-    // Only add context7 if credentials are provided
-    const upstashUrl = process.env.UPSTASH_REDIS_REST_URL;
-    const upstashToken = process.env.UPSTASH_REDIS_REST_TOKEN;
-    if (upstashUrl && upstashToken && 
-        !upstashUrl.includes('your_') && 
-        !upstashToken.includes('your_')) {
-      mcpServers.push({
-        id: "context7",
-        name: "context7",
-        transport: "stdio",
-        command: "npx",
-        args: ["-y", "@upstash/context7-mcp"],
-        env: {
-          UPSTASH_REDIS_REST_URL: upstashUrl,
-          UPSTASH_REDIS_REST_TOKEN: upstashToken
-        },
-        status: "stopped"
-      });
-      logger.info('✅ [MCP] Context7 server configured');
-    } else {
-      logger.warn('⚠️ [MCP] Context7 server skipped - no valid credentials');
-    }
+    // Always add Context7 server (no credentials required)
+    mcpServers.push({
+      id: "context7",
+      name: "context7",
+      transport: "stdio",
+      command: "npx",
+      args: ["-y", "@upstash/context7-mcp"],
+      env: {},
+      status: "stopped"
+    });
+    logger.info('✅ [MCP] Context7 server configured');
     
     if (mcpServers.length === 0) {
-      logger.warn('⚠️ [MCP] No servers configured - check environment variables');
+      logger.warn('⚠️ [MCP] No servers configured - this should not happen');
       this.initialized = true;
       return;
     }
-
-
 
 
 
