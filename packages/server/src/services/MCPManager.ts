@@ -159,6 +159,17 @@ export class MCPManager {
       return;
     }
 
+    // Check for placeholder credentials
+    if (config.env) {
+      const hasPlaceholder = Object.values(config.env).some(val =>
+        typeof val === "string" && (val.includes("your_") || val === "" || val === "undefined")
+      );
+      if (hasPlaceholder) {
+        logger.warn(`[MCP] Skipping ${name} - missing or placeholder credentials`);
+        return;
+      }
+    }
+
     logger.info(`[MCP] Starting server: ${name}`);
 
     try {
