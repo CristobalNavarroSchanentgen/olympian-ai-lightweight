@@ -44,45 +44,31 @@ export class MCPManager {
     logger.info("🚀 [MCP] Initializing MCP manager...");
     
     // Build server list based on available credentials
-    // Build server list based on available credentials
-    const mcpServers: MCPServer[] = [];
-    
-    // Only add GitHub server if token is provided and not a placeholder
-    const githubToken = process.env.GITHUB_PERSONAL_ACCESS_TOKEN;
-    if (githubToken && githubToken !== '' && !githubToken.includes('your_')) {
-      mcpServers.push({
+    const mcpServers: MCPServer[] = [
+      {
         id: "github",
         name: "github",
         transport: "stdio",
         command: "npx",
         args: ["-y", "@modelcontextprotocol/server-github"],
         env: {
-          GITHUB_PERSONAL_ACCESS_TOKEN: githubToken
+          GITHUB_PERSONAL_ACCESS_TOKEN: process.env.GITHUB_PERSONAL_ACCESS_TOKEN || ""
         },
         status: "stopped"
-      });
-      logger.info('✅ [MCP] GitHub server configured');
-    } else {
-      logger.warn('⚠️ [MCP] GitHub server skipped - no valid token');
-    }
-    
-    // Always add AppleScript server (no credentials needed)
-    mcpServers.push({
-      id: "applescript",
-      name: "applescript",
-      transport: "stdio",
-      command: "npx",
-      args: ["-y", "@sampullman/applescript-mcp"],
-      env: {},
-      status: "stopped"
-    });
+      },
+      {
+        id: "applescript",
+        name: "applescript",
+        transport: "stdio",
+        command: "npx",
+        args: ["-y", "@sampullman/applescript-mcp"],
+        env: {},
+        status: "stopped"
+      }
+    ];
     
     // Only add context7 if credentials are provided
-    const upstashUrl = process.env.UPSTASH_REDIS_REST_URL;
-    const upstashToken = process.env.UPSTASH_REDIS_REST_TOKEN;
-    if (upstashUrl && upstashToken && 
-        !upstashUrl.includes('your_') && 
-        !upstashToken.includes('your_')) {
+    if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
       mcpServers.push({
         id: "context7",
         name: "context7",
@@ -90,21 +76,14 @@ export class MCPManager {
         command: "npx",
         args: ["-y", "@upstash/context7-mcp"],
         env: {
-          UPSTASH_REDIS_REST_URL: upstashUrl,
-          UPSTASH_REDIS_REST_TOKEN: upstashToken
+          UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL,
+          UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN
         },
         status: "stopped"
       });
-      logger.info('✅ [MCP] Context7 server configured');
-    } else {
-      logger.warn('⚠️ [MCP] Context7 server skipped - no valid credentials');
     }
-    
-    if (mcpServers.length === 0) {
-      logger.warn('⚠️ [MCP] No servers configured - check environment variables');
-      this.initialized = true;
-      return;
-    }
+
+
 
 
 
@@ -236,7 +215,7 @@ export class MCPManager {
       });
     } catch (error) {
       logger.error(`[MCP] Failed to start server ${name}:`, error);
-      logger.error("Failed to start server: ", error);
+      throw error;
     }
   }
 
