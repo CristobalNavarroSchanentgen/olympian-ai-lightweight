@@ -230,7 +230,7 @@ async function gracefulCleanup() {
     // Cleanup MCP
     if (MCP_ENABLED) {
       const mcp = MCPManager.getInstance();
-      console.log("[CLEANUP] Shutting down MCP from gracefulShutdown, signal:", signal);
+      console.log("[CLEANUP] Shutting down MCP from gracefulCleanup");
       await mcp.shutdown();
     }
 
