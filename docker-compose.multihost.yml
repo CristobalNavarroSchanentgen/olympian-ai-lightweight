@@ -92,9 +92,11 @@ services:
       HOSTNAME: olympian-backend-1
       INSTANCE_ID: backend-1
       ENABLE_COORDINATION: "true"
+      ENABLE_MULTI_HOST: "true"
       MCP_CONFIG_PATH: /app/mcp-config.multihost.json
       MCP_ENABLED: "true"
-      MCP_TRANSPORT: "stdio"      
+      MCP_TRANSPORT: "stdio"
+      
       # Performance Configuration
       CDN_ENABLED: ${CDN_ENABLED:-false}
       CDN_BASE_URL: ${CDN_BASE_URL:-}
@@ -151,9 +153,11 @@ services:
       HOSTNAME: olympian-backend-2
       INSTANCE_ID: backend-2
       ENABLE_COORDINATION: "true"
+      ENABLE_MULTI_HOST: "true"
       MCP_CONFIG_PATH: /app/mcp-config.multihost.json
       MCP_ENABLED: "true"
-      MCP_TRANSPORT: "stdio"      
+      MCP_TRANSPORT: "stdio"
+      
       # Performance Configuration
       CDN_ENABLED: ${CDN_ENABLED:-false}
       CDN_BASE_URL: ${CDN_BASE_URL:-}
