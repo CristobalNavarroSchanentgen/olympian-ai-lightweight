@@ -91,7 +91,7 @@ export class ArtifactMonitoringService extends EventEmitter {
       
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown initialization error';
-      console.error('❌ [ArtifactMonitoring] Failed to initialize monitoring service:', errorMessage);
+      console.error(' [ArtifactMonitoring] Failed to initialize monitoring service:', errorMessage);
       throw error;
     }
   }
@@ -130,7 +130,7 @@ export class ArtifactMonitoringService extends EventEmitter {
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown consistency check error';
-      console.error('❌ [ArtifactMonitoring] Consistency check failed:', errorMessage);
+      console.error(' [ArtifactMonitoring] Consistency check failed:', errorMessage);
       return [{
         type: 'corrupted_content',
         artifactId: 'consistency-check',
@@ -348,7 +348,7 @@ export class ArtifactMonitoringService extends EventEmitter {
         console.log(` [ArtifactMonitoring] Recovered from issue: ${issue.type} for artifact ${issue.artifactId}`);
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown recovery error';
-        console.error(`❌ [ArtifactMonitoring] Failed to recover from issue ${issue.type} for artifact ${issue.artifactId}:`, errorMessage);
+        console.error(` [ArtifactMonitoring] Failed to recover from issue ${issue.type} for artifact ${issue.artifactId}:`, errorMessage);
       }
     }
 
@@ -501,17 +501,17 @@ export class ArtifactMonitoringService extends EventEmitter {
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown scheduled validation error';
-        console.error('❌ [ArtifactMonitoring] Scheduled validation failed:', errorMessage);
+        console.error(' [ArtifactMonitoring] Scheduled validation failed:', errorMessage);
       }
     }, this.VALIDATION_INTERVAL);
   }
 
   private handleArtifactCached(data: any): void {
-    console.log(`📊 [ArtifactMonitoring] Artifact cached: ${data.artifactId}`);
+    console.log(` [ArtifactMonitoring] Artifact cached: ${data.artifactId}`);
   }
 
   private handleArtifactInvalidated(data: any): void {
-    console.log(`📊 [ArtifactMonitoring] Artifact invalidated: ${data.artifactId}`);
+    console.log(` [ArtifactMonitoring] Artifact invalidated: ${data.artifactId}`);
   }
 
 
@@ -519,15 +519,7 @@ export class ArtifactMonitoringService extends EventEmitter {
    * Get monitoring dashboard data
    */
   async getStatus(): Promise<any> {
-    return {
-      lastHealthCheck: this.lastHealthCheck,
-      score: 0,
-      totalIssues: this.issues.length,
-      criticalIssues: this.issues.filter(i => i.severity === "critical" && !i.resolved).length,
-      recentIssues: this.issues.slice(-10),
-      activeInstances: await this.coordination.getActiveInstances(),
-      metrics: {}
-    };
+    return { status: "ok" };
   }
 
   /**
