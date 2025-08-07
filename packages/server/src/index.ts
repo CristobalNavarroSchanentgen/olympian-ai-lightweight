@@ -1,4 +1,6 @@
 import express from 'express';
+console.log("[STARTUP] Backend starting at:", new Date().toISOString());
+console.log("[STARTUP] Process PID:", process.pid);
 import { processWatchdog } from "./utils/processWatchdog";
 import cors from 'cors';
 import helmet from 'helmet';
@@ -249,6 +251,8 @@ async function gracefulCleanup() {
 
 // Graceful shutdown
 async function gracefulShutdown(signal: string) {
+  console.log("[SHUTDOWN DEBUG] Received signal:", signal);
+  console.log("[SHUTDOWN DEBUG] Stack trace:", new Error().stack);
   const { mcpLogger } = await import("./utils/mcpLogger");
   mcpLogger.logEvent({
     eventType: "shutdown",

@@ -302,10 +302,12 @@ router.post('/monitoring/recovery', async (req, res, next) => {
 
 // Simple health endpoint for load balancers
 router.get('/health/simple', async (req, res) => {
+    console.log("[HEALTH CHECK] Request received");
   try {
     // Quick connectivity checks
     const coordinationConnected = coordination.connected;
     
+    console.log("[HEALTH CHECK] Coordination connected:", coordinationConnected);
     if (coordinationConnected) {
       res.status(200).json({ 
         status: 'healthy',
