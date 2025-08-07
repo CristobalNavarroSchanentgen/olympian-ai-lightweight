@@ -514,16 +514,16 @@ export class ArtifactMonitoringService extends EventEmitter {
     console.log(`📊 [ArtifactMonitoring] Artifact invalidated: ${data.artifactId}`);
   }
 
-
   /**
    * Get monitoring dashboard data
    */
   async getStatus(): Promise<any> {
+    
     return {
       lastHealthCheck: this.lastHealthCheck,
       score: 0,
       totalIssues: this.issues.length,
-      criticalIssues: this.issues.filter(i => i.severity === "critical" && !i.resolved).length,
+      criticalIssues: this.issues.filter(i => i.severity === 'critical' && !i.resolved).length,
       recentIssues: this.issues.slice(-10),
       activeInstances: await this.coordination.getActiveInstances(),
       metrics: {}
