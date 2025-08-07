@@ -276,3 +276,21 @@ mcpRouter.get('/diagnostics', async (req: Request, res: Response) => {
     res.status(500).json({ error: error.message });
   }
 });
+
+// Process health endpoint
+mcpRouter.get('/process/health', async (req: Request, res: Response) => {
+  try {
+    const { processWatchdog } = await import('../utils/processWatchdog');
+    
+    res.json({
+      status: 'ok',
+      uptime: processWatchdog.getUptime(),
+      restartHistory: processWatchdog.getRestartHistory(5),
+      currentPid: process.pid,
+      memoryUsage: process.memoryUsage(),
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});

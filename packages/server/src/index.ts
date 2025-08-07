@@ -1,4 +1,5 @@
 import express from 'express';
+import { processWatchdog } from "./utils/processWatchdog";
 import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
