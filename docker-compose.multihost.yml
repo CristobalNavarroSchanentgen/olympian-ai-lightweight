@@ -14,11 +14,6 @@ services:
       - redis_data:/data
       - ./docker/redis/redis.conf:/usr/local/etc/redis/redis.conf
     command: redis-server /usr/local/etc/redis/redis.conf
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
     networks:
       - olympian-network
     environment:
@@ -38,11 +33,6 @@ services:
     environment:
       MONGO_INITDB_DATABASE: olympian-ai
     command: mongod --replSet rs0
-    healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
     networks:
       - olympian-network
 
@@ -62,11 +52,6 @@ services:
     depends_on:
       - olympian-backend-1
       - olympian-backend-2
-    healthcheck:
-      test: ["CMD", "nginx", "-t"]
-      interval: 60s
-      timeout: 30s
-      retries: 3
     networks:
       - olympian-network
 
@@ -119,15 +104,8 @@ services:
       - app_logs_1:/app/logs
       - ./mcp-config.multihost.json:/app/mcp-config.multihost.json:ro
     depends_on:
-      redis:
-        condition: service_healthy
-      mongodb:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "sleep 5 && curl -f http://localhost:3001/api/multihost/health/ping"]
-      interval: 60s
-      timeout: 30s
-      retries: 10
+      - redis
+      - mongodb
     networks:
       - olympian-network
 
@@ -180,15 +158,8 @@ services:
       - app_logs_2:/app/logs
       - ./mcp-config.multihost.json:/app/mcp-config.multihost.json:ro
     depends_on:
-      redis:
-        condition: service_healthy
-      mongodb:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "sleep 5 && curl -f http://localhost:3001/api/multihost/health/ping"]
-      interval: 60s
-      timeout: 30s
-      retries: 10
+      - redis
+      - mongodb
     networks:
       - olympian-network
 
