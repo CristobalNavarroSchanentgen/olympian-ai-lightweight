@@ -170,11 +170,11 @@ router.delete('/servers/:serverId', async (req, res, next) => {
  */
 router.get('/health', (req, res) => {
   const stats = mcp.getStats();
-  const healthy = true; // MCP is optional, so always healthy if manager exists
+  const healthy = stats.runningServers > 0;
   
-  res.status(200).json({
+  res.status(healthy ? 200 : 503).json({
     success: healthy,
-    status: stats.runningServers > 0 ? "healthy" : "no-servers",
+    status: healthy ? 'healthy' : 'unhealthy',
     stats
   });
 });
