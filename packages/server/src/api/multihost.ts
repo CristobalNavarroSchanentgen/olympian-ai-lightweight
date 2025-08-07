@@ -306,17 +306,21 @@ router.get('/health/simple', async (req, res) => {
   try {
     // Quick connectivity checks
     const coordinationConnected = coordination.connected;
+    const uptime = process.uptime();
+    const isStartingUp = uptime < 30; // Allow 30 seconds for startup
     
     console.log("[HEALTH CHECK] Coordination connected:", coordinationConnected);
-    if (coordinationConnected) {
+    if (coordinationConnected || isStartingUp) {
       res.status(200).json({ 
-        status: 'healthy',
+        status: 'coordinationConnected ? "healthy" : "starting"',
         instance: coordination.instanceId,
         timestamp: new Date()
       });
     } else {
       res.status(503).json({ 
         status: 'unhealthy',
+        reason: "Coordination service not connected after startup period",
+        uptime: uptime,
         instance: coordination.instanceId,
         timestamp: new Date()
       });
@@ -326,6 +330,8 @@ router.get('/health/simple', async (req, res) => {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
     res.status(503).json({ 
       status: 'unhealthy',
+        reason: "Coordination service not connected after startup period",
+        uptime: uptime,
       error: errorMessage,
       timestamp: new Date()
     });

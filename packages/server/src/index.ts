@@ -137,7 +137,9 @@ async function initializeServices() {
     // Initialize multi-host services if enabled
     if (ENABLE_MULTI_HOST) {
       console.log('🚀 [Server] Initializing multi-host services...');
+      console.log("[MULTI-HOST] Starting initialization at:", new Date().toISOString());
       await multiHostInit.initialize();
+      console.log("[MULTI-HOST] Initialization complete at:", new Date().toISOString());
     }
 
     // Initialize MCP Architecture
