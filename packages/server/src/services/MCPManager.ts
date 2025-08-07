@@ -233,8 +233,22 @@ export class MCPManager {
         this.servers.delete(id);
       });
 
-      // Connect client
-      await client.connect(transport);
+      const connectTimeout = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error("Connection timeout after 10s")), 10000);
+      });
+      
+      try {
+        await Promise.race([
+          client.connect(transport),
+          connectTimeout
+        ]);
+      } catch (connectError) {
+        logger.error("[MCP] Failed to connect to server:", name, connectError);
+        serverProcess.kill();
+        throw connectError;
+      }
+      
+      logger.info("[MCP] Successfully connected to", name);
 
       // List available tools
       const toolsResponse = await client.listTools();
