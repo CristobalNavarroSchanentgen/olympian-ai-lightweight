@@ -1,7 +1,7 @@
 import { Artifact, ArtifactDocument } from '@olympian/shared';
 import { DatabaseService } from './DatabaseService';
 import { ArtifactCoordinationService } from './ArtifactCoordinationService';
-import zlib from 'zlib';
+import * as zlib from 'zlib';
 import { promisify } from 'util';
 
 const gzip = promisify(zlib.gzip);
