@@ -950,7 +950,6 @@ env-docker-multi-interactive: ## Interactive multi-host environment configuratio
 	@grep "^ALLOWED_ORIGINS=" .env | sed 's/^/  /'
 	@echo ""
 	@echo "$(CYAN)🔐 MCP Authentication Summary:$(RESET)"
-	fi
 	@echo ""
 	@echo "$(CYAN)📚 Development Mode Available:$(RESET)"
 	@echo "  For development with hot reloading, use: $(CYAN)make dev-multi$(RESET)"
