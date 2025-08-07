@@ -87,6 +87,8 @@ export class MCPManager {
 
 
 
+    logger.info("[MCP] Available MCP servers from config:", mcpServers.map(s => s.name));
+    logger.info("[MCP] Starting initialization with MCP_ENABLED:", process.env.MCP_ENABLED);
 
 
 

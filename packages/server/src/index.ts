@@ -144,9 +144,9 @@ async function initializeServices() {
 
     // Initialize MCP Architecture
     if (MCP_ENABLED) {
-      console.log('🔧 [Server] Initializing MCP Architecture...');
+      console.log("🔧 [Server] Initializing MCP Architecture...");
       try {
-        // 1. Initialize MCP Manager with 3 servers
+        // 1. Initialize MCP Manager with servers
         const mcpManager = MCPManager.getInstance();
         await mcpManager.initialize();
         
@@ -166,18 +166,17 @@ async function initializeServices() {
         
         // 4. Initialize HIL Manager
         const hilManager = HILManager.getInstance();
-        hilManager.setEnabled(process.env.HIL_ENABLED === 'true');
+        hilManager.setEnabled(process.env.HIL_ENABLED === "true");
         
         // 5. Initialize Enhanced Ollama Streamliner
         const streamliner = new EnhancedOllamaStreamliner();
         
         const mcpStats = mcpManager.getStats();
-        console.log('✅ [MCP] Initialized with ' + mcpStats.totalTools + ' tools from ' + mcpStats.totalServers + ' servers');
-        console.log('🛡️ [HIL] Human-in-the-Loop: ' + (hilManager.isEnabled() ? 'ENABLED' : 'DISABLED'));
-        
+        console.log("✅ [MCP] Initialized with " + mcpStats.totalTools + " tools from " + mcpStats.totalServers + " servers");
+        console.log("🛡️ [HIL] Human-in-the-Loop: " + (hilManager.isEnabled() ? "ENABLED" : "DISABLED"));
       } catch (error) {
-        console.error('❌ [Server] MCP initialization failed:', error);
-        console.warn('⚠️ [Server] Continuing without MCP services');
+        console.error("❌ [Server] MCP initialization failed:", error);
+        console.log("⚠️ [Server] Continuing without MCP");
       }
     }
 
