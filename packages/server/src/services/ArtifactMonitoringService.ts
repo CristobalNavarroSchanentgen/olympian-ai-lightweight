@@ -515,11 +515,20 @@ export class ArtifactMonitoringService extends EventEmitter {
   }
 
 
+
   /**
    * Get monitoring dashboard data
    */
   async getStatus(): Promise<any> {
-    return { status: "ok" };
+    return {
+      lastHealthCheck: this.lastHealthCheck,
+      score: 0,
+      totalIssues: this.issues.length,
+      criticalIssues: this.issues.filter(i => i.severity === "critical" && !i.resolved).length,
+      recentIssues: this.issues.slice(-10),
+      activeInstances: await this.coordination.getActiveInstances(),
+      metrics: {}
+    };
   }
 
   /**
