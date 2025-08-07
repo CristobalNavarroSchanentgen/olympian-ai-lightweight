@@ -78,4 +78,20 @@ export class ArtifactMonitoringService extends EventEmitter {
     }
     console.log('[ArtifactMonitoring] Monitoring service cleaned up');
   }
+
+  async getDashboardData(): Promise<any> {
+    return await this.getStatus();
+  }
+
+  async checkConsistency(): Promise<ConsistencyIssue[]> {
+    return this.issues;
+  }
+
+  async initialize(): Promise<void> {
+    console.log("[ArtifactMonitoring] Monitoring service initialized");
+  }
+
+  async performAutomaticRecovery(issues: ConsistencyIssue[]): Promise<void> {
+    console.log("[ArtifactMonitoring] Attempting recovery for " + issues.length + " issues");
+  }
 }

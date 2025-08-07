@@ -643,3 +643,10 @@ export function validateArtifactCreationRules(
     warnings
   };
 }
+
+export interface ArtifactHealthCheck {
+  artifactId: string;
+  status: "healthy" | "warning" | "error";
+  lastCheck: Date;
+  issues: string[];
+}
