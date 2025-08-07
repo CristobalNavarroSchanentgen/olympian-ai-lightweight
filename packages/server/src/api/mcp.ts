@@ -229,3 +229,50 @@ router.get('/debug/tool-registry', async (req, res) => {
     });
   }
 });
+
+// MCP Health Monitoring Endpoint
+mcpRouter.get('/health/detailed', async (req: Request, res: Response) => {
+  try {
+    const mcp = MCPManager.getInstance();
+    const { mcpLogger } = await import('../utils/mcpLogger');
+    
+    const healthStatus = await mcp.healthCheck();
+    const report = mcpLogger.generateReport();
+    const recentEvents = mcpLogger.getRecentEvents(50);
+    
+    res.json({
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      servers: Object.fromEntries(healthStatus),
+      report,
+      recentEvents
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: 'error',
+      error: error.message
+    });
+  }
+});
+
+// MCP Diagnostic Endpoint
+mcpRouter.get('/diagnostics', async (req: Request, res: Response) => {
+  try {
+    const { mcpLogger } = await import('../utils/mcpLogger');
+    const shutdowns = mcpLogger.getRecentEvents(100).filter(e => e.eventType === 'shutdown');
+    const errors = mcpLogger.getRecentEvents(100).filter(e => e.eventType === 'error');
+    
+    res.json({
+      timestamp: new Date().toISOString(),
+      processInfo: {
+        pid: process.pid,
+        uptime: process.uptime(),
+        memoryUsage: process.memoryUsage()
+      },
+      recentShutdowns: shutdowns,
+      recentErrors: errors
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});

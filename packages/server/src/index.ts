@@ -248,6 +248,16 @@ async function gracefulCleanup() {
 
 // Graceful shutdown
 async function gracefulShutdown(signal: string) {
+  const { mcpLogger } = await import("./utils/mcpLogger");
+  mcpLogger.logEvent({
+    eventType: "shutdown",
+    message: `Graceful shutdown initiated by: ${signal}`,
+    details: { 
+      signal,
+      uptime: process.uptime(),
+      memoryUsage: process.memoryUsage()
+    }
+  });
   console.log(`\n🛑 [Server] Received ${signal}, starting graceful shutdown...`);
   
   try {

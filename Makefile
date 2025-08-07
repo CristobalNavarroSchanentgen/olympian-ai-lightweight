@@ -1032,3 +1032,22 @@ mcp-logs-export: ## Export MCP logs to file with timestamp
 	echo "\033[1;32mLogs exported to $$LOG_FILE\033[0m"
 
 .PHONY: mcp-logs mcp-logs-live mcp-logs-debug mcp-logs-export
+
+# Enhanced MCP Diagnostics
+.PHONY: mcp-diagnostics
+mcp-diagnostics:
+	@echo "=== MCP Diagnostics ==="
+	@echo "[1/3] MCP Log Files"
+	@ls -la logs/mcp/ 2>/dev/null || echo "No MCP log files found"
+	@echo ""
+	@echo "[2/3] Latest MCP Events"
+	@tail -n 20 logs/mcp/mcp-events-*.log 2>/dev/null | jq '.' || echo "No events logged"
+	@echo ""
+	@echo "[3/3] MCP Health Check"
+	@curl -s http://localhost:3000/api/mcp/health/detailed 2>/dev/null | jq '.' || echo "Backend not running"
+
+.PHONY: mcp-monitor
+mcp-monitor:
+	@echo "=== MCP Real-time Monitor ==="
+	@echo "Monitoring MCP events (Ctrl+C to stop)..."
+	@tail -f logs/mcp/mcp-events-*.log 2>/dev/null | jq '.'

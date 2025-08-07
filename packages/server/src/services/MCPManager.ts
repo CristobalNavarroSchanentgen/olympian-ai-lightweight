@@ -5,6 +5,7 @@ import { spawn, ChildProcess } from 'child_process';
 import { logger } from '../utils/logger';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { mcpLogger } from "../utils/mcpLogger";
 
 interface ServerProcess {
   id: string;
@@ -27,6 +28,11 @@ export class MCPManager {
 
   private constructor() {
     logger.info('🚀 [MCP] Manager instantiated');
+    mcpLogger.logEvent({
+      eventType: "startup",
+      message: "MCPManager singleton instantiated",
+      details: { pid: process.pid }
+    });
   }
 
   static getInstance(): MCPManager {
@@ -153,6 +159,13 @@ export class MCPManager {
     }
 
     logger.info(`[MCP] Starting server: ${name}`);
+      mcpLogger.logEvent({
+        eventType: "startup",
+        serverId: id,
+        serverName: name,
+        message: "Starting MCP server process",
+        details: { command, args, hasEnv: !!env }
+      });
 
     try {
       // Spawn the server process
@@ -181,11 +194,26 @@ export class MCPManager {
 
       // Handle process errors
       serverProcess.on('error', (error) => {
+        mcpLogger.logEvent({
+          eventType: "error",
+          serverId: id,
+          serverName: name,
+          message: "Server process error",
+          details: { error: error.message },
+          stackTrace: error.stack
+        });
         logger.error(`[MCP] Server ${name} process error:`, error);
         this.servers.delete(id);
       });
 
       serverProcess.on('exit', (code) => {
+        mcpLogger.logEvent({
+          eventType: "shutdown",
+          serverId: id,
+          serverName: name,
+          message: `Server exited with code ${code}`,
+          details: { exitCode: code, pid: serverProcess.pid }
+        });
         logger.info(`[MCP] Server ${name} exited with code ${code}`);
         this.servers.delete(id);
       });
@@ -361,6 +389,14 @@ export class MCPManager {
    * Shutdown all servers
    */
   async shutdown(): Promise<void> {
+    mcpLogger.logEvent({
+      eventType: "shutdown",
+      message: "MCPManager shutdown initiated",
+      details: { 
+        serverCount: this.servers.size,
+        callerStack: new Error().stack
+      }
+    });
     logger.info('[MCP] Shutting down all servers...');
     
     const stopPromises = Array.from(this.servers.keys()).map(id => 
