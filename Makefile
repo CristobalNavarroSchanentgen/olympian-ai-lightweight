@@ -802,7 +802,7 @@ fix-mongo-uri: ## Fix MongoDB URI for Docker deployment
 	@chmod +x scripts/fix-mongo-uri.sh
 	@./scripts/fix-mongo-uri.sh
 
-env-docker-multi-interactive: ## Interactive multi-host environment configuration with MCP token setup
+env-docker-multi-interactive: ## Interactive multi-host environment configuration
 	@echo "$(CYAN)🔧 Interactive Docker multi-host configuration setup...$(RESET)"
 	@echo ""
 	@if [ ! -f .env ]; then cp .env.example .env; fi
@@ -898,25 +898,6 @@ env-docker-multi-interactive: ## Interactive multi-host environment configuratio
 		fi; \
 	fi
 	@echo ""
-	@echo "$(CYAN)🔐 MCP Server Authentication Setup$(RESET)"
-	@echo "$(YELLOW)Multi-host deployment includes GitHub, AppleScript, and Context7 MCP servers. GitHub requires authentication$(RESET)"
-	@echo "$(YELLOW)for repository access. You can configure this token now or later.$(RESET)"
-	@echo ""
-	@echo "$(CYAN)🐙 GitHub MCP Server Configuration$(RESET)"
-	@echo "$(YELLOW)The GitHub MCP server provides repository access, issue management, and PR capabilities.$(RESET)"
-	@echo "$(YELLOW)Required scopes: repo, read:user, read:org$(RESET)"
-	@printf "Enter your GitHub Personal Access Token (or press Enter to skip): "; \
-			echo "$(GREEN)✅ GitHub token configured$(RESET)"; \
-		else \
-			echo "$(YELLOW)⚠️  Token format doesn't match expected pattern, but will be saved anyway$(RESET)"; \
-		fi; \
-	else \
-		else \
-		fi; \
-		echo "$(YELLOW)⚠️  GitHub token not configured - some MCP features will be limited$(RESET)"; \
-	fi
-	@echo ""
-	@echo ""
 	@echo ""
 	@echo "$(CYAN)🤖 Model Capability Configuration:$(RESET)"
 	@echo "$(YELLOW)Choose between automatic model capability detection or custom model listing:$(RESET)"
@@ -969,9 +950,6 @@ env-docker-multi-interactive: ## Interactive multi-host environment configuratio
 	@grep "^ALLOWED_ORIGINS=" .env | sed 's/^/  /'
 	@echo ""
 	@echo "$(CYAN)🔐 MCP Authentication Summary:$(RESET)"
-		echo "  $(GREEN)✅ GitHub token configured$(RESET)"; \
-	else \
-		echo "  $(YELLOW)⚠️  GitHub token not configured$(RESET)"; \
 	fi
 	@echo ""
 	@echo "$(CYAN)📚 Development Mode Available:$(RESET)"
@@ -980,7 +958,7 @@ env-docker-multi-interactive: ## Interactive multi-host environment configuratio
 	@echo ""
 	@echo "$(CYAN)🐳 Self-Reliant MCP Containers:$(RESET)"
 	@echo "  All MCP servers will run as containers - no external setup required!"
-	@echo "  GitHub, AppleScript, and Context7 included."
+	@echo "  AppleScript and Context7 included."
 
 # MCP Architecture deployment
 .PHONY: deploy-mcp
